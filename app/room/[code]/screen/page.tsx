@@ -612,12 +612,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         )}
         <MapStrip view={view} />
       </div>
-      {/* Going down (dungeon-scene C): how deep the room on stage is. */}
-      {!classic && (
-        <div data-testid="screen-floor" className="absolute" style={{ left: 18, top: 70, zIndex: 6 }}>
-          <LabelChip>{floorLabel(stageRoom)}</LabelChip>
-        </div>
-      )}
 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
@@ -625,7 +619,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {!served && (
       <Panel ref={panelRef} className="absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
-          <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+          <span className="flex gap-2">
+            <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
+            {!classic && stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
+          </span>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
           {/* The buzz winner picked the next song's category (boss-music-buzzer.md M5). Up here: under the reveal's

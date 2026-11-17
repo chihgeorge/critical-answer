@@ -2089,6 +2089,8 @@ function drawClassicScene(cv: HTMLCanvasElement, name: Exclude<SceneTheme, "deep
 }
 
 const IRON = { hi: "#9a96b4", mid: "#5a5670", dk: "#3b3550" } as const;
+/** The corridor behind an arch, two steps back, each lighter; the portcullis draws over these and the arch's dark. */
+const CORRIDOR_SHADES = ["#1c1438", "#2a2050"] as const;
 const SCENE_SKULL = [".www.", "wwwww", "wkwkw", "wwwww", ".w.w."];
 
 /**
@@ -2198,7 +2200,7 @@ function drawLitScene(cv: HTMLCanvasElement, name: SceneTheme, W: number, H: num
       P.ell(x, top, hw, ry, T.arch);
       P.rect(x - hw, top, hw * 2, fy - top, T.arch);
       // The far end of the corridor: two smaller arches, each a shade lighter, so the eye reads depth.
-      for (const [k, c] of [[0.62, "#1c1438"], [0.36, "#2a2050"]] as const) {
+      for (const [k, c] of [[0.62, CORRIDOR_SHADES[0]], [0.36, CORRIDOR_SHADES[1]]] as const) {
         const iw = Math.round(hw * k);
         const it = fy - Math.round((fy - top + ry) * k * 0.9);
         P.ell(x, it + iw * 0.4, iw, Math.max(2, iw * 0.4), c);
@@ -2210,7 +2212,8 @@ function drawLitScene(cv: HTMLCanvasElement, name: SceneTheme, W: number, H: num
         for (let bx = x - hw + 2; bx < x + hw - 1; bx += 4)
           for (let y = top - ry; y <= bottom; y++) {
             if (P.a[y * W + bx] === undefined) continue;
-            const inside = P.a[y * W + bx] === T.arch || P.a[y * W + bx] === "#1c1438" || P.a[y * W + bx] === "#2a2050";
+            const c = P.a[y * W + bx];
+            const inside = c === T.arch || c === CORRIDOR_SHADES[0] || c === CORRIDOR_SHADES[1];
             if (!inside) continue;
             P.set(bx, y, y === bottom ? IRON.hi : IRON.mid);
             P.set(bx + 1, y, IRON.dk);

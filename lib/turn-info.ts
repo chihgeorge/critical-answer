@@ -48,7 +48,7 @@ const DEPTHS: { from: number; theme: SceneTheme; name: string }[] = [
   { from: 2, theme: "moss", name: "苔蘚水道" },
   { from: 4, theme: "deep", name: "幽暗深淵" },
 ];
-const depth = (room: number) => DEPTHS.filter((d) => room >= d.from).pop()!; // no findLast: older TV browsers
+const depth = (room: number) => DEPTHS.filter((d) => room >= d.from).pop() ?? DEPTHS[0]; // no findLast: older TV browsers
 
 /** How the stage draws a bank monster. */
 export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster {

@@ -12,6 +12,7 @@ import type { SceneTheme } from "@/lib/pixel-art";
 import { roomTheme } from "@/lib/turn-info";
 
 const ROOM_STYLE = { background: "#7a6496", boxShadow: "inset 0 -5px 0 #5d4a79, inset 0 4px 0 #9a84b8" };
+const BOSS_STYLE = { background: "#8a2d45", boxShadow: "inset 0 -6px 0 #6a1f34, inset 0 4px 0 #b04560" };
 /** The torch-lit look (dungeon-scene C): the strip is a cross-section of black rock, each reached room lit in its own
  * biome's stone, the unreached rest of the way solid dark (no clouds, nothing that counts rooms: D8). */
 const ROCK = { strip: "#1c1438", fog: "#0b0718", fogOpen: "#150f2e", corridor: "#2a2050" };
@@ -19,9 +20,8 @@ const LIT: Record<SceneTheme, typeof ROOM_STYLE> = {
   stone: { background: "#6f61ab", boxShadow: "inset 0 -5px 0 #4c4186, inset 0 4px 0 #8a7cc4" },
   moss: { background: "#4f8a6e", boxShadow: "inset 0 -5px 0 #35604f, inset 0 4px 0 #6aa888" },
   deep: { background: "#56648c", boxShadow: "inset 0 -5px 0 #3a4768, inset 0 4px 0 #7080a8" },
-  crimson: { background: "#8a2d45", boxShadow: "inset 0 -6px 0 #6a1f34, inset 0 4px 0 #b04560" },
+  crimson: BOSS_STYLE,
 };
-const BOSS_STYLE = { background: "#8a2d45", boxShadow: "inset 0 -6px 0 #6a1f34, inset 0 4px 0 #b04560" };
 const ROOM_BOX = { top: 18, h: 58 };
 const BOSS_BOX = { top: 10, h: 72 };
 
@@ -128,7 +128,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
     <div ref={ref} data-testid="map-strip" className="relative min-w-0 flex-1" style={{ height: 82, marginTop: -16, ...(classic ? {} : { background: ROCK.strip, boxShadow: "0 0 0 4px var(--k)" }) }}>
       {budget > 0 && (
         <>
-          {map.stub && [room(map.stub.x, map.stub.w, "stub", "…"), corridor(map.stub.x + map.stub.w)]}
+          {map.stub && [room(map.stub.x, map.stub.w, "stub", "…", undefined, (map.rooms[0]?.index ?? 1) - 1), corridor(map.stub.x + map.stub.w)]}
           {map.rooms.map((r) => [room(r.x, r.w, String(r.index), undefined, fogReveal?.room === r.index ? fogReveal : undefined, r.index), corridor(r.x + r.w)])}
           {classic ? (
             <div className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 14, height: 66 }}>

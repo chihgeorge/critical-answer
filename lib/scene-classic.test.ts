@@ -56,7 +56,7 @@ describe("the torch-lit scene", () => {
 
   it("the boss room is the darkest", () => {
     const wall = (t: SceneTheme) => luma(scene(t, 160, 90, true, {}), 160, ...WALL);
-    expect(wall("crimson")).toBeLessThan(Math.min(wall("stone"), wall("moss")));
+    expect(wall("crimson")).toBeLessThan(Math.min(wall("stone"), wall("moss"), wall("deep")));
   });
 
   it("lighting the torches brightens the wall beside them", () => {
