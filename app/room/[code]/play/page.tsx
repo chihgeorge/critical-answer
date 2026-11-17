@@ -175,7 +175,7 @@ function questionLine(q: PublicQuestion): string | null {
 
 function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" }: { id?: string; text: string; className?: string }) {
   return (
-    <h2 id={id} className={`max-h-[calc(5*1.35em_+_20px)] overflow-y-auto bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
+    <h2 id={id} className={`max-h-[calc(5*1.35em_+_20px)] overflow-y-auto overscroll-contain bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
       {text}
     </h2>
   );
@@ -184,8 +184,10 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
  * either the beat (locked) or, after a wrong lock, 下輪再答 / 逃跑. Eliminated options are grey and inert.
+ * `drops` counts lock refusals and socket drops: one after a press means the lock is lost now, with no confirm wait.
+ * (A refusal of another action with the same detail can flash 沒送出 until the lock's STATE lands; a second press is
+ * refused as answer_pending, so it cannot lock twice.)
  */
-/** `drops` counts lock refusals and socket drops: one after a press means the lock is lost now, with no confirm wait. */
 function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; drops: number }) {
   const q = game.question!;
   const options = q.options ?? [];
@@ -207,7 +209,8 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
   const [lockFailed, setLockFailed] = useState(false);
   // Not while the crit die rolls: the lock has landed, and the judgment that moves eventId comes after the die.
   const pressed = !lock && !wrong && !rolling && locking?.qid === q.id && locking.eventId === game.eventId;
-  // Refused or cut off since the press (also a confirmed lock the room lost in a restart): failed now, not in 3 s.
+  // Refused or cut off since the press: failed now, not in 3 s. `locking` stays set after the lock lands, so a confirmed
+  // lock the room then loses in a restart shows here too.
   const dropped = pressed && locking.drops !== drops;
   const inFlight = pressed && !dropped;
   useEffect(() => {

@@ -34,6 +34,8 @@ describe("check-bundle.sh", () => {
 
   it("fails a short answer as a whole string literal, and a long answer anywhere", () => {
     expect(check('const o=["6 個","7 個"];')).toBe(1);
+    expect(check("const o=['6 個'];")).toBe(1);
+    expect(check("const o=`6 個`;")).toBe(1);
     expect(check('const t="這是魔王的尾巴喔";')).toBe(1);
   });
 });

@@ -289,16 +289,38 @@ test("phone answering: a lock the room refuses shows 沒送出，再按一次 at
   await expect(team.getByRole("button", { name: "鎖定答案" })).toBeEnabled();
 });
 
+// Value: protects=a lock cut off by a dropped socket says 沒送出 at once; fails_when=the socket close no longer counts as a
+// lost lock; why_new=the refusal test above covers only the ERROR path; seam=routeWebSocket drops the lock and closes the
+// socket; no_claim=a real network drop
+test("phone answering: a lock cut off by a dropped connection shows 沒送出，再按一次 at once", async ({ browser, request }) => {
+  await seedSingleMcQuestion(request);
+  const { team } = await startOneTeam(browser, (page) =>
+    page.routeWebSocket(/localhost:1996/, (ws) => {
+      const server = ws.connectToServer();
+      ws.onMessage((m) => {
+        if (typeof m === "string" && m.includes('"TEAM_LOCK_OPTION"')) return ws.close();
+        server.send(m);
+      });
+    }),
+  );
+  await team.getByRole("button", { name: "藍色" }).click();
+  await team.getByRole("button", { name: "鎖定答案" }).click();
+  await expect(team.getByText("沒送出，再按一次")).toBeVisible({ timeout: 1_500 });
+});
+
 // Value: protects=a long local-bank question scrolls inside its strip instead of pushing 鎖定答案 / 逃跑 off an iPhone 12;
 // fails_when=the strip loses its height cap; why_new=the 390x844 test above uses the longest default question (34 chars);
 // seam=none; no_claim=reading the whole question (it scrolls)
-test("phone answering: a 100-character question stops at 5 lines and keeps 鎖定答案 and 逃跑 on a 390x844 screen", async ({ browser, request }) => {
-  const text = "在這座地城的第七層，傳說有一位會說十二種語言的老魔法師，他每天早上都會在石橋邊餵一群會唱歌的烏鴉，而且只用左手；請問那群烏鴉最常唱的是哪一首歌，又是誰教牠們的呢？";
+test("phone answering: a 150-character question stops at 5 lines and keeps 鎖定答案 and 逃跑 on a 390x844 screen", async ({ browser, request }) => {
+  const text =
+    "在這座地城的第七層，傳說有一位會說十二種語言的老魔法師，他每天早上都會在石橋邊餵一群會唱歌的烏鴉，而且只用左手；" +
+    "烏鴉吃飽之後會排成一列，從最高的塔頂一路唱到地下的酒窖，路過的冒險者都說聽了會想家。請問那群烏鴉最常唱的是哪一首歌，又是誰教牠們的呢？";
   await seedSingleMcQuestion(request, { text, options: ["〈Power〉", "〈Fantastic Baby〉", "〈Home Sweet Home〉", "〈小蘋果 G-Dragon Remix〉"], correctIndex: 0 });
   const { host, team } = await startOneTeam(browser, undefined, { width: 390, height: 844 });
   const strip = team.getByRole("heading", { name: text });
   await expect(strip).toBeVisible();
   expect((await strip.boundingBox())!.height).toBeLessThanOrEqual(5 * 27 + 20 + 1);
+  expect(await strip.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true); // the cap is what holds it
   const bottom = (name: RegExp) => team.getByRole("button", { name }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   await team.getByRole("button", { name: "〈Fantastic Baby〉" }).click();
   expect(await bottom(/鎖定答案/)).toBeLessThanOrEqual(844);
