@@ -19,6 +19,7 @@
 ## CI、部署和 GitHub 設定
 
 - ✅ **GitHub Actions**：`ci.yml` 只聽 `pull_request` 和 `push` 到 `main`，沒有 `pull_request_target` 或 `workflow_run`，權限是 `contents: read`，repo 預設 workflow 權限也是 read。fork 開的 PR 拿不到任何密鑰（本來也沒有），也寫不了 repo。
+- **`canary.yml`**（2026-11-16）聽 Vercel 的 `deployment_status`、`workflow_dispatch`，和只改它自己的 `pull_request`，對正式站跑 canary，不用任何密鑰。跑 repo 程式碼的 job 只有 `contents: read` 和 `checks: read`；開 issue 的 `report` job 另外拿 `issues: write`，不 checkout、不跑 repo 的程式碼，PR 觸發時不跑。
 - ✅ **Cloudflare Workers Builds**：唯一的 trigger 只建 `main`（2026-10-28 用 API 確認過）。「Builds for Preview branches」2026-10-02 已關掉，所以 fork 或其他分支不會觸發建置。
 - ✅ **Dependabot alerts 和 security updates** 已打開（2026-10-28，你同意後改的）。有已知漏洞的套件會發警示並自動開修補 PR；`.github/dependabot.yml` 原本只做每週版本更新。
 - ✅ **Dependabot PR 自動合併**（2026-10-28，你選的）：minor 和 patch 升級在 CI 的 `check` 通過後自動 squash 合併（`.github/workflows/dependabot-auto-merge.yml`）；major 升級留給你。新版本要發布滿 5 天才會升（`cooldown`），漏洞修補不等。repo 的「Allow auto-merge」已打開。漏洞回報方式寫在 `SECURITY.md`。
