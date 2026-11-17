@@ -344,6 +344,32 @@ const short = (s: string) => s.replace(/\s+/g, " ").slice(0, 160);
 
 type Context = Awaited<ReturnType<Browser["newContext"]>>;
 
+/** A silent speechSynthesis (a copy of e2e/tts.ts stubSpeechSynthesis): headless Chromium on macOS reads the big
+ * screen's narration aloud. Each line still ends a moment later, so the narration queue moves as with a real voice. */
+function silenceSpeech() {
+  const voice = { lang: "zh-TW", name: "Canary zh-TW Voice", default: true } as SpeechSynthesisVoice;
+  Object.defineProperty(window, "speechSynthesis", {
+    configurable: true,
+    value: {
+      getVoices: () => [voice],
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      speak: (utter: SpeechSynthesisUtterance) => void setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 50),
+      cancel: () => {},
+    },
+  });
+  (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = class {
+    text: string;
+    voice: SpeechSynthesisVoice | null = null;
+    lang = "";
+    onend: ((e: SpeechSynthesisEvent) => void) | null = null;
+    onerror: ((e: SpeechSynthesisErrorEvent) => void) | null = null;
+    constructor(text = "") {
+      this.text = text;
+    }
+  };
+}
+
 /** One game. The caller closes `contexts`, so they close even when something throws outside `step()`. */
 async function round(browser: Browser, { base, turns, boss }: Options, r: number, pages: PageResult[], steps: StepResult[], contexts: Context[]) {
   const results = new Map<string, PageResult>();
@@ -352,6 +378,7 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
   async function open(name: string, viewport: { width: number; height: number }): Promise<Page> {
     const ctx = await browser.newContext({ viewport, baseURL: base });
     contexts.push(ctx);
+    await ctx.addInitScript(silenceSpeech);
     const page = await ctx.newPage();
     const res: PageResult = { round: r, name, status: null, ms: 0, errs: [] };
     results.set(name, res);
@@ -535,7 +562,7 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
 async function main() {
   const opts = parseArgs(process.argv.slice(2), process.env);
   console.log(`canary-live base=${opts.base} rounds=${opts.rounds} turns=${opts.turns}${opts.boss ? " boss" : ""}`);
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, args: ["--mute-audio"] });
   const pages: PageResult[] = [];
   const steps: StepResult[] = [];
   try {
