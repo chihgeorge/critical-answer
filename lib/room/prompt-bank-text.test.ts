@@ -71,11 +71,13 @@ describe("bank text and the AI narrator's prompt", () => {
 
     const seq = () => (room as unknown as { eventSeq: number }).eventSeq;
     let turns = 0;
+    const played = new Set<string>();
     while (room.game!.phase === "playing") {
       expect(++turns, "game never finished").toBeLessThan(200);
       const team = room.game!.teams[0];
       const qid = team.inBoss ? room.game!.boss.currentQuestionId : team.currentQuestionId;
       const q = findQuestion(bank, qid)!;
+      played.add(q.kind);
       if (q.kind === "text") send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true });
       else {
         const sortSlots = (code: number) => (room as unknown as { sortSlotsOf(id: string, code: number): boolean[] }).sortSlotsOf(qid, code);
@@ -93,6 +95,8 @@ describe("bank text and the AI narrator's prompt", () => {
     await vi.advanceTimersByTimeAsync(10_000); // the epilogue
     expect(room.game!.phase).toBe("finished");
 
+    // The game really asked every kind, so an answer and sort items were live in the room, not just in the bank.
+    expect([...played].sort()).toEqual(["multipleChoice", "sort", "text"]);
     const all = prompts.join("\n");
     expect(prompts.length, "AI narrated the turns, the phase card and the epilogue").toBeGreaterThan(8);
     for (const m of markers.filter((m) => m !== PHASE_NAME && m !== PHASE_RULE)) expect(all, m).not.toContain(m);
