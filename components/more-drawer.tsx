@@ -151,7 +151,7 @@ export function MoreDrawer({
                 </PixelButton>
                 <span className="text-[14px]">現在 {tapLatency} ms</span>
               </label>
-              <div className="text-[14px]">彩排放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
+              <div className="text-[14px]">開場前先放一題測試卡點題，揭曉後按「把延遲改成…」；再放一題，中位數接近 0 就對了（0–{MAX_TAP_LATENCY_MS}）</div>
             </section>
           )}
           {bossable.length > 0 && (

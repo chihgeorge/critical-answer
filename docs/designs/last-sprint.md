@@ -168,7 +168,7 @@ The existing deployment covers this: Cloudflare Workers Builds and Vercel deploy
 
 ## The Assignment
 
-At the event rehearsal, get one team into the boss room with 3 phones. Then ask the last-place team, without explaining anything, what just happened to them. If they cannot say 「我們拿到祝福」, the banner or phone line needs to be louder.
+In a pre-launch run-through on real devices, get one team into the boss room with 3 phones. Then ask the last-place team, without explaining anything, what just happened to them. If they cannot say 「我們拿到祝福」, the banner or phone line needs to be louder.
 
 ## What I noticed about how you think
 

@@ -19,7 +19,7 @@ const VOLUME = 0.05;
 const DUCKED_VOLUME = 0.015;
 /** Effects sit above the music and aren't ducked: they're short and mark what just happened. */
 const SFX_VOLUME = 0.09;
-/** The boss layer (heartbeat, charge, parry, entrance rumble). One constant so the venue check can retune it in one line. */
+/** The boss layer (heartbeat, charge, parry, entrance rumble). One constant so the real-device check can retune it in one line. */
 const BOSS_VOLUME = 0.09;
 /** The host's effects (thunder, growl). */
 const HOST_VOLUME = 0.09;

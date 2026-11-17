@@ -48,7 +48,7 @@ HEVC（2026-11-16 補上，原本是 shortcut）：MP4 先走最外層的 box �
 
 ### D3 網址只給主持人和帶金鑰的大螢幕
 
-跟 YouTube 題的 `videoId` 一樣處理（`docs/designs/screen-video-key.md`）。原因：MP3 的 ID3 標籤、MP4 的 metadata 常寫著歌名，手機拿到網址就拿到答案；而且 30 支手機各抓一份 25 MB 會塞爆場地 Wi-Fi。
+跟 YouTube 題的 `videoId` 一樣處理（`docs/designs/screen-video-key.md`）。原因：MP3 的 ID3 標籤、MP4 的 metadata 常寫著歌名，手機拿到網址就拿到答案；而且 30 支手機各抓一份 25 MB 會塞爆現場 Wi-Fi。
 
 - 題目欄的上傳影音在 `STATE` 裡是現有的 `HiddenVideo`（`{ kind: "youtube", audioOnly? }`，聲音就是 `audioOnly: true`）。wire 上的 `kind` 沿用 `"youtube"`：意思是「大螢幕上由主持人控制的影片」，所有現有的判斷（手機「🎵 聽大螢幕」、主持人 ▶ ⏸ ⟲、搶答等第一次 ▶、作答倒數等影片播完）不用改就對；舊版頁面也看得懂。
 - 詳解欄的上傳影音在 `STATE` 裡是新的 `HiddenFile`（`{ kind: "file", audioOnly? }`），跟 Instagram 詳解一樣：手機顯示「▶ 詳解請看大螢幕」。
@@ -101,7 +101,7 @@ HEVC（2026-11-16 補上，原本是 shortcut）：MP4 先走最外層的 box �
 - 大螢幕播放錯誤：建立揭曉時清掉 `clipError`，揭曉中也顯示主持人警告，詳解影片出錯才報得上來。
 - FilePlayer 掛上時第一個指令當起點，用 `playerSteps(null, …)`，跟 youtube-player 一樣。
 - 拿掉 `dash`、`M4V ` brand（可能是分段或 DRM 檔）。
-- 文件提醒用 `-movflags +faststart` 匯出 MP4（moov 在前面，場地網路才不會卡住）；編輯器不檢查（shortcut）。
+- 文件提醒用 `-movflags +faststart` 匯出 MP4（moov 在前面，網路慢時才不會卡住）；編輯器不檢查（shortcut）。
 - `legacyImageKeys` 不改：只處理格式 3 以前的題庫，不會有影片。
 - 編輯器缺漏提示：video/audio 顯示「還沒上傳」。
 - 回滾說明加一句：房間裡已存了含影片的題庫副本，舊版讀不了。
@@ -124,7 +124,7 @@ HEVC（2026-11-16 補上，原本是 shortcut）：MP4 先走最外層的 box �
 - r2.dev 公開網址有流量限制，Cloudflare 不建議正式用；一場活動一台大螢幕，量很小。要正式用再綁自己的網域。
 - 聲音要在活動大螢幕上實測（併入 TODOS「11/21 前在活動用的大螢幕瀏覽器實測 YouTube 聲音」）。
 - 版權：自己上傳的 MV、歌曲放在公開的 r2.dev 網址（UUID 檔名只是難猜，不是私密）。收到下架通知的是跑整個遊戲的同一個 Cloudflare 帳號。TODOS 加一條：活動後刪掉或改成只給帶金鑰的大螢幕讀。
-- 場地網路：`preload="auto"` 要等題目出現才開始下載，25 MB 在場地 Wi-Fi 可能播到一半卡住。大螢幕在載入中時顯示「載入中」，主持人等它緩衝；活動前用場地網路把所有影音題試放一次（併入聲音實測的 TODO）；最後手段是主持人用筆電放本機檔。
+- 現場網路：`preload="auto"` 要等題目出現才開始下載，25 MB 在現場 Wi-Fi 可能播到一半卡住。大螢幕在載入中時顯示「載入中」，主持人等它緩衝；活動前用現場網路把所有影音題試放一次（併入聲音實測的 TODO）；最後手段是主持人用筆電放本機檔。
 - 部署途中前端比 Worker 新：編輯器上傳影音會被舊 Worker 拒收（400），重試即可。
 
 ## 測試
@@ -186,7 +186,7 @@ do-nothing 的代價：活動要用的 MV、世界盃歌曲、合成影片放不
 | E2 | 播放區間（start/end） | M | 不做 | 站長說從頭播到尾；上傳前剪 |
 | E3 | 讀 MP4 codec 擋 HEVC | M | 延後到 TODOS | 編輯器預覽會先露出放不出來；擋要解析 moov box |
 | E4 | R2 自訂網域取代 r2.dev | S（設定） | 延後（只寫風險） | 動到部署設定，不是程式；要站長在 Cloudflare 後台做 |
-| E5 | 手機播詳解影音 | S | 不做 | 30 支手機各抓 25 MB 會塞爆場地 Wi-Fi；跟 Instagram 詳解一致 |
+| E5 | 手機播詳解影音 | S | 不做 | 30 支手機各抓 25 MB 會塞爆現場 Wi-Fi；跟 Instagram 詳解一致 |
 | E6 | 同一個檔案在多題重用（媒材庫） | L | 不做 | 範圍外，要新的 UI 和清理規則 |
 
 **0I 時間軸**：第 1 小時 bank 格式＋上傳 API＋測試；2–3 小時房間與 wire；4–5 小時大螢幕 FilePlayer、主持人頁、手機；6 小時起編輯器、文件、檢查。人工約 2 天／CC 約 2–3 小時。
@@ -224,7 +224,7 @@ CEO DUAL VOICES — CONSENSUS TABLE:
 native 的 7 項怎麼處理：
 
 1. 編輯器上傳延到活動後、先用 `wrangler r2 object put` 手動傳（high）→ **品味決定，維持站長的方向**：站長明確要求編輯器能上傳。只有一個聲音，不算 User Challenge；列到閘門讓站長知道有這個省工的選項。
-2. 場地 Wi-Fi 串流卡住（high）→ 接受：大螢幕顯示載入中、活動前用場地網路試放、主持人筆電備案，寫進風險和 TODO。預先載入下一題不做：房間不知道下一題是哪題就送不出網址。
+2. 現場 Wi-Fi 串流卡住（high）→ 接受：大螢幕顯示載入中、活動前用現場網路試放、主持人筆電備案，寫進風險和 TODO。預先載入下一題不做：房間不知道下一題是哪題就送不出網址。
 3. 版權素材放公開 bucket（high）→ 接受成 TODO（活動後刪或改私密），寫進風險。
 4. wire 上 `"youtube"` 兩個名字（medium）→ 接受：`protocol.ts` 寫 `shortcut:` 註解。
 5. 格式 10 只測 `formatOf`（medium）→ 接受：加存檔再讀回的測試。
@@ -486,7 +486,7 @@ screen page ──▶ FilePlayer (<video>) ◀── HOST_MEDIA (playerSteps)
 | R2 檔案 404（被清掉） | onError → 主持人警告；清理只刪不再被引用的 key 且延遲 25 小時 | 否 |
 | 部署空窗：舊手機頁 | 短暫，接受 | 否 |
 | 回滾到舊版 | 含影片的題庫唯讀；文件寫明先刪影片題 | 否 |
-| 場地網路慢、moov 在尾端 | 文件提醒 faststart；彩排 TODO | 否 |
+| 現場網路慢、moov 在尾端 | 文件提醒 faststart；上線前檢查 TODO | 否 |
 | 上傳超過 25 MB | 用戶端先擋，伺服器串流 413 | 否 |
 
 NOT in scope：見「不做」。What already exists：上傳端點、R2 清理、YouTube 大螢幕管線（HiddenVideo、SCREEN_VIDEO、HOST_MEDIA、playerSteps）、MusicCard，全部沿用。

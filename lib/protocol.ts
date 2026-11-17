@@ -438,7 +438,7 @@ export const REACTIONS = { clap: { emoji: "👏", label: "鼓掌" }, wow: { emoj
 export type Reaction = keyof typeof REACTIONS;
 /** One reaction per team per this many ms (the phone greys its buttons for as long). */
 export const REACT_GAP_MS = 2000;
-/** The room lets a team's next tap arrive this much early: venue Wi-Fi can deliver the first one late. */
+/** The room lets a team's next tap arrive this much early: slow Wi-Fi can deliver the first one late. */
 export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;

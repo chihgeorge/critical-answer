@@ -107,7 +107,7 @@ between two doors and lives with the result.
 
 - A fork never stops the room for more than about 17 seconds (15 to choose, 1.5 to open).
 - Nothing behind ❓ reaches any screen before the opening ends (unit tests on the STATE keys).
-- The rehearsal's game log shows how often teams take ❓, ⚔️ and time out; watch whether the room reacts at the doors.
+- The first real games' logs shows how often teams take ❓, ⚔️ and time out; watch whether the room reacts at the doors.
 - Unit tests cover the choice, the timeout, reconnects, restarts and the opening; e2e on CI covers both doors.
 
 ## Deferred (TODOS.md)

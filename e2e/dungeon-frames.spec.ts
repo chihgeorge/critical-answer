@@ -4,7 +4,7 @@ import { screenUrl, closeLeftoverContexts } from "./answer";
 closeLeftoverContexts();
 
 /** Direction D 「石框木牌」 (DESIGN.md): the stone frames and wooden tiles are on by default, and /screen?frames=0 takes them
- * off one TV without a deploy (the 11/19–22 merge freeze). */
+ * off one TV without a deploy (the event-week merge freeze). */
 test("the big screen has the dungeon frames, and ?frames=0 takes them off", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
