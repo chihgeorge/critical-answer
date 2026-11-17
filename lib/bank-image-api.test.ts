@@ -390,11 +390,11 @@ describe("handleMediaSweepApi", () => {
     expect(sweep).not.toHaveBeenCalled();
   });
 
-  it("answers 409 with the reason while a bank is unreadable, 503 when the listing or the bank store fails", async () => {
+  it("answers 409 with a fixed text while a bank is unreadable, 503 when the listing or the bank store fails", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const stuck = await handleMediaSweepApi(sweepReq("POST"), sweepDeps(async () => Promise.reject(new Error(`${MEDIA_SWEEP_STUCK}：default`))));
     expect(stuck.status).toBe(409);
-    expect(await stuck.text()).toContain("default");
+    expect(await stuck.text()).toBe(MEDIA_SWEEP_STUCK); // fixed text: the caught message (bank ids) stays in the log
     const down = await handleMediaSweepApi(sweepReq("POST"), sweepDeps(async () => Promise.reject(new Error("R2 list failed"))));
     expect(down.status).toBe(503);
     expect(await down.text()).toContain("請稍後再試一次");

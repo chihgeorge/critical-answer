@@ -217,7 +217,8 @@ export async function handleMediaSweepApi(request: Request, deps: MediaSweepDeps
     const message = err instanceof Error ? err.message : String(err);
     console.error(JSON.stringify({ event: "media_sweep_failed", queue, error: message }));
     // A Durable Object RPC keeps the error's message (not its class), the same as BANK_NOT_FOUND in bank-api.ts.
-    if (message.includes(MEDIA_SWEEP_STUCK)) return new Response(message, { status: 409, headers: cors });
+    // A fixed text, never the caught message: the stuck bank ids are in the log above.
+    if (message.includes(MEDIA_SWEEP_STUCK)) return new Response(MEDIA_SWEEP_STUCK, { status: 409, headers: cors });
     // The listing, the Durable Object or the alarm failed, or a cleanup ran meanwhile. Sweeping again is safe: a file
     // already queued is known and is not queued twice.
     return new Response("清理掃描沒做完，請稍後再試一次（再掃一次不會重複排）", { status: 503, headers: cors });
