@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { copyQuestion, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, restoreToSaved, searchBank, SEARCH_LIMIT, shiftQuestion, withQuestions, type Location } from "./bank-editor-list";
+import { copyQuestion, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, restoreToSaved, saveAsLeftover, searchBank, SEARCH_LIMIT, shiftQuestion, withQuestions, type Location } from "./bank-editor-list";
 import { bankProblems } from "./bank-editor-problems";
 import { BANK } from "./question-bank-data";
 import { parseBank, type Bank, type BankQuestion } from "./question-bank";
@@ -130,5 +130,14 @@ describe("bank editor list: move, shift, copy, delete and undo (editor-ux #3)", 
     expect(back).not.toBe(saved);
     expect(questionsAt(back, pool(2)).map((q) => q.id)).toEqual(["p2-a", "p2-mc"]);
     expect(restoreToSaved(r.bank, r.removed, null)).not.toBe(saved);
+  });
+});
+
+describe("saveAsLeftover: a second 另存成新題庫 after a failed save", () => {
+  const banks = [{ id: "default" }, { id: "made-1" }];
+  it("saves into the bank the first press made while it is still listed, else makes a new one", () => {
+    expect(saveAsLeftover("made-1", banks)).toBe("made-1");
+    expect(saveAsLeftover("made-1", [{ id: "default" }])).toBeNull(); // deleted meanwhile
+    expect(saveAsLeftover(null, banks)).toBeNull(); // nothing made yet, or its save landed
   });
 });

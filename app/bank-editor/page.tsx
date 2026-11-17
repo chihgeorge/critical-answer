@@ -13,7 +13,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
-import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreToSaved, sameGroup, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
+import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreToSaved, sameGroup, saveAsLeftover, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
@@ -129,6 +129,8 @@ export default function BankEditorPage() {
   // Only the latest load may land: dev StrictMode runs the auto-load effect twice, and a response that
   // arrived late used to overwrite edits made after a newer load (CI on main, 2026-10-25).
   const loadSeq = useRef(0);
+  /** The bank 另存成新題庫 made whose save has not landed yet (see saveAsLeftover). */
+  const saveAsMade = useRef<string | null>(null);
   /** A save the editor's own check refused: from then on its problems follow the edits, so a fixed one goes away. */
   const [checked, setChecked] = useState(false);
   /** A save the server refused (its 4xx text, in Chinese, placed on a question when it names one), with the bank it
@@ -168,6 +170,7 @@ export default function BankEditorPage() {
   /** True when this load's bank is the one shown now. */
   const load = async (key: string, id = bankId): Promise<boolean> => {
     if (!key) return false;
+    saveAsMade.current = null; // the edits it was made for are being replaced
     const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
@@ -296,10 +299,14 @@ export default function BankEditorPage() {
 
   /** The bank shown was deleted elsewhere: its edits go into a new bank (version 1), and its draft stays until they do. */
   const saveAsNew = () => {
+    if (!bank) return;
+    const leftover = saveAsLeftover(saveAsMade.current, banks);
+    if (leftover) return void save(bank, { id: leftover, version: 1 });
     const name = window.prompt("新題庫的名稱（存進畫面上的題目）");
-    if (!name?.trim() || !bank) return;
+    if (!name?.trim()) return;
     void manage("POST", "", { name }, async (res) => {
       const made: BankEntry = await res.json();
+      saveAsMade.current = made.id;
       setBanks((list) => [...list, made]);
       await save(bank, { id: made.id, version: 1 });
     });
@@ -382,6 +389,7 @@ export default function BankEditorPage() {
       setLastSaved(versioned.bank);
       setVersion(versioned.version);
       setBankId(to.id);
+      saveAsMade.current = null;
       if (to.id !== bankId) setBanks((list) => list.filter((b) => b.id !== bankId)); // the deleted bank the edits came from
       setOutdated(null);
       setChecked(false);

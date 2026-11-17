@@ -7,7 +7,7 @@ import { DungeonRoom, fixedDie, roomMaxLifeMs } from "../lib/room/dungeon-room";
 import { BankStore, IMAGE_CLEANUP_MARGIN_MS, type BankConflict, type BankEntry, type VersionedBank } from "../lib/bank-store";
 import { bankOrFallback, handleBankApi, handleBanksApi, handleGameLogsApi } from "../lib/bank-api";
 import { appendGameLog, readGameLogs, type GameLog, type GameLogRange } from "../lib/game-log";
-import { handleBankImageApi } from "../lib/bank-image-api";
+import { handleBankImageApi, handleMediaSweepApi } from "../lib/bank-image-api";
 import { handleClientError } from "../lib/client-error-api";
 import { checkMediaBatch, HEAD_BYTES, type MediaBatch, type MediaResults } from "../lib/bank-health";
 
@@ -87,6 +87,19 @@ export class BankStoreDO extends DurableObject<Env> {
   /** Called right after an upload lands in R2: see BankStore.queueUploadedImage. */
   imageUploaded(key: string): Promise<void> {
     return this.store.queueUploadedImage(key);
+  }
+
+  /** Files in the bucket the cleanup queue lost track of (see BankStore.sweepOrphanedMedia). The bucket holds only
+   * uploads from /api/bank/image; any other key is reported, never queued. */
+  async sweepMedia(queue: boolean): Promise<{ orphans: string[]; skipped: string[] }> {
+    const keys: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.env.images.list({ cursor, limit: 1000 });
+      keys.push(...page.objects.map((o) => o.key));
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    return this.store.sweepOrphanedMedia(keys, queue);
   }
 
   getVersionedBank(id?: string): Promise<VersionedBank> {
@@ -279,6 +292,14 @@ export default {
           return { key };
         },
         bankUnreadable: async () => !!(await env.bank.getByName(BANK_DO_NAME).getVersionedBank()).unreadable,
+      });
+    }
+    // Before the /api/bank/* prefix below, like /api/bank/image.
+    if (pathname === "/api/bank/media-sweep") {
+      return handleMediaSweepApi(request, {
+        ownerKey: env.OWNER_KEY,
+        allowedOrigins: env.ALLOWED_ORIGINS ?? "",
+        sweep: (queue) => env.bank.getByName(BANK_DO_NAME).sweepMedia(queue),
       });
     }
     if (pathname === "/api/game-logs") {

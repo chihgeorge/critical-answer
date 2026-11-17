@@ -30,6 +30,16 @@ existing BankStore; a host picks one in the lobby. Host upload/paste of a bank i
   rolled back, a save of the default bank that drops a file a custom bank still uses queues it under the old key, and
   the old code deletes it. So do not edit banks while rolled back.
 - A damaged custom bank defers all cleanup until it is fixed or deleted; `image_cleanup_deferred` logs its id.
+- Files the queue lost track of (a rollback, an upload whose `imageUploaded` call failed) are found by a sweep, added
+  2026-11-16. `GET /api/bank/media-sweep` lists them, `POST` queues them; neither deletes. Nothing is listed that any
+  bank uses, any bank's `legacyBank` backup uses, anything queued, or a key runImageCleanup is deleting right now. Keys
+  that are not a `crypto.randomUUID()` (put in the bucket by hand) come back as `skipped` and are never queued. Queued
+  files wait the usual delay, and the alarm deletes one only if no bank uses it by then. It refuses (409) while any
+  bank is unreadable or outdated, and answers 503 with nothing queued when the bucket listing or the Durable Object
+  fails. Run it by hand, reading the key from the environment, never typing it into the command line:
+  `curl -H "Authorization: Bearer $OWNER_KEY" <worker>/api/bank/media-sweep` to look, then the same with `-X POST`.
+  Known limit: the bucket is listed before the queue is read, so a file deleted while the listing runs can be queued
+  again; a stale tab could then save it back as a broken image (no file is lost).
 - Known limit carried over: the cleanup delay counts from a room's first game start, not from when its lobby copied
   the bank (the `shortcut:` in worker/index.ts). Deleting a custom bank uses the same delay as a save's orphans.
 

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { BANK_FORMAT, BANK_NOT_FOUND, BankStore, BLANK_BANK, DEFAULT_BANK_ID, DEFAULT_BANK_NAME, formatOf, LEGACY_IMAGE_DELAY_MS, legacyImageKeys, MAX_BANK_NAME, MAX_CUSTOM_BANKS, type BankStorage } from "./bank-store";
 import { assertSavable, parseBank, type Bank } from "./question-bank";
 import { BANK } from "./question-bank-data";
+import { MEDIA_SWEEP_STUCK } from "./bank-image-api";
 
 /** In-memory stand-in for a Durable Object's storage, same convention as lib/room's tests. */
 function memoryStorage(seed?: unknown): BankStorage {
@@ -625,5 +626,56 @@ describe("BankStore: named banks (docs/designs/multi-bank.md)", () => {
     await store.runImageCleanup();
     expect(onImagesOrphaned).toHaveBeenCalledWith([KEY]);
     expect(await storage.get("pendingImageDeletes")).toBeUndefined();
+  });
+});
+
+describe("BankStore.sweepOrphanedMedia: files the cleanup queue lost track of", () => {
+  const key = (n: number) => `${n}${n}${n}${n}${n}${n}${n}${n}-0000-4000-8000-000000000000`;
+  const [IN_BANK, IN_OTHER, IN_BACKUP, QUEUED, OLD_QUEUED, LOST] = [1, 2, 3, 4, 5, 6].map(key);
+  const withImage = (k: string): Bank => ({ ...validBank, pools: { ...validBank.pools, 1: [{ kind: "text", id: "r0-q1", content: { kind: "image", value: k }, answer: "松鼠" }] } });
+  const DELAY = 1000;
+  async function setup() {
+    let t = 0;
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: withImage(IN_BANK), version: 1 });
+    const onImagesOrphaned = vi.fn<(keys: string[]) => Promise<void>>(async () => {});
+    const store = new BankStore(storage, onImagesOrphaned, { cleanupDelayMs: DELAY, now: () => t });
+    await store.createBank("派對", undefined, withImage(IN_OTHER));
+    await storage.put("legacyBank", { bank: { pools: [{ content: { kind: "video", value: IN_BACKUP } }] }, format: 2, version: 1 });
+    await storage.put("pendingMediaDeletes", [{ key: QUEUED, deleteAt: 50 }]);
+    await storage.put("pendingImageDeletes", [{ key: OLD_QUEUED, deleteAt: 50 }]);
+    return { store, storage, onImagesOrphaned, at: (ms: number) => void (t = ms) };
+  }
+  const BUCKET = [IN_BANK, IN_OTHER, IN_BACKUP, QUEUED, OLD_QUEUED, LOST, "by-hand.png"];
+
+  it("lists only files no bank, backup or queue knows, and a dry run queues nothing", async () => {
+    const { store, storage } = await setup();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await store.sweepOrphanedMedia(BUCKET, false)).toEqual({ orphans: [LOST], skipped: ["by-hand.png"] });
+    expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: QUEUED, deleteAt: 50 }]);
+  });
+
+  it("queues them with the full wait; the alarm deletes one only if no bank uses it by then", async () => {
+    const { store, onImagesOrphaned, at } = await setup();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const SAVED_BACK = key(7);
+    await store.sweepOrphanedMedia([...BUCKET, SAVED_BACK], true);
+    // A stale tab saves one of them into the default bank before the wait is over.
+    await store.putBank(withImage(SAVED_BACK), 1);
+    at(DELAY - 1);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenLastCalledWith([QUEUED, OLD_QUEUED]); // only the ones already due before the sweep
+    at(DELAY);
+    await store.runImageCleanup();
+    expect(onImagesOrphaned).toHaveBeenLastCalledWith([LOST, IN_BANK]); // IN_BANK left the bank on that save
+    expect(onImagesOrphaned.mock.calls.flat(2)).not.toContain(SAVED_BACK);
+    expect(onImagesOrphaned.mock.calls.flat(2)).not.toContain(IN_OTHER);
+    expect(onImagesOrphaned.mock.calls.flat(2)).not.toContain(IN_BACKUP);
+  });
+
+  it("refuses while a bank is unreadable, naming it, and queues nothing", async () => {
+    const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 }); // pregate-literal: BANK_FORMAT=3 the stored version, not the format
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(new BankStore(storage).sweepOrphanedMedia([LOST], true)).rejects.toThrow(`${MEDIA_SWEEP_STUCK}：${DEFAULT_BANK_ID}`);
+    expect(await storage.get("pendingMediaDeletes")).toBeUndefined();
   });
 });

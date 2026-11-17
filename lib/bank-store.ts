@@ -38,6 +38,10 @@ import { allQuestions, assertSavable, bossQuestions, parseBank, imageKeysOf, typ
 import type { RoomStorage } from "./room/io";
 import { DEFAULT_BANK_ENTRY } from "./protocol";
 import { BANK_NOT_FOUND } from "./bank-api";
+import { MEDIA_SWEEP_STUCK } from "./bank-image-api";
+
+/** The shape of a server-made upload key (crypto.randomUUID()). */
+const UPLOAD_KEY = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** The default bank's id. It keeps the storage keys every deploy before multi-bank used ("bank", "legacyBank"),
  * so an upgrade reads the same stored bank and old callers without an id get it (docs/designs/multi-bank.md). */
@@ -364,6 +368,33 @@ export class BankStore {
       await this.setPending([...pending, ...orphaned.map((key) => ({ key, deleteAt }))]);
     }
     return next;
+  }
+
+  /** Splits `stored` (every key in the bucket) into files nothing knows about and keys that are not server-made uploads.
+   * Known: any bank's files, any bank's backup from an overwritten outdated save (legacyBank), anything queued. With
+   * `queue`, the unknown files join the queue with the usual wait: runImageCleanup deletes them only if no bank uses them
+   * by then, and a room that copied one has expired. Refuses while a bank is unreadable: the fallback is not what's stored.
+   * Only storage awaits here (the caller lists the bucket first), so the Durable Object's input gate keeps a save from
+   * slipping in between reading and writing the queue. */
+  async sweepOrphanedMedia(stored: string[], queue: boolean): Promise<{ orphans: string[]; skipped: string[] }> {
+    const list = await this.listBanks();
+    const banks = await Promise.all(list.map((b) => this.read(b.id)));
+    const stuck = list.filter((_, i) => banks[i].unreadable || banks[i].outdated).map((b) => b.id);
+    if (stuck.length > 0) throw new Error(`${MEDIA_SWEEP_STUCK}：${stuck.join(", ")}`);
+    const backups = await Promise.all(list.map(async (b) => legacyImageKeys(((await this.storage.get(legacyKey(b.id))) as { bank?: unknown } | undefined)?.bank)));
+    const pending = await this.getPending();
+    const known = new Set([...banks.flatMap((b) => [...imageKeysOf(b.current.bank)]), ...backups.flatMap((s) => [...s]), ...pending.map((p) => p.key)]);
+    // A key runImageCleanup is deleting right now is gone soon: queueing it again would let a stale tab save it back.
+    const unknown = stored.filter((k) => !known.has(k) && !this.deleting.has(k));
+    // Uploads are named crypto.randomUUID() (worker/index.ts): anything else was put in the bucket by hand, so it stays.
+    const orphans = unknown.filter((k) => UPLOAD_KEY.test(k));
+    const skipped = unknown.filter((k) => !UPLOAD_KEY.test(k));
+    if (queue && orphans.length > 0) {
+      const deleteAt = this.now() + this.cleanupDelayMs;
+      await this.setPending([...pending, ...orphans.map((key) => ({ key, deleteAt }))]);
+    }
+    console.log(JSON.stringify({ event: "media_sweep", queue, orphans: orphans.length, skipped }));
+    return { orphans, skipped };
   }
 
   /** Files the readable banks other than `id` use. */
