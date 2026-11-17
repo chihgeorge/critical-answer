@@ -12,7 +12,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import { DEFAULT_BANK_ENTRY, FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
-import { BOSS_THRESHOLD, describeTurn, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
+import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
@@ -1184,6 +1184,10 @@ export default function HostPage() {
                 )}
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.fork ? "🔀 叉路" : turn.monster.name}</div>
+                  {/* The turn has moved on under a reveal: this card is what comes after it (#339). */}
+                  {revealUp && !game.phaseCard && !turn.team?.fork && (
+                    <div data-testid="host-next-label" className="text-[13px]" style={{ color: "#6b4a2a" }}>⏭ 下一題（揭曉完才出題）</div>
+                  )}
                   <div data-testid="host-question" className="text-[20px] leading-snug">
                     {turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
@@ -1327,9 +1331,8 @@ export default function HostPage() {
                   ))}
                 </div>
               )}
-              {/* The phase card holds the question back (STATE's question is null), so its answer waits too.
-                  So does a door opening (branch-fork.md): ⚔️'s question is not up until the door has opened. */}
-              {answer && answer.questionId === turn.questionId && !game.phaseCard && !game.forkBeat && (
+              {/* No answer box under a pause or a door opening: only the revealed answer is up then (#339). */}
+              {answer && hostAnswerShown(game, answer.questionId, turn.questionId) && (
                 <div className="mt-2 px-3 py-1" style={{ background: "#d6f5c2", color: "#1e5a1c", boxShadow: "inset 0 0 0 3px #6fd36a" }}>
                   <div className="text-[11px]" style={{ color: "#2f6a2c" }}>答案（只有你看得到）</div>
                   <div data-testid="host-answer" className="text-[19px]">{answer.answer}</div>
