@@ -57,12 +57,12 @@ describe("bank text and the AI narrator's prompt", () => {
       prompts.push(`${body.system}\n${body.messages[0].content}`);
       return new Response(JSON.stringify({ content: [{ type: "text", text: "地城主開口了" }], stop_reason: "end_turn" }));
     };
-    const io = { id: "room-1", broadcast: vi.fn(), env: {}, getConnections: vi.fn(() => []) } as unknown as RoomIO;
+    const io = { id: "room-1", broadcast: vi.fn(), env: { ANTHROPIC_API_KEY: "test-server-key", OWNER_KEY: "owner-key-0123456789abcdef0123456789" }, getConnections: vi.fn(() => []) } as unknown as RoomIO;
     const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0, fetch: fake as unknown as typeof fetch });
     const host = conn("host");
     room.onConnect(host);
     send(room, host, { type: "HOST_CLAIM", token: "host-token-0123456789abcdef" });
-    send(room, host, { type: "HOST_AI_KEY", source: "own", provider: "anthropic", key: "sk-ant-test-HOSTKEY-0123456789abcdefWXYZ" });
+    send(room, host, { type: "HOST_AI_KEY", source: "owner", ownerKey: "owner-key-0123456789abcdef0123456789" });
     await vi.advanceTimersByTimeAsync(0);
     const phone = conn("phone");
     send(room, phone, { type: "JOIN", teamId: T1, teamKey: "team-key-0123456789abcdef", teamName: "A" });
