@@ -181,9 +181,11 @@ describe("nextUp / turnLive", () => {
     expect(hostAnswerShown(st(), "q2", "q2")).toBe(true);
     expect(hostAnswerShown(st(), "q1", "q2")).toBe(false);
     expect(hostAnswerShown(st(), undefined, "q2")).toBe(false);
-    for (const held of [{ reveal: {} as never }, { eventReveal: {} as never }, { fortune: fortune("card") }, { phaseCard: { monster: pq().monster } }, { phaseCardDue: true as const }, { forkBeat: {} as never }]) {
+    for (const held of [{ reveal: {} as never }, { eventReveal: {} as never }, { fortune: fortune("card") }, { phaseCard: { monster: pq().monster } }, { forkBeat: {} as never }]) {
       expect(hostAnswerShown(st(held), "q2", "q2")).toBe(false);
     }
+    // A miss that used up a boss phase keeps the turn on that question until the card opens: the host may still 改判答對.
+    expect(hostAnswerShown(st({ phaseCardDue: true }), "q2", "q2")).toBe(true);
   });
 
   it("buzzes only when the turn opens, never on a connection's first STATE", () => {

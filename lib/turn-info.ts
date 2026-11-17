@@ -130,9 +130,10 @@ export function nextUp(s: HoldFields): boolean {
 
 /** The host's answer box (HOST_ANSWER) shows only for the question on turn while nothing holds it: under a reveal the
  * turn has already moved on, and the next answer beside the revealed one gets read out (#339). A door opening holds it
- * too: ⚔️'s question is not up until the door has opened (branch-fork.md). */
+ * too: ⚔️'s question is not up until the door has opened (branch-fork.md). A boss phase card still due (phaseCardDue)
+ * does not: the turn is still on the question just missed, and the host reads its answer to decide 改判答對. */
 export function hostAnswerShown(s: HoldFields & Pick<StateMessage, "forkBeat">, answerQuestionId: string | undefined, turnQuestionId: string | undefined): boolean {
-  return !!answerQuestionId && answerQuestionId === turnQuestionId && !nextUp(s) && !s.forkBeat;
+  return !!answerQuestionId && answerQuestionId === turnQuestionId && !nextUp({ ...s, phaseCardDue: undefined }) && !s.forkBeat;
 }
 
 /** It is this team's turn and its phone can act now, the moment the phone buzzes. Not in a buzzer phase, where every team plays. */
