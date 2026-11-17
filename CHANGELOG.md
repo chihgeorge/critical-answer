@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.90.1.0] - 2026-11-18
+
+### Added
+- Design for a read-only canary bank key, so the live canary could play a chosen bank without the owner key (`docs/designs/canary-bank.md`, #317). Not built yet.
+
+### Changed
+- `npm run canary:live` reports `CANARY BROKEN` when a round checked no question: every answering step was skipped by the host (`skipped:`) or was a card (`passed:`). The round prints `ROUND r<n> FAIL verified nothing`, which the Canary workflow copies into its issue comment. (#316)
+
+### Fixed
+- 主持人頁在大螢幕揭曉答案時，題目卡不再同時顯示下一隊的答案：答案欄等按「下一題」後才出現，題目卡標「⏭ 下一題（揭曉完才出題）」，主持人不會念錯答案。
+- 說服成功（怪物讓路）不再算打倒：這隻怪物下次出場還是原本的樣子，不換造型、不加稱號 (#340)。
+- 主持人把廚師在選擇題或排序題的答錯改成答對時，答對骰照現場算：擲到 20 先加暴擊的一半再 ×2，跟現場答對一樣是 3 倍。盜賊擲到 20 也照現場分開四捨五入 (#342)。
+- 大螢幕：廚師或已偷襲的盜賊在選擇題、排序題擲暴擊骰時，跟填空題的答對骰一樣照段位上色、寫出段位，例如紅色的「4 小失敗：🍳 料理 ×0.8」(#346)。
+
 ## [0.90.0.1] - 2026-11-17
 
 ### Fixed
