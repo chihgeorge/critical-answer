@@ -65,7 +65,7 @@ After a deploy, run `npm run canary:live`. It plays one real game on the live si
 - `--base URL` or the `CANARY_BASE_URL` environment variable: test a preview URL or local dev (for example `http://localhost:3000`) instead of the live site.
 - `CANARY_SHOTS=<folder>` environment variable: the first failed step saves a screenshot of each of the four pages there.
 
-The room is not deleted, and the host has no button to close one: once the game is over its connections rest after 2 idle hours, and it is cleared 6 hours after the first game start (see the [hosting guide](hosting.en.md#known-limits)). The script does not open the bank editor and uses no key.
+The room is not deleted, and the host has no button to close one: once the game is over its connections rest after 2 idle hours, and it is cleared 6 hours after the first game start (see the [hosting guide](hosting.en.md#known-limits)). The script does not open the bank editor and uses no key. It makes no sound: Chromium runs with `--mute-audio`, and narration goes to a silent speechSynthesis where each line still ends a moment later, so the narration queue moves on as usual.
 
 Each turn picks its next move from what the pages show, so every question type gets through:
 
