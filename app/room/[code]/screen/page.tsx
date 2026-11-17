@@ -191,12 +191,15 @@ const TILE_VIDEO_TOP = 190;
 /** While a player is up, the nameplate steps down onto the dialogue box, this far over its top edge (like its 地城主 tag),
  * and a player, its 4 px border included, ends at or above PLAYER_BOTTOM: nothing covers the video's own controls. */
 const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px margins
+// The stepped-down plate is a size smaller (18 px, no vertical padding), so its top stays clear of the player's frame (art QA 2026-11-17).
 const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
 /** While the frames are on the question fits this much higher (globals.css .px-stone): its frame and drop reach 6 px lower
  * than the plain panel's, and a wooden tile's ink ring stands 3 px above the tile. */
 const STONE_REACH = 9;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
+// Two 24 px lines (48 px) clear the 4 px border and the 4 px bottom padding with 3 px to spare at the top (art QA 2026-11-17).
+const TILE_H = 66;
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
 
@@ -225,8 +228,8 @@ function WallOptions({ options, gone, magic, lock, wrong, correct, teamName, nar
             tabIndex={-1}
             data-testid={`wall-option-${i}`}
             data-look={look}
-            className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
-            style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
+            className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-none`}
+            style={{ ...tileSpot(i, narrow), height: TILE_H, zIndex: 5 }}
           />
         );
       })}
@@ -287,8 +290,8 @@ function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
           tabIndex={-1}
           data-testid={`wall-sort-${i}`}
           data-look={t.look}
-          className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-[1.05]`}
-          style={{ ...tileSpot(i, narrow), height: 62, zIndex: 5 }}
+          className={`wall${narrow ? " narrow" : ""} absolute !text-[24px] leading-none`}
+          style={{ ...tileSpot(i, narrow), height: TILE_H, zIndex: 5 }}
         />
       ))}
     </>
@@ -564,7 +567,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "#b02a3a" : undefined }}>
-      <span>{monster.name}</span>
+      {/* A very long custom name ends in … at 360 px (16 characters at 22 px), so the plate stays on the stage and clear of
+          the wall clock, and the hearts after it stay in view (art QA 2026-11-17). */}
+      <span className="min-w-0 max-w-[360px] truncate">{monster.name}</span>
       {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
       {bossScene && view.bossMaxHp > MAX_HEARTS && (
         <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
@@ -822,7 +827,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 116, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
+        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
           <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
@@ -846,7 +851,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
         {...(!served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
-      {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, ...(tileVideo ? { left: "50%", transform: "translateX(max(-50%, -240px))" } : { right: 8 }) })}
+      {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
@@ -869,7 +874,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
       <Room room={Math.max(0, (team?.roomIndex ?? 0) - 1)} />
       <Sparks />
       <div className="absolute flex items-start gap-3" style={{ left: 18, right: 18, top: 24, zIndex: 6 }}>
-        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`❓ ${name}`}</TurnRibbon>}
+        {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`神秘房　${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
       <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>

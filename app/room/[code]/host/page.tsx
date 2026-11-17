@@ -827,12 +827,15 @@ export default function HostPage() {
               {lobby.map((t, i) => (
                 <Panel key={t.id} className="flex items-center gap-3 px-3 py-2">
                   <Sprite kind="hero" variant={i} scale={2} />
-                  <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
-                  {t.classId ? (
-                    <span className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>
-                  ) : (
-                    <span data-testid="host-no-class" className="text-[15px]" style={{ color: "#a8470f" }}>未選職業</span>
-                  )}
+                  {/* The class under the name: on a 360 px phone a name beside it and two buttons was cut to 「E…」. */}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[18px]">{t.name}</div>
+                    {t.classId ? (
+                      <div className="text-[15px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</div>
+                    ) : (
+                      <div data-testid="host-no-class" className="text-[15px]" style={{ color: "#a8470f" }}>未選職業</div>
+                    )}
+                  </div>
                   <PixelButton
                     disabled={!ready}
                     onClick={() => {

@@ -62,8 +62,8 @@ function Picture({ page, cuisine }: { page: number; cuisine: boolean }) {
         {/* The order is rolled after the intro (擲先攻), so no team is named yet. */}
         <TurnRibbon>▼ 輪到：擲先攻第一名</TurnRibbon>
         <div className="flex items-end gap-24">
-          <Sprite kind="hero" variant={0} scale={5} className={hop} />
-          <Sprite kind="slime" scale={5} className={hop} />
+          <Sprite kind="hero" variant={0} scale={4} className={hop} />
+          <Sprite kind="slime" scale={4} className={hop} />
         </div>
       </div>
     );
