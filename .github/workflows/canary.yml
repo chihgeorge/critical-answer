@@ -1,0 +1,139 @@
+name: Canary
+
+# After a release commit (`chore: release vX`, pushed to main by stamp.yml) is live on both halves, plays real games on
+# the production site with `npm run canary:live` (scripts/canary-live.ts, docs/deployment.md). It needs no secret and
+# no owner key: it hosts from the home page like any visitor.
+#
+# Vercel deploys main and reports a GitHub deployment (environment Production) when the frontend is live; Workers
+# Builds deploys the Worker and reports only a check run, which starts no workflow here. So the Vercel deployment
+# starts this workflow, and the job waits for the Workers Builds check on the same commit.
+# A pull request that changes this file runs it once against production, so the workflow is tried before it merges.
+on:
+  deployment_status:
+  workflow_dispatch:
+  pull_request:
+    paths: [.github/workflows/canary.yml]
+
+permissions:
+  contents: read
+
+# One canary at a time, so two runs never share the live site; a newer waiting run replaces an older waiting one.
+# Other deployment events (Preview, pending, the stamp environment) get a group of their own, so they never replace a
+# waiting release run.
+concurrency:
+  group: >-
+    ${{ (github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' &&
+    github.event.deployment.environment == 'Production')) && 'canary' || format('canary-skip-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    if: >-
+      github.event_name != 'deployment_status' || (
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.environment == 'Production' &&
+        github.event.deployment.creator.login == 'vercel[bot]')
+    runs-on: ubuntu-26.04
+    # Up to 15 minutes waiting for the Worker, then install and three rounds of about 25 seconds each.
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      release: ${{ steps.gate.outputs.release }}
+      version: ${{ steps.gate.outputs.version }}
+    steps:
+      - name: Release commit on main, Worker deployed
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          SHA: ${{ github.event.deployment.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ "$EVENT" != deployment_status ]; then
+            echo "release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          subject=$(gh api "repos/$REPO/commits/$SHA" --jq '.commit.message | split("\n")[0]')
+          if ! [[ "$subject" =~ ^chore:\ release\ v([0-9.]+)$ ]]; then
+            echo "Not a release commit ($subject): no canary."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          # identical or ahead: the commit is main's head or behind it, so it was on main.
+          rel=$(gh api "repos/$REPO/compare/$SHA...main" --jq .status)
+          if [ "$rel" != identical ] && [ "$rel" != ahead ]; then
+            echo "::error::$SHA is not on main ($rel)."
+            exit 1
+          fi
+          for _ in $(seq 1 45); do
+            # The newest Workers Builds run on this commit; an older success never hides a newer attempt.
+            run=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+              --jq '[.check_runs[] | select(.app.slug == "cloudflare-workers-and-pages" and (.name | startswith("Workers Builds")))]
+                    | sort_by(.started_at) | last | if . then "\(.status) \(.conclusion)" else "missing" end')
+            echo "Workers Builds: $run"
+            case "$run" in
+              "completed success") echo "release=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
+              completed*) echo "::error::Workers Builds did not deploy the Worker ($run): no canary."; exit 1 ;;
+            esac
+            sleep 20
+          done
+          echo "::error::Workers Builds did not finish within 15 minutes."
+          exit 1
+      - if: steps.gate.outputs.release == 'true'
+        uses: actions/checkout@v7
+      - if: steps.gate.outputs.release == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - if: steps.gate.outputs.release == 'true'
+        run: npm ci
+      - if: steps.gate.outputs.release == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Canary on production
+        if: steps.gate.outputs.release == 'true'
+        run: |
+          set -o pipefail
+          npm run -s canary:live -- --rounds 3 2>&1 | tee canary.log
+      - if: always() && steps.gate.outputs.release == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: canary-log
+          path: canary.log
+          retention-days: 14
+
+  # A separate job so the job that runs repository code never holds a write token.
+  report:
+    needs: canary
+    if: failure() && github.event_name != 'pull_request'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/download-artifact@v7
+        continue-on-error: true
+        with:
+          name: canary-log
+      - name: Open or comment on the canary issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.canary.outputs.version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Indented four spaces: a Markdown code block.
+          lines=$(grep -E 'FAIL|errs=\[[^]]|CANARY BROKEN|Error' canary.log 2>/dev/null | tail -40 | sed 's/^/    /' || true)
+          what="v$VERSION"; [ -n "$VERSION" ] || what="手動執行，或等待部署時就失敗"
+          body=$(printf 'canary 失敗：%s\n\n執行紀錄：%s（完整輸出在 artifact canary-log）\n\n%s\n' \
+            "$what" "$RUN_URL" "${lines:-（沒有 canary 輸出，見執行紀錄）}")
+          gh label create canary --color d93f0b --description "正式站 canary 失敗" 2>/dev/null || true
+          issue=$(gh issue list --label canary --state open --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body "$body"
+          else
+            gh issue create --label canary --title "正式站 canary 失敗" --body "$body"
+          fi
