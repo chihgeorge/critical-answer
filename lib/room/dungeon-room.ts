@@ -28,8 +28,12 @@ import {
   rollD20,
   rollBossKillDice,
   spendAbility,
-  mageEliminate,
-  mageHint,
+  mageCast,
+  type MageTarget,
+  prayerRoll,
+  rejudgeNeedsDie,
+  skillTier,
+  SKILL_SUCCESS,
   armSneak,
   giveItem,
   hostFix,
@@ -148,6 +152,7 @@ import { PROVIDERS } from "../narration/providers";
 import { RECENT_LINES } from "../narration/llm";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
+import { skillLine } from "../class-dice";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
@@ -230,7 +235,7 @@ const KILL_BEAT_MS = 4000;
 /** A roll whose answer is already right (a crit die, a kill's 4d20) or must not be rerolled (a check): its team keeps
  * the turn through a dropped phone, like a locked one. */
 function holdsTurn(roll: PendingRoll | null): roll is PendingRoll {
-  return roll?.kind === "crit" || roll?.kind === "check" || roll?.kind === "kill";
+  return roll?.kind === "crit" || roll?.kind === "check" || roll?.kind === "kill" || (roll?.kind === "answer" && !roll.rejudge);
 }
 /** A boss phase card that follows a miss waits for the voice (estimated at SPEECH_CHARS_PER_S), never longer than this. */
 const ADVANCE_CAP_MS = 15000;
@@ -336,7 +341,9 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
   if (!p || !team || !(p.optionIndex === null || (Number.isInteger(p.optionIndex) && p.optionIndex >= 0))) return null;
-  return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+  if (p.questionId !== (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId)) return null;
+  // A restart inside the prayer die's beat loses the die: the prayer fails (its use stays spent), never stands for free.
+  return p.praying ? { teamId: p.teamId, questionId: p.questionId, optionIndex: p.optionIndex, prayFailed: true } : p;
 }
 
 /** A saved `eliminated` map keeps only lists of option indexes: a damaged entry would make `includes` throw and wedge the room. */
@@ -382,6 +389,20 @@ export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問�
 
 /** A chef's share of a reveal's points, left out for every other team. */
 const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
+
+/** A skill die's sound as it lands: the crit's on a 20, the fumble's on a 1, none between. */
+const skillCue = (value: number): SoundCue | null => (value === 20 ? "crit" : value === 1 ? "fumble" : null);
+
+/** A die that decides a judgment: the warrior's roll for the answer, the crit die, or a fill-in's answer die. */
+type JudgeRoll = { kind: "warrior" | "crit" | "answer"; value: number };
+
+/** What a mage casts on, from the bank question (shown order), or null for a question it has nothing for. */
+function mageTarget(q: BankQuestion | undefined): MageTarget | null {
+  if (q?.kind === "multipleChoice") return { kind: "multipleChoice", correctIndex: q.correctIndex, optionCount: q.options.length };
+  if (q?.kind === "text") return { kind: "text", answer: q.answer };
+  if (q?.kind === "sort") return { kind: "sort", items: q.items };
+  return null;
+}
 /** Names a reader can't tell apart (full-width vs half-width, case) count as one team name. */
 const sameTeamName = (a: string, b: string) => a.normalize("NFKC").toLowerCase() === b.normalize("NFKC").toLowerCase();
 
@@ -582,7 +603,11 @@ export class DungeonRoom {
   /** Fires at memoryShow.endsAt. Memory only: restore() arms it again. */
   private memoryTimer: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
-  private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: { kind: "warrior" | "crit"; value: number }; fields?: boolean[] } | null = null;
+  private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: JudgeRoll; fields?: boolean[] } | null = null;
+  /** A fill-in's answer die in its beat (class dice): the correct answer's per-field verdicts wait with it. */
+  private pendingAnswer: { fields?: boolean[] } | null = null;
+  /** A 改成答對 whose answer die is in its beat (owner, 2026-11-17): the ledger entry it pays. */
+  private pendingRejudge: { index: number } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
@@ -3610,6 +3635,8 @@ export class DungeonRoom {
     if (!undo || !now || undo.verdict || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
     }
+    // A die still rolling (a 改成答對's) waits: this judgment could start a die over it.
+    if (this.pendingRoll) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "roll_pending" });
     this.game = this.undoneGame(undo, now);
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
@@ -3664,7 +3691,8 @@ export class DungeonRoom {
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
-    this.retryAfterPrayer(teamId, questionId);
+    this.startRoll("cleric", teamId, questionId);
+    this.broadcastState();
   }
 
   private handleSendToBoss(conn: Conn, teamId: string) {
@@ -3730,9 +3758,24 @@ export class DungeonRoom {
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
    * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: { kind: "warrior" | "crit"; value: number }, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
     const prev = this.game;
     if (!prev) return;
+    // A fill-in answered right by a chef, or a thief with 偷襲 armed, rolls its answer die first (class dice): scored when
+    // its beat ends (resolveRoll judges again with it). Not in a buzzer phase, where no class ability counts.
+    if (correct && !roll && !caught && this.question(questionId)?.kind === "text" && !isBuzzPhase(prev)) {
+      const t = prev.teams.find((x) => x.id === teamId);
+      if (t?.classId === "chef" || t?.sneakArmed) {
+        // Checked now, as the judgment would be: a refusal must not wait for the beat.
+        answerQuestion(prev, teamId, questionId, true, fleeChoice, () => 0, undefined, [1, 1, 1, 1]);
+        this.pendingAnswer = fields ? { fields } : {};
+        // Pin the turn, as a lock does: the answer is already right.
+        this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
+        this.startRoll("answer", teamId, questionId);
+        this.broadcastState();
+        return;
+      }
+    }
     // Captured before `this.game` reassigns to the post-judgment state below: the monster name
     // and the reveal must describe the question that was JUST answered, not whatever
     // currentQuestion() would return afterwards (the next one) — a trap this file's own
@@ -3761,6 +3804,8 @@ export class DungeonRoom {
         ? upholdCatch(prev, rng)
         : roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, isAutoJudged(this.question(questionId)), dice)
+        : roll?.kind === "answer"
+        ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length }, false, roll.value)
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, marks && { right: marks.filter(Boolean).length, total: marks.length });
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
@@ -3786,7 +3831,7 @@ export class DungeonRoom {
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
     // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
-    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome);
+    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
@@ -4269,22 +4314,35 @@ export class DungeonRoom {
       if (classId === "cleric") next = pray(game, teamId);
       else if (classId === "thief") next = armSneak(game, teamId);
       else if (classId === "mage") {
-        if (q?.kind === "multipleChoice") next = mageEliminate(game, teamId, questionId, q.correctIndex, q.options.length, this.rng);
-        else if (q?.kind === "text") next = mageHint(game, teamId, questionId, q.answer);
-        // The first item, whole: the phone and the screen label it 第 1 個 on a sort question.
-        else if (q?.kind === "sort") next = mageHint(game, teamId, questionId, q.items[0], true);
-        else return reject("stale_question"); // not in the bank
+        const target = mageTarget(q);
+        if (!target) return reject("stale_question"); // not in the bank
+        next = spendAbility(game, teamId, "mage");
+        // Checked as a success before anything is spent: a refusal (nothing to remove, no_hint) must not cost the use.
+        mageCast(next, teamId, questionId, target, SKILL_SUCCESS, () => 0);
       } else next = spendAbility(game, teamId, "warrior");
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
     if (currentQuestionIdOf(game, teamId) !== questionId || (classId === "cleric" && game.pendingWrong?.questionId !== questionId)) return reject("stale_question");
     this.game = next;
-    if (classId === "warrior") {
-      this.startRoll("warrior", teamId, questionId);
-    } else if (classId === "cleric" && (isInBossPhase(next, teamId) || game.pendingWrong?.optionIndex === null)) {
-      return this.retryAfterPrayer(teamId, questionId);
+    // The warrior, the mage and the cleric roll their skill die now; the beat shows it, then resolveRoll applies it.
+    if (classId === "warrior" || classId === "mage" || classId === "cleric") this.startRoll(classId, teamId, questionId);
+    this.broadcastState();
+  }
+
+  /** The cleric's prayer die landed (class dice): a failed prayer leaves the wrong answer waiting as a plain one (in the
+   * boss room its red tile resolves on its own beat); one that stands resolves at once in the boss room and on a fill-in
+   * wait (#106), as a prayer always did, and otherwise waits for the cleric's 重答 / 逃跑. */
+  private resolvePrayer(teamId: string, questionId: string, value: number) {
+    const game = this.game!;
+    this.game = prayerRoll(game, teamId, value);
+    this.appendLine(this.eventSeq, skillLine("cleric", game.teams.find((t) => t.id === teamId)?.name ?? "", value));
+    this.setCue(skillCue(value));
+    if (skillTier(value) <= 1) {
+      this.armBossMiss();
+      return this.broadcastState();
     }
+    if (isInBossPhase(this.game, teamId) || game.pendingWrong?.optionIndex === null) return this.retryAfterPrayer(teamId, questionId);
     this.broadcastState();
   }
 
@@ -4302,14 +4360,15 @@ export class DungeonRoom {
 
   /** Rolls the d20 the beat shows (pendingRoll) and arms resolveRoll. Logged here, not on judging, so a roll whose
    * room restarts inside the beat still counts (eng review D10): the event's 20s and 1s are counted from these. */
-  private startRoll(kind: "warrior" | "crit" | "check", teamId: string, questionId: string, target?: { bonus: number; dc: number }): void;
+  private startRoll(kind: "warrior" | "crit" | "check" | "mage" | "cleric" | "answer", teamId: string, questionId: string, target?: { bonus: number; dc: number } | { rejudge: true }): void;
   /** A kill's 4d20: rolled by judgeNow, which also knows the bonus they score. */
   private startRoll(kind: "kill", teamId: string, questionId: string, kill: { values: number[]; value: number }): void;
-  private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number }) {
+  private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number } | { rejudge: true }) {
     const die = () => this.fixedDie ?? rollD20(this.rng);
-    // 🧪 A potion drunk on this question doubles a crit or check die, never the warrior's or the kill's (lucky-potion.md
-    // premise 3), and is spent before the STATE goes out, so a restart in the beat cannot roll it again (E3).
-    const potion = (kind === "crit" || kind === "check") && this.game !== null && potionArmed(this.game, teamId) ? [die(), die()] : null;
+    // 🧪 A potion drunk on this question doubles a crit, check, mage or prayer die, never the warrior's, a fill-in's answer
+    // die or the kill's (lucky-potion.md premise 3, class dice), and is spent before the STATE goes out, so a restart in
+    // the beat cannot roll it again (E3).
+    const potion = (kind === "crit" || kind === "check" || kind === "mage" || kind === "cleric") && this.game !== null && potionArmed(this.game, teamId) ? [die(), die()] : null;
     if (potion) this.game = spendPotion(this.game!, teamId);
     const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
     this.pendingRoll = { teamId, questionId, value, kind, ...extra, ...(potion ? { values: potion } : {}) };
@@ -4333,18 +4392,34 @@ export class DungeonRoom {
   private resolveRoll() {
     const roll = this.pendingRoll;
     const kill = this.pendingKill;
+    const answer = this.pendingAnswer;
+    const rejudge = this.pendingRejudge;
     const game = this.game;
-    this.pendingRoll = this.pendingKill = null;
+    this.pendingRoll = this.pendingKill = this.pendingAnswer = this.pendingRejudge = null;
     this.unpace("lock");
     if (!roll || !game) return;
     this.markActivity();
     try {
+      // A 改成答對's answer die is nobody's turn: it pays the ledger entry, like the 修正 it is.
+      if (roll.rejudge) {
+        if (rejudge) this.applyRejudge(roll.teamId, rejudge.index, roll.questionId, roll.value);
+        else this.broadcastState();
       // The turn moved on during the beat (the phone dropped): drop the roll, like a lock (E9). The use stays spent.
-      if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
+      } else if (currentTurnTeamId(game) !== roll.teamId || currentQuestionIdOf(game, roll.teamId) !== roll.questionId) {
         if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
         this.broadcastState();
       } else if (roll.kind === "check") {
         this.resolveCheck(roll.teamId, roll.questionId, roll.value);
+      } else if (roll.kind === "mage") {
+        const target = mageTarget(this.question(roll.questionId));
+        if (target) this.game = mageCast(game, roll.teamId, roll.questionId, target, roll.value, this.rng);
+        this.appendLine(this.eventSeq, skillLine("mage", game.teams.find((t) => t.id === roll.teamId)?.name ?? "", roll.value));
+        this.setCue(skillCue(roll.value));
+        this.broadcastState();
+      } else if (roll.kind === "cleric") {
+        this.resolvePrayer(roll.teamId, roll.questionId, roll.value);
+      } else if (roll.kind === "answer") {
+        this.judge(roll.teamId, roll.questionId, true, "retry", { kind: "answer", value: roll.value }, undefined, answer?.fields);
       } else if (roll.kind === "kill") {
         // pendingKill is always set with a kill roll; without it there is nothing to judge.
         if (kill) this.judge(roll.teamId, roll.questionId, kill.correct, kill.fleeChoice, kill.roll, roll.values, kill.fields);
@@ -4359,7 +4434,9 @@ export class DungeonRoom {
       this.broadcastState();
     }
     // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
-    if (holdsTurn(roll) && (this.pendingRoll as PendingRoll | null)?.kind !== "kill") this.syncLockTeamAndShow(roll.teamId);
+    // So does a chef's check 20 that started its answer die.
+    const next = this.pendingRoll as PendingRoll | null;
+    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId)) this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The check's beat is over (dnd design R6): its record, written at the roll, shows now with the hint it earned. A
@@ -4896,7 +4973,40 @@ export class DungeonRoom {
   private handleHostRejudge(conn: Conn, index: number, teamId: string, questionId: string, correct: boolean) {
     // No eventId here: rejudgeIsUndo pins the exact row, and any move since closes the undo.
     if (correct && this.rejudgeIsUndo(index, teamId, questionId)) return this.handleHostUndoWrong(conn, teamId, questionId, this.eventSeq);
+    const j = this.game?.judgments?.[index];
+    // A chef's or armed thief's 改成答對 is paid from an answer die rolled now, shown like any roll (owner, 2026-11-17).
+    if (correct && j && !j.warrior && j.teamId === teamId && j.questionId === questionId && rejudgeNeedsDie(j)) {
+      if (!this.requireHost(conn)) return;
+      // The same holds as any 修正, and no other beat may be on: this die takes the screen's roll slot, which any team's
+      // waiting wrong answer (a boss miss's beat) and a reveal also use.
+      if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+      if (this.forkBeat || this.pendingLock || this.pendingRoll || this.game!.pendingWrong || this.paused()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+      // Refused before any die rolls (a game that ended): the same checks as when it lands.
+      try {
+        hostRejudge(this.game!, index, teamId, questionId, true, SKILL_SUCCESS);
+      } catch (err) {
+        return this.sendInvalid(conn, err);
+      }
+      this.pendingRejudge = { index };
+      this.startRoll("answer", teamId, questionId, { rejudge: true });
+      this.broadcastState();
+      return;
+    }
     this.applyFix(conn, teamId, (g) => hostRejudge(g, index, teamId, questionId, correct), `rejudge #${index + 1} ${correct ? "答錯→答對" : "答對→答錯"}`);
+  }
+
+  /** A 改成答對's answer die landed: the entry pays from it, like a 修正 (a transcript line, no cue, no eventId). A ledger
+   * that moved during the beat (a game ended) refuses it, and the die is only shown. */
+  private applyRejudge(teamId: string, index: number, questionId: string, value: number) {
+    try {
+      this.game = hostRejudge(this.game!, index, teamId, questionId, true, value);
+      const team = this.game.teams.find((t) => t.id === teamId)!;
+      const last = team.fixes!.at(-1)!;
+      this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} rejudge #${index + 1} 答錯→答對 d20=${value} ${last.from}→${last.to}` });
+    } catch (err) {
+      console.error(JSON.stringify({ event: "rejudge_roll_failed", error: String(err) }));
+    }
+    this.broadcastState();
   }
 
   /** Ledger entry `index` is the 答錯 the open 改判答對 would wipe: same team and question, judged after the undo's game,
@@ -4942,15 +5052,20 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused()) return reject("reveal_pending");
-    if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
+    // A cleric's wrong answer may still take a potion for its prayer die (class dice).
+    const forPrayer = canPray(game, teamId);
+    if (this.pendingLock || this.pendingRoll || (game.pendingWrong && !forPrayer)) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (isBuzzPhase(game)) return reject("buzzer_phase");
     const team = game.teams.find((t) => t.id === teamId);
     if (team && atFork(team)) return reject("fork");
     const q = this.question(questionId);
     if (!q || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
-    // A fill-in rolls only its persuasion check: none left once it is rolled or an answer waits for the host.
-    if (q.kind === "text" && (game.checks?.[checkKey(questionId, teamId)] || team?.typedAnswer !== undefined)) return reject("check_done");
+    // A fill-in's dice are its persuasion check, then a mage's skill die before its hint shows or a cleric's prayer die:
+    // none left once those are done or an answer waits for the host. (Its answer die never takes a potion.)
+    const mageDie =
+      team?.classId === "mage" && team.abilityUses > 0 && team.typedAnswer === undefined && !game.mageCasts?.[checkKey(questionId, teamId)] && game.mageHints?.[questionId] === undefined && game.checks?.[checkKey(questionId, teamId)]?.hint === undefined;
+    if (q.kind === "text" && !forPrayer && !mageDie && (game.checks?.[checkKey(questionId, teamId)] || team?.typedAnswer !== undefined)) return reject("check_done");
     try {
       this.game = drinkPotion(game, teamId);
     } catch (err) {
@@ -4968,6 +5083,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_wrong_answer" });
       return;
     }
+    // Not while a die is in its beat (a prayer die): its result decides what this choice means.
+    if (this.pendingRoll) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "roll_pending" });
     // A boss miss resolves on its own beat (D2=B): a phone cannot cut the red tile short. A cleric
     // that may pray has no beat: its 不用 is a retry. A fill-in wait has no red tile: 重答 and 逃跑 both stand (#106).
     if (pending.optionIndex !== null && isInBossPhase(this.game!, teamId) && !(choice === "retry" && canPray(this.game!, teamId))) {

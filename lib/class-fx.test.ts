@@ -6,17 +6,26 @@ import { CHEF_SIZZLE, CLERIC_PRAYER, MAGE_SPELL, THIEF_SNEAK } from "./sfx";
 import type { StateMessage } from "./protocol";
 
 type T = { id: string; classId?: string; uses: number };
-const state = (teams: T[], phase: "playing" | "finished" = "playing"): StateMessage =>
-  ({ type: "STATE", phase, eventId: 1, view: { currentTurnTeamId: teams[0]?.id ?? null, teams: teams.map((t) => ({ id: t.id, name: `隊${t.id}`, classId: t.classId, abilityUses: t.uses })) } }) as unknown as StateMessage;
+const state = (teams: T[], phase: "playing" | "finished" = "playing", pendingRoll?: { teamId: string; kind: string }): StateMessage =>
+  ({ type: "STATE", phase, eventId: 1, ...(pendingRoll ? { pendingRoll: { questionId: "q", value: 9, ...pendingRoll } } : {}), view: { currentTurnTeamId: teams[0]?.id ?? null, teams: teams.map((t) => ({ id: t.id, name: `隊${t.id}`, classId: t.classId, abilityUses: t.uses })) } }) as unknown as StateMessage;
 
 describe("classFxFor", () => {
-  it.each(["mage", "cleric", "thief"] as const)("plays the %s's moment when its uses drop, with the team's name", (classId) => {
-    expect(classFxFor(state([{ id: "a", classId, uses: 2 }]), state([{ id: "a", classId, uses: 1 }]))).toEqual({ kind: classId, teamId: "a", name: "隊a" });
+  it.each(["mage", "cleric"] as const)("plays the %s's moment when its skill die starts rolling, once, with the team's name", (classId) => {
+    const teams = [{ id: "a", classId, uses: 1 }];
+    const rolling = state(teams, "playing", { teamId: "a", kind: classId });
+    expect(classFxFor(state([{ id: "a", classId, uses: 2 }]), rolling)).toEqual({ kind: classId, teamId: "a", name: "隊a" });
+    expect(classFxFor(rolling, rolling)).toBeNull(); // the same roll on a later STATE
+    // A spend with no skill die (a refund's drop and rise) plays nothing.
+    expect(classFxFor(state([{ id: "a", classId, uses: 2 }]), state(teams))).toBeNull();
+  });
+
+  it("plays the thief's moment when its uses drop, with the team's name", () => {
+    expect(classFxFor(state([{ id: "a", classId: "thief", uses: 2 }]), state([{ id: "a", classId: "thief", uses: 1 }]))).toEqual({ kind: "thief", teamId: "a", name: "隊a" });
   });
 
   it("finds the spender among several teams", () => {
-    const prev = state([{ id: "a", classId: "mage", uses: 4 }, { id: "b", classId: "thief", uses: 2 }]);
-    expect(classFxFor(prev, state([{ id: "a", classId: "mage", uses: 4 }, { id: "b", classId: "thief", uses: 1 }]))?.teamId).toBe("b");
+    const prev = state([{ id: "a", classId: "thief", uses: 3 }, { id: "b", classId: "thief", uses: 2 }]);
+    expect(classFxFor(prev, state([{ id: "a", classId: "thief", uses: 3 }, { id: "b", classId: "thief", uses: 1 }]))?.teamId).toBe("b");
   });
 
   it("leaves out the warrior (its d20 is its moment), the chef, a classless team, a refund and no change", () => {

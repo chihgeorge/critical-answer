@@ -19,7 +19,7 @@
 // spends one of its ABILITY_USES on its turn. The warrior rolls instead of answering:
 // spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
 // answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
-// exactly once. The mage removes wrong options (mageEliminate), the thief arms a Sneak Attack
+// exactly once. The mage rolls a skill die for removed options or a hint (mageCast), the thief arms a Sneak Attack
 // that raises this answer's reward ×1.5 and doubles its boss damage (armSneak), and the cleric prays on a wrong
 // lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
@@ -59,30 +59,49 @@ export const CLASS_ICONS: Record<ClassId, string> = {
   chef: "🍳",
 };
 
-/** Ability uses per team per game for the thief and the cleric (the chef's is passive, CHEF_BONUS_PERCENT). */
-export const ABILITY_USES = 2;
-/** The warrior gets more: its roll only raises the odds on one question (owner, 2026-11-08 balance). */
-export const MORE_ABILITY_USES = 4;
-/** The mage's casts per game (owner, 2026-11-13 balance: 4 → 3). */
-export const MAGE_ABILITY_USES = 3;
+/** Ability uses per team per game, the same for every active class (class dice, owner 2026-11-17). The chef has none:
+ * it reads the answer die (CHEF_MULTIPLIERS). */
+export const ABILITY_USES = 3;
 
 /** A team's ability uses at the start of a game. */
 export function abilityUsesFor(classId: ClassId | undefined): number {
-  return classId === "warrior" ? MORE_ABILITY_USES : classId === "mage" ? MAGE_ABILITY_USES : ABILITY_USES;
+  return classId === "chef" ? 0 : ABILITY_USES;
 }
 
-/** A correct answer after Sneak Attack gives this times the reward (rounded half up); the boss still loses 2 hearts. */
+/* ---------- Class dice (docs/designs/class-abilities.md 「職業技能擲骰」) ---------- */
+
+/** One d20's tier, the same for every class: 0 大失敗 (1), 1 小失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
+export type SkillTier = 0 | 1 | 2 | 3;
+export function skillTier(value: number): SkillTier {
+  return value <= 1 ? 0 : value < SKILL_SUCCESS ? 1 : value <= 19 ? 2 : 3;
+}
+/** The lowest value of the success tier (7). */
+export const SKILL_SUCCESS = 7;
+/** Each tier's name, for the screens and the narrator. */
+export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
+
+/** A correct answer after Sneak Attack gives this times the reward (rounded half up) on a success (7–19); the boss loses 2
+ * hearts. A 20 is a sneak and a crit (×2, 3 hearts); 1 and 2–6 are no sneak (2–6 gives the use back). */
 export const SNEAK_REWARD_MULTIPLIER = 1.5;
-/** The chef's passive: every reward gain of the team is this much bigger, after the sneak, a crit and a kill's 4d20; never in
- * a boss buzzer phase, where no class ability counts (owner, 2026-11-13 balance). */
-export const CHEF_BONUS_PERCENT = 20;
+/** The chef reads the answer die on a correct answer, per tier: this times the question's whole reward. Never in a boss
+ * buzzer phase, on an event or on a kill's 4d20 (owner, 2026-11-09). */
+export const CHEF_MULTIPLIERS = [0.1, 0.8, 1.3, 2] as const;
 
-/** The chef's share of one reward gain: rounded half up, at least 1 on any gain (eng review D1–D3). */
-export function chefShare(gain: number): number {
-  return gain > 0 ? Math.max(1, Math.round((gain * CHEF_BONUS_PERCENT) / 100)) : 0;
+/** The chef's change to one reward gain, read from the answer die `value` (0 with no die): rounded half up, and never
+ * more than the gain itself away. Negative below a success. */
+export function chefShare(gain: number, value: number | undefined): number {
+  if (value === undefined || gain <= 0) return 0;
+  return Math.round(gain * CHEF_MULTIPLIERS[skillTier(value)]) - gain;
 }
-/** The warrior's d20 counts as a correct answer at this value or more (55%; owner, 2026-11-13 balance). */
-export const WARRIOR_TARGET = 10;
+
+/** The warrior's d20 counts as a correct answer at this value or more: the shared tiers' success (owner, 2026-11-09). */
+export const WARRIOR_TARGET = SKILL_SUCCESS;
+/** The share of the question's reward a warrior's hit pays on 7–19 (owner, 2026-11-17: 「拿八成」). */
+export const WARRIOR_HIT_SHARE = 0.8;
+/** The share of the question's reward a warrior's hit pays, by its die: WARRIOR_HIT_SHARE on 7–19, twice on a 20. */
+export function warriorShare(value: number): number {
+  return value >= 20 ? 2 : value >= WARRIOR_TARGET ? WARRIOR_HIT_SHARE : 0;
+}
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
@@ -351,8 +370,14 @@ export interface GameState {
   eliminated: Record<string, number[]>;
   /** The part of `eliminated` a mage removed: grey with no ✕ 答錯 label (class-abilities.md D13=A). */
   mageRemoved?: Record<string, number[]>;
-  /** A mage's public hint on a fill-in question, per question id: the answer's first letter or number. */
+  /** A mage's public hint, per question id: a fill-in answer's first letter or number, a sort question's first item, or
+   * what mageHintKinds says it is. */
   mageHints?: Record<string, string>;
+  /** A hint that is not the first character or item (class dice): the letter count, or the whole answer or order. */
+  mageHintKinds?: Record<string, MageHintKind>;
+  /** Per checkKey(questionId, teamId): that mage team cast there (a die that landed, whatever its tier), so not again
+   * (rules 「一題一次」). */
+  mageCasts?: Record<string, true>;
   /** Boss question difficulties below 5, per question id, from the bank at game start (absent: 5). */
   bossDifficulties?: Record<string, Difficulty>;
   /** Persuasion checks, per checkKey(questionId, teamId) (dnd design R6). Absent from a game saved before them. */
@@ -415,7 +440,15 @@ export interface WrongAnswer {
   optionIndex: number | null;
   /** The cleric prayed on this lock: its 重答 / 逃跑 keeps the turn. */
   prayed?: true;
+  /** The prayer die is still rolling (set by pray, gone once it lands): a restart in that beat restores a failed prayer. */
+  praying?: true;
+  /** The cleric's prayer die came up 1–6 (class dice): no prayer this turn, and its 重答 / 逃跑 ends the turn. */
+  prayFailed?: true;
 }
+
+/** A mage hint that is not the first character or item: "count" (the answer's letter count), "whole" (the whole answer,
+ * or a sort question's whole order joined by " → "). */
+export type MageHintKind = "count" | "whole";
 
 /** A natural 20 or 1 behind a correct answer: the crit die (or a warrior's 20 on a multipleChoice question), or the
  * question's persuasion check (a 20 won it outright, a 1 halved it). Narration and the cue use it. */
@@ -428,7 +461,7 @@ export type AnswerOutcome =
   /** `switchedTo`: 逃跑・換房's new monster (catalog id). */
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
-  | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true };
+  | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true; penalty?: number };
 
 export class InvalidActionError extends Error {}
 
@@ -1187,10 +1220,22 @@ export function answerQuestion(
   fields?: { right: number; total: number },
   /** A warrior's missed roll: nothing was judged or shown, so a turn-based boss question stays (class-abilities.md). */
   warriorMiss = false,
+  /** A fill-in's answer die (class dice): what the chef and an armed thief read on a correct answer, with no crit effect
+   * of its own. Absent: they read `critValue`. */
+  answerDie?: number,
+  /** A warrior's d20 that stood in for the answer: its hit pays warriorShare, a 20 is a crit on any question, and a 1
+   * takes the question's whole reward away (never below 0). Correctness never changes it (owner, 2026-11-17). */
+  warriorDie?: number,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
-  // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show.
-  const crit = correct && critValue === 20;
+  const me = game.teams.find((t) => t.id === teamId);
+  // The die the chef or an armed thief reads (class dice): a fill-in's answer die, else the crit die. An armed thief
+  // with no die at all (a path that rolls none) gets the plain sneak.
+  const read = answerDie ?? critValue;
+  const thiefTier = correct && me?.sneakArmed && read !== undefined ? skillTier(read) : undefined;
+  // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show. A thief's 20 on
+  // its answer die and a warrior's 20 on any question are crits too.
+  const crit = correct && (critValue === 20 || thiefTier === 3 || warriorDie === 20);
   // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
   const check = game.checks?.[checkKey(questionId, teamId)];
   // A natural 20 talked the monster aside (persuasion-gift): it lives, so the team eats what it shared, not the monster.
@@ -1200,15 +1245,20 @@ export function answerQuestion(
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
   // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
   const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
+  const critMark = warriorDie === 20 || thiefTier === 3 ? 20 : critValue;
   const rollMark: { roll?: RollMark } =
-    correct && (critValue === 20 || critValue === 1)
-      ? { roll: { kind: "crit", value: critValue } }
+    correct && (critMark === 20 || critMark === 1)
+      ? { roll: { kind: "crit", value: critMark } }
       : correct && (check?.value === 20 || check?.value === 1)
         ? { roll: { kind: "check", value: check.value } }
         : {};
-  const critBonus = (base: number) => (crit ? Math.round(base * 0.5) : 0) + (boon === "blessing" ? Math.round(base * 0.5) : 0);
-  // R5: the half is taken from the base reward, then the sneak raises it.
-  const baseOf = (reward: number) => (halved ? Math.round(reward * 0.5) : reward);
+  // A warrior's 20 is its share's double, not the crit's half on top.
+  const critBonus = (base: number) => (crit && warriorDie === undefined ? Math.round(base * 0.5) : 0) + (boon === "blessing" ? Math.round(base * 0.5) : 0);
+  // R5: the half is taken from the base reward, then the sneak raises it; a warrior's hit pays its die's share of it.
+  const baseOf = (reward: number) => {
+    const half = halved ? Math.round(reward * 0.5) : reward;
+    return warriorDie === undefined ? half : Math.round(half * warriorShare(warriorDie));
+  };
 
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
@@ -1226,14 +1276,17 @@ export function answerQuestion(
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
   const prayed = !correct && game.pendingWrong?.prayed === true;
-  // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage, ×1.5 reward.
-  const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
+  // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage, ×1.5 reward. Its die's
+  // 1 or 2–6 is no sneak, and 2–6 gives the use back (class dice).
+  const sneak = getTeam(game, teamId).sneakArmed && (thiefTier === undefined || thiefTier >= 2) ? 2 : 1;
+  const sneakBack = thiefTier === 1 ? 1 : 0;
   const sneakPay = (reward: number) => (sneak === 2 ? Math.round(reward * SNEAK_REWARD_MULTIPLIER) : reward);
-  // The chef's share goes on the whole gain, last (eng review D2); no class ability counts in a buzzer phase.
+  // The chef's change goes on the question's whole gain, last (eng review D2), read from the answer die; never on a kill's
+  // 4d20 (`extra`), and no class ability counts in a buzzer phase.
   const chef = getTeam(game, teamId).classId === "chef" && !isBuzzPhase(game);
-  const withChef = (gain: number) => {
-    const share = chef ? chefShare(gain) : 0;
-    return { reward: gain + share, ...(share ? { chefBonus: share } : {}) };
+  const withChef = (gain: number, extra = 0) => {
+    const share = chef ? chefShare(gain, read) : 0;
+    return { reward: gain + share + extra, ...(share ? { chefBonus: share } : {}) };
   };
   // This turn counts once, for lib/game-log.ts: a cleric's prayed wrong lock keeps the turn, so its answer after counts.
   const order = game.turnOrder.indexOf(teamId);
@@ -1242,7 +1295,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && critValue !== undefined ? [critValue] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, ...(sneakBack ? { abilityUses: t.abilityUses + sneakBack } : {}), typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && critValue !== undefined ? [critValue] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -1275,7 +1328,7 @@ export function answerQuestion(
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
       const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
       const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
-      const gain = withChef((fields ? Math.round((hit * fields.right) / fields.total) : hit) + (killBonus ?? 0));
+      const gain = withChef(fields ? Math.round((hit * fields.right) / fields.total) : hit, killBonus ?? 0);
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
@@ -1419,12 +1472,21 @@ export function answerQuestion(
     }
   }
 
+  // A warrior's 1 takes the question's whole reward (class dice): the room's, or the boss's hit; never below 0.
+  if (!correct && warriorDie === 1) {
+    const base = inBoss ? boss.hitReward : game.rooms[team.roomIndex].reward;
+    const penalty = Math.min(base, getTeam(nextGame, teamId).reward);
+    if (penalty > 0) {
+      nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ reward: t.reward - penalty })) };
+      if (outcome.type === "incorrect-retry") outcome = { ...outcome, penalty };
+    }
+  }
   // Eliminated options and a mage's hint belong to a question still in play: once it leaves (answered, fled, rotated)
   // a later deal of it starts clean.
   // Any team: a room short of questions can deal one question to two teams at once.
   // A team that fled and was dealt the same question again (a room with one question left) faces it afresh, not still.
   const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId && !(t.id === teamId && outcome.type === "incorrect-flee"));
-  const checked = Object.keys(nextGame.checks ?? {}).some((k) => isCheckOn(nextGame, k, questionId));
+  const checked = [...Object.keys(nextGame.checks ?? {}), ...Object.keys(nextGame.mageCasts ?? {})].some((k) => isCheckOn(nextGame, k, questionId));
   if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}) || checked)) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // This team's check goes once the question is answered or the team has moved off it; a retry keeps it (R6).
   else if (checkKey(questionId, teamId) in (nextGame.checks ?? {}) && (correct || currentQuestionIdOf(nextGame, teamId) !== questionId)) {
@@ -1465,58 +1527,71 @@ export function spendAbility(game: GameState, teamId: string, classId: ClassId):
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })) };
 }
 
-/** The mage removes min(2, wrong options left − 1) wrong options of `questionId` at random into the
- * public eliminated set, and spends a use. Nothing to remove is refused before anything is spent.
- * `correctIndex` and `optionCount` come from the room's bank, in shown order. */
-export function mageEliminate(
-  game: GameState,
-  teamId: string,
-  questionId: string,
-  correctIndex: number,
-  optionCount: number,
-  rng: () => number = Math.random,
-): GameState {
+/** What a mage casts on: the room's bank question, in shown order. */
+export type MageTarget = { kind: "multipleChoice"; correctIndex: number; optionCount: number } | { kind: "text"; answer: string } | { kind: "sort"; items: string[] };
+
+/** The mage's spell, read from its skill die `value` (class dice). The use was spent when the die was rolled
+ * (spendAbility); a small failure (2–6) gives it back. Per tier, 1 / 2–6 / 7–19 / 20:
+ * - multipleChoice: nothing / removes 1 wrong option / min(2, wrong left − 1) / every wrong option (the answer shows);
+ * - fill-in: nothing / the answer's letter count / its first letter or number / the whole answer;
+ * - sort: nothing / nothing / the first item / the whole order.
+ * Refuses what the success could not do (nothing left to remove, a hint already shown, an answer too short to hint), so
+ * the room checks a cast with value 7 before it spends and rolls. */
+export function mageCast(game: GameState, teamId: string, questionId: string, target: MageTarget, value: number, rng: () => number = Math.random): GameState {
   assertAbilityTurn(game, teamId, "mage");
   assertCurrentQuestion(game, teamId, questionId);
-  const old = game.eliminated[questionId] ?? [];
-  const wrong = Array.from({ length: optionCount }, (_, i) => i).filter((i) => i !== correctIndex && !old.includes(i));
-  const n = Math.min(2, wrong.length - 1);
-  if (n <= 0) throw new InvalidActionError("no_option_to_remove");
-  const removed: number[] = [];
-  // Clamped: an rng that ever returned 1 would otherwise splice nothing and loop forever.
-  while (removed.length < n) removed.push(...wrong.splice(Math.min(wrong.length - 1, Math.floor(rng() * wrong.length)), 1));
-  const spent = spendAbility(game, teamId, "mage");
+  if (game.mageCasts?.[checkKey(questionId, teamId)]) throw new InvalidActionError("cast_done");
+  const tier = skillTier(value);
+  // Marked whatever the tier, so a 1 or a refunded 2–6 is not a free reroll.
+  const cast = { ...game, mageCasts: { ...game.mageCasts, [checkKey(questionId, teamId)]: true as const } };
+  const refunded = tier === 1 ? { ...cast, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) } : cast;
+  if (target.kind === "multipleChoice") {
+    const old = game.eliminated[questionId] ?? [];
+    const wrong = Array.from({ length: target.optionCount }, (_, i) => i).filter((i) => i !== target.correctIndex && !old.includes(i));
+    if (wrong.length < 2) throw new InvalidActionError("no_option_to_remove");
+    const n = [0, 1, Math.min(2, wrong.length - 1), wrong.length][tier];
+    if (n === 0) return refunded;
+    const removed: number[] = [];
+    // Clamped: an rng that ever returned 1 would otherwise splice nothing and loop forever.
+    while (removed.length < n) removed.push(...wrong.splice(Math.min(wrong.length - 1, Math.floor(rng() * wrong.length)), 1));
+    return {
+      ...refunded,
+      eliminated: { ...game.eliminated, [questionId]: [...old, ...removed] },
+      mageRemoved: { ...game.mageRemoved, [questionId]: [...(game.mageRemoved?.[questionId] ?? []), ...removed] },
+      // A pick on a removed option clears, for every team facing this question (the boss question is shared).
+      teams: refunded.teams.map((t) =>
+        t.currentSelection !== null && removed.includes(t.currentSelection) && currentQuestionIdOf(game, t.id) === questionId ? { ...t, currentSelection: null } : t,
+      ),
+    };
+  }
+  if (game.mageHints?.[questionId] !== undefined) throw new InvalidActionError("hint_shown");
+  // The team's own check already showed the first character (dnd design E1-1): nothing left to give, nothing spent.
+  if (target.kind === "text" && game.checks?.[checkKey(questionId, teamId)]?.hint !== undefined) throw new InvalidActionError("hint_shown");
+  const first = target.kind === "text" ? firstMeaningfulChar(target.answer) : (target.items[0] ?? null);
+  if (first === null) throw new InvalidActionError("no_hint");
+  const hint: [string, MageHintKind | undefined] | null =
+    tier === 0 ? null
+    : tier === 1 ? (target.kind === "text" ? [String(meaningfulChars(target.answer).length), "count"] : null)
+    : tier === 2 ? [first, undefined]
+    : [target.kind === "text" ? target.answer : target.items.join(" → "), "whole"];
+  if (!hint) return refunded;
+  const [text, kind] = hint;
   return {
-    ...spent,
-    eliminated: { ...game.eliminated, [questionId]: [...old, ...removed] },
-    mageRemoved: { ...game.mageRemoved, [questionId]: [...(game.mageRemoved?.[questionId] ?? []), ...removed] },
-    // A pick on a removed option clears, for every team facing this question (the boss question is shared).
-    teams: spent.teams.map((t) =>
-      t.currentSelection !== null && removed.includes(t.currentSelection) && currentQuestionIdOf(game, t.id) === questionId ? { ...t, currentSelection: null } : t,
-    ),
+    ...refunded,
+    mageHints: { ...game.mageHints, [questionId]: text },
+    ...(kind ? { mageHintKinds: { ...game.mageHintKinds, [questionId]: kind } } : {}),
   };
 }
 
-/** The answer's first letter or number (skipping spaces, punctuation, symbols, emoji), or null when it
- * has fewer than 2 of them: one would give the whole answer away. */
-export function firstMeaningfulChar(answer: string): string | null {
-  const chars = answer.match(/[\p{L}\p{N}]/gu) ?? [];
-  return chars.length >= 2 ? chars[0]! : null;
+/** The answer's letters and numbers (skipping spaces, punctuation, symbols, emoji). */
+function meaningfulChars(answer: string): string[] {
+  return answer.match(/[\p{L}\p{N}]/gu) ?? [];
 }
 
-/** The mage shows the first character of a fill-in answer to everyone and spends a use; with `whole`, `answer` itself
- * (a sort question's first item). A second cast on the same question, or an answer too short to hint, is refused
- * before anything is spent. */
-export function mageHint(game: GameState, teamId: string, questionId: string, answer: string, whole = false): GameState {
-  assertAbilityTurn(game, teamId, "mage");
-  assertCurrentQuestion(game, teamId, questionId);
-  if (game.mageHints?.[questionId] !== undefined) throw new InvalidActionError("hint_shown");
-  // The team's own check already showed the first character (dnd design E1-1): nothing left to give, nothing spent.
-  if (game.checks?.[checkKey(questionId, teamId)]?.hint !== undefined) throw new InvalidActionError("hint_shown");
-  const hint = whole ? answer : firstMeaningfulChar(answer);
-  if (hint === null) throw new InvalidActionError("no_hint");
-  const spent = spendAbility(game, teamId, "mage");
-  return { ...spent, mageHints: { ...game.mageHints, [questionId]: hint } };
+/** The answer's first letter or number, or null when it has fewer than 2 of them: one would give the whole answer away. */
+export function firstMeaningfulChar(answer: string): string | null {
+  const chars = meaningfulChars(answer);
+  return chars.length >= 2 ? chars[0]! : null;
 }
 
 /** The bonus and DC a team rolls with on `questionId` (dnd design Premise 3): its class bonus, against its question's
@@ -1582,20 +1657,34 @@ export function recordTextWrong(game: GameState, teamId: string, questionId: str
   return { ...game, pendingWrong: { teamId, questionId, optionIndex: null } };
 }
 
-/** Whether `teamId`'s wrong lock is waiting on a cleric that may still pray this turn. */
+/** Whether `teamId`'s wrong lock is waiting on a cleric that may still pray this turn (not after a failed prayer die). */
 export function canPray(game: GameState, teamId: string): boolean {
-  return game.pendingWrong?.teamId === teamId && !game.pendingWrong.prayed && clericMayPray(game, teamId);
+  return game.pendingWrong?.teamId === teamId && !game.pendingWrong.prayed && !game.pendingWrong.prayFailed && clericMayPray(game, teamId);
 }
 
-/** The cleric prays on its wrong lock: one use, and its 重答 / 逃跑 then keeps the turn (answerQuestion). */
+/** The cleric prays on its wrong lock: one use, spent as the prayer die rolls, and its 重答 / 逃跑 then keeps the turn
+ * (answerQuestion) unless the die says otherwise (prayerRoll). */
 export function pray(game: GameState, teamId: string): GameState {
   assertPlaying(game);
   if (!canPray(game, teamId)) throw new InvalidActionError(`${teamId} cannot pray now`);
   return {
     ...game,
-    pendingWrong: { ...game.pendingWrong!, prayed: true },
+    pendingWrong: { ...game.pendingWrong!, prayed: true, praying: true },
     teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })),
   };
+}
+
+/** The prayer die `value` on a prayer (class dice), once its beat ends: 1 or 2–6 is no prayer (the use stays spent; the
+ * wrong answer waits for a plain 重答 / 逃跑, which ends the turn), 7–19 stands, 20 stands and gives the use back. */
+export function prayerRoll(game: GameState, teamId: string, value: number): GameState {
+  assertPlaying(game);
+  const wrong = game.pendingWrong;
+  if (wrong?.teamId !== teamId || !wrong.prayed) throw new InvalidActionError("no_prayer");
+  const tier = skillTier(value);
+  if (tier <= 1) return { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayFailed: true } };
+  const stood = { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayed: true as const } };
+  if (tier === 3) return { ...stood, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) };
+  return stood;
 }
 
 /**
@@ -1617,7 +1706,7 @@ export function warriorRoll(
   // A critable die is counted as the crit die in answerQuestion (its 20 rides on a correct answer); any other natural 20,
   // and every natural 1, is counted here (D5, fortune-teller.md E7).
   const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, critable ? (value === 1 ? [1] : []) : [value])) };
-  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice, undefined, value < WARRIOR_TARGET);
+  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice, undefined, value < WARRIOR_TARGET, undefined, value);
 }
 
 /**
@@ -1731,6 +1820,11 @@ export interface Judgment {
   points: number;
   flipped?: true;
   taken?: number;
+  /** A warrior's roll (class dice): only its own die decides it, so 改判 never moves it (owner, 2026-11-17). */
+  warrior?: true;
+  /** A wrong answer whose 改成答對 is paid from an answer die rolled then (owner, 2026-11-17): a chef's, or a thief's
+   * that had 偷襲 armed (`points` is the plain reward). */
+  reads?: "chef" | "thief";
 }
 
 /** The most ability uses 修正 may give `team` back: its class's set plus the uses event rooms gave it (resolveEvent's
@@ -1779,34 +1873,51 @@ export function hostSetScore(game: GameState, teamId: string, score: number): Ga
 }
 
 /** N for the ledger, from `prev` (the game before the judgment): a correct outcome's whole gain; for a wrong one, what a
- * plain correct answer there gives (room reward or the boss's hitReward) plus the chef's share (none in a buzzer phase). */
+ * plain correct answer there gives (room reward or the boss's hitReward). */
 export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerOutcome): number {
   if (outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") return outcome.reward;
   const t = getTeam(prev, teamId);
-  const base = t.inBoss ? prev.boss.hitReward : (prev.rooms[t.roomIndex]?.reward ?? 0);
-  return base + (t.classId === "chef" && !isBuzzPhase(prev) ? chefShare(base) : 0);
+  return t.inBoss ? prev.boss.hitReward : (prev.rooms[t.roomIndex]?.reward ?? 0);
 }
 
-/** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). */
-export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome): GameState {
+/** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). `warrior`:
+ * a warrior's roll decided it. */
+export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome, warrior = false): GameState {
   const correct = outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit";
-  return { ...game, judgments: [...(game.judgments ?? []), { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome) }] };
+  const t = getTeam(prev, teamId);
+  const reads = correct || warrior || isBuzzPhase(prev) ? undefined : t.classId === "chef" ? "chef" : t.sneakArmed ? "thief" : undefined;
+  const entry: Judgment = { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome), ...(warrior ? { warrior: true as const } : {}), ...(reads ? { reads } : {}) };
+  return { ...game, judgments: [...(game.judgments ?? []), entry] };
+}
+
+/** Whether 改成答對 on ledger entry `j` needs an answer die rolled now (owner, 2026-11-17): a chef's or armed thief's wrong
+ * answer never flipped before (a flip back gives back what the last 改成答錯 took). */
+export function rejudgeNeedsDie(j: Judgment): boolean {
+  return !j.correct && j.reads !== undefined && j.taken === undefined;
 }
 
 /** 改判: ledger entry `index` shows `correct` from now on, and only its reward points move (owner decision "A 只改分數").
  * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N` and drops it, so any flip
  * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`). */
-export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean): GameState {
+export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean, die?: number): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   const j = game.judgments?.[index];
   if (!j || j.teamId !== teamId || j.questionId !== questionId) throw new InvalidActionError("stale");
+  // A warrior's roll is its own die's, whatever the host decides later (owner, 2026-11-17).
+  if (j.warrior) throw new InvalidActionError("warrior_roll");
   if (j.correct === correct) throw new InvalidActionError("at_limit");
+  const needsDie = correct && rejudgeNeedsDie(j);
+  if (needsDie && die === undefined) throw new InvalidActionError("die_needed");
+  const tier = die === undefined ? 2 : skillTier(die);
+  // The chef's tier multiplier, or the thief's sneak by tier. Only the score moves: a thief's 2–6 gives no use back here.
+  const paid = !needsDie ? (j.taken ?? j.points) : Math.round(j.points * (j.reads === "chef" ? CHEF_MULTIPLIERS[tier] : [1, 1, SNEAK_REWARD_MULTIPLIER, 2][tier]));
   const from = getTeam(game, teamId).reward;
-  const moved = correct ? (j.taken ?? j.points) : Math.min(j.taken ?? j.points, from);
+  const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;
-  const entry: Judgment = { teamId, questionId, correct, points: j.points };
+  const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.reads ? { reads: j.reads } : {}) };
   if (!j.flipped) entry.flipped = true;
-  if (!correct) entry.taken = moved;
+  // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
+  if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
   return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
 }
@@ -2051,11 +2162,9 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
   const event = team.event;
   if (!event) throw new InvalidActionError("no_event");
   const result: EventResult = { teamId, scene: event.scene, outcome: event.outcome, satiety: 0 };
-  // The chef's share goes on satiety an event gives, never on what it takes (D12).
+  // The chef reads no die here: an event's satiety is the same for every team (class dice, owner 2026-11-09).
   const give = (n: number) => {
-    const share = team.classId === "chef" ? chefShare(n) : 0;
-    result.satiety = n + share;
-    if (share) result.chefBonus = share;
+    result.satiety = n;
   };
   const o = event.outcome;
   // The fortune itself gives nothing: its effect landed in resolveFortune (fortune-teller.md).
@@ -2106,10 +2215,10 @@ function ate(team: Team, dish: string | undefined): Pick<Team, "dishes"> | objec
 }
 
 /** `eliminated`, `mageRemoved`, `mageHints` and every team's check without `questionId`: it left play, and a later deal of it starts clean. */
-function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "checks"> {
+function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "mageHintKinds" | "mageCasts" | "checks"> {
   const drop = <T>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
   const checks = Object.fromEntries(Object.entries(game.checks ?? {}).filter(([k]) => !isCheckOn(game, k, questionId)));
-  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), checks };
+  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), mageHintKinds: drop(game.mageHintKinds ?? {}), mageCasts: Object.fromEntries(Object.entries(game.mageCasts ?? {}).filter(([k]) => !isCheckOn(game, k, questionId))), checks };
 }
 
 /**
@@ -2411,8 +2520,11 @@ export interface SpectatorView {
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
   mageRemoved: Record<string, number[]>;
-  /** The mage's first-character hint per fill-in question id (mageHint). */
+  /** The mage's public hint per fill-in or sort question id (mageCast), and what kind it is when not the first character. */
   mageHints: Record<string, string>;
+  mageHintKinds?: Record<string, MageHintKind>;
+  /** Per checkKey(questionId, teamId): that mage team cast there, so not again (absent from an older server). */
+  mageCasts?: Record<string, true>;
   /** Persuasion checks per checkKey(questionId, teamId), written once their beat ends (dnd design R6). Absent from an older server. */
   checks?: Record<string, CheckRecord>;
   pendingWrong: WrongAnswer | null;
@@ -2471,6 +2583,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
     eliminated: game.eliminated,
     mageRemoved: game.mageRemoved ?? {},
     mageHints: game.mageHints ?? {},
+    mageHintKinds: game.mageHintKinds ?? {},
+    mageCasts: game.mageCasts ?? {},
     checks: game.checks ?? {},
     pendingWrong: game.pendingWrong,
     // A timing question's taps stay in the room until the reveal (timing-tap.md).

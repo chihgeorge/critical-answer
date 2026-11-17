@@ -1317,6 +1317,21 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(reveal).toMatchObject({ persuaded: true, answer: "", dish: { gift: true } });
     });
 
+    // Value: protects=a chef's natural 20 still wins when the phone drops during the check beat: its answer die holds the
+    // turn like a kill's beat (/review); fails_when=resolveRoll syncs the chef offline and the answer die lands on a moved turn.
+    it("a chef's natural 20 keeps its team on turn through its answer die when the phone drops during the check beat", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const { room, ids, conns, roll } = checkGame(2);
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t, i) => (i === 0 ? { ...t, classId: "chef" } : t)) };
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      room.onClose(conns[0]);
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "answer" });
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0].score).toBe(1);
+    });
+
     it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, hostConn, ids, roll } = checkGame();
@@ -1356,7 +1371,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(warrior, host, { type: "HOST_START" });
       send(warrior, w.conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
       expect(lastSentTo(w.conns[0])).toMatchObject({ detail: "check_needed" });
-      expect(warrior.game!.teams[0].abilityUses).toBe(4);
+      expect(warrior.game!.teams[0].abilityUses).toBe(3);
       passChecks(room);
       send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: "r0-t1", text: "萬家福", eventId: seqOf(room) });
       delete room.game!.checks![checkKey("r0-t1", room.game!.teams[0].id)];
@@ -1962,7 +1977,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
       // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
-      expect(room.game!.teams[0].reward).toBe(15); // a warrior's 20 on a multipleChoice question is a crit too
+      expect(room.game!.teams[0].reward).toBe(20); // a warrior's 20 pays double, and is a crit too
       expect(lastBroadcast(room)).toMatchObject({ cue: "crit" });
       vi.advanceTimersByTime(60_000);
       expect(revealOpen(room)).toBe(true);
@@ -1974,7 +1989,8 @@ describe("TEAM_SELECT_OPTION", () => {
     // fails_when=the room drops chefBonus from reveal.choice, or a chef's TEAM_USE_ABILITY is accepted; seam=none
     it("a chef's correct lock carries its share in reveal.choice, and its ability press is refused", () => {
       vi.useFakeTimers();
-      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: mcBank });
+      let r = 0;
+      const room = new DungeonRoom(makeRoom() as any, () => r, { bank: mcBank });
       const hostConn = makeConn("host-conn");
       room.onConnect(hostConn);
       claim(room, hostConn);
@@ -1983,13 +1999,14 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, hostConn, { type: "HOST_START" });
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
       expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
-      expect(room.game!.teams[0].abilityUses).toBe(2);
+      expect(room.game!.teams[0].abilityUses).toBe(0);
       expect((room as any).pendingRoll ?? null).toBeNull();
       pick(room, conns[0], 1);
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      r = 11 / 20; // the crit die, which the chef reads: a 12, ×1.3
       send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
       vi.advanceTimersByTime(4000);
-      expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 a room reward, not the warrior target
+      expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 13, chefBonus: 3 });
     });
 
     it("the host cannot send a team to the boss while its lock is in its beat", () => {
@@ -3555,7 +3572,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, conns[1], { type: "TEAM_PICK_CLASS", classId: null });
     expect(lastBroadcast(room).teams.map((t: { classId?: string }) => t.classId)).toEqual(["warrior", undefined]);
     send(room, hostConn, { type: "HOST_START" });
-    expect(room.game!.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 4], [undefined, 2]]);
+    expect(room.game!.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 3], [undefined, 3]]);
     send(room, conns[0], { type: "TEAM_PICK_CLASS", classId: "thief" });
     expect(err(conns[0])).toBe("game_already_started");
     expect(room.game!.teams[0].classId).toBe("warrior");
@@ -3578,7 +3595,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(WARRIOR_TARGET);
     const held = lastBroadcast(room);
     expect(held.pendingRoll).toMatchObject({ questionId: q, value: WARRIOR_TARGET });
-    expect(held.view.teams[0].abilityUses).toBe(3);
+    expect(held.view.teams[0].abilityUses).toBe(2);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: room.game!.teams[0].id, questionId: q, correct: true, eventId: seq });
     expect(err(hostConn)).toBe("roll_pending");
     roll(WARRIOR_TARGET);
@@ -3587,7 +3604,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     const out = lastBroadcast(room);
     expect(out.pendingRoll).toBeNull();
     expect(out.reveal).toMatchObject({ questionId: q });
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, roomIndex: 1 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 1 });
     expect(seqOf(room)).toBe(seq + 1);
   });
 
@@ -3609,7 +3626,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(5);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).reveal).toBeNull();
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, currentQuestionId: q, roomIndex: 0 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, currentQuestionId: q, roomIndex: 0 });
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
@@ -3636,7 +3653,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).pendingRoll).toBeNull();
-    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 3, roomIndex: 0 });
+    expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 0 });
   });
 
   it("a classless team is refused on its own turn, and nothing is spent", () => {
@@ -3646,7 +3663,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     send(room, conns[1], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[1].currentQuestionId });
     expect(err(conns[1])).toMatch(/not a warrior/);
     expect((room as any).pendingRoll).toBeNull();
-    expect(room.game!.teams[1].abilityUses).toBe(2);
+    expect(room.game!.teams[1].abilityUses).toBe(3);
   });
 
   it("during the beat the rolling team's select and lock, and sending it to the boss, are refused; the roll still judges", () => {
@@ -3722,7 +3739,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(err(conns[1])).toMatch(/turn/);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "boss-q1" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(4);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, abilityUses: 0 } : t)) };
     roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(err(conns[0])).toMatch(/no ability uses/);
@@ -3759,9 +3776,11 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   });
   const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
 
-  /** Team 0 is `classId`; it faces r0-mc1 (or the boss's boss-mc1 with `boss`). */
+  /** Team 0 is `classId`; it faces r0-mc1 (or the boss's boss-mc1 with `boss`). `use(die)` rolls a mage's or cleric's
+   * skill die of `die` (the room's rng, rollD20 = floor(r * 20) + 1) and waits out its 2 s beat. */
   function game(classId: "mage" | "cleric" | "thief", boss = false) {
-    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    let r = 0;
+    const room = new DungeonRoom(makeRoom() as any, () => r, { bank });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
@@ -3773,7 +3792,15 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
       room.game = { ...room.game!, boss: { ...room.game!.boss, currentQuestionId: "boss-mc1" } };
     } else room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-mc1" } : t)) };
     const q = boss ? "boss-mc1" : "r0-mc1";
-    const use = () => send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q });
+    const useOn = (questionId: string, die?: number) => {
+      if (die !== undefined) r = (die - 1) / 20;
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId });
+      if (die === undefined) return;
+      vi.advanceTimersByTime(2000);
+      r = 0;
+    };
+    const use = (die?: number) => useOn(q, die);
+    const setDie = (die: number) => (r = (die - 1) / 20);
     const lockWrong = () => {
       const wrong = room.game!.optionOrder[q].indexOf(0); // "A"; "B" is right
       send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: wrong });
@@ -3781,18 +3808,20 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
       reveal(room);
       vi.advanceTimersByTime(2000);
     };
-    return { room, hostConn, ids, conns, q, use, lockWrong };
+    return { room, hostConn, ids, conns, q, use, useOn, setDie, lockWrong };
   }
 
   it("the mage greys out 2 wrong options for everyone, and is refused on a 1-character fill-in answer without spending", () => {
+    vi.useFakeTimers();
     const { room, conns, q, use } = game("mage");
-    use();
+    use(12);
     const removed = lastBroadcast(room).view.eliminated[q];
     expect(removed).toHaveLength(2);
     expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
     expect(room.game!.teams[0].abilityUses).toBe(2);
-    use();
-    expect(err(conns[0])).toBe("no_option_to_remove");
+    use(12);
+    expect(err(conns[0])).toBe("cast_done"); // one cast per question
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
     // Before the check the refusal says nothing about the hidden answer.
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
@@ -3807,18 +3836,19 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   // spends a use, once per question (#106); fails_when=the room still refuses fill-in, or a second cast spends;
   // seam=room → game-state mageHint; no_claim=how each page renders it (e2e)
   it("the mage shows a fill-in answer's first character to everyone, once per question", () => {
-    const { room, conns } = game("mage");
+    vi.useFakeTimers();
+    const { room, conns, useOn } = game("mage");
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t2" } : t)) };
     // Not before the persuasion check: the question is not up yet (check first, question after).
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
     expect(err(conns[0])).toBe("check_needed");
     expect(room.game!.teams[0].abilityUses).toBe(3);
     passChecks(room);
-    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
+    useOn("r0-t2", 12);
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
     expect(room.game!.teams[0].abilityUses).toBe(2);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
-    expect(err(conns[0])).toBe("hint_shown");
+    expect(err(conns[0])).toBe("cast_done");
     expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
@@ -3836,27 +3866,30 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     vi.useFakeTimers();
     const { room, conns, use, lockWrong } = game("thief");
     use();
-    expect(lastBroadcast(room).view.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 1 });
+    expect(lastBroadcast(room).view.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 2 });
     use();
     expect(err(conns[0])).toBe("sneak_armed");
     lockWrong();
     send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-mc1", choice: "retry" });
     expect(lastBroadcast(room).view.teams[0].sneakArmed).toBeUndefined();
-    expect(room.game!.teams[0].abilityUses).toBe(1);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
   // Value: protects=a thief's sneak kill shows the 1.5× bonus on the big screen and scores that same value
   // (kill-roll.md); fails_when=pendingRoll.value is the raw dice sum, so the TV and the score disagree
   it("a sneak attack that kills shows and scores the 1.5× 4d20", () => {
     vi.useFakeTimers();
-    const { room, ids, conns, q, use } = game("thief", true);
+    const { room, ids, conns, q, use, setDie } = game("thief", true);
     room.game = { ...room.game!, boss: { ...room.game!.boss, hp: 1, phaseIndex: room.game!.boss.phases.length - 1 } };
     use();
     const before = room.game!.teams[0].reward;
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: room.game!.optionOrder[q].indexOf(1) });
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
+    setDie(12); // the crit die, which the thief reads: a success, so the sneak stands
     reveal(room);
-    vi.advanceTimersByTime(4000); // the lock's beat, then the crit die's
+    vi.advanceTimersByTime(2000); // the lock's beat
+    setDie(1); // the kill's 4d20
+    vi.advanceTimersByTime(2000); // the crit die's
     const roll = lastBroadcast(room).pendingRoll;
     expect(roll).toMatchObject({ teamId: ids[0], kind: "kill", values: [1, 1, 1, 1], value: 6 }); // rng 0: four 1s, × 1.5
     vi.advanceTimersByTime(4000);
@@ -3871,11 +3904,64 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(err(conns[0])).toMatch(/cannot pray/); // nothing locked wrong yet
     lockWrong();
     expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
-    use();
+    use(12);
     expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0], prayed: true });
     send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
     expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
-    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 1 });
+    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 2 });
+  });
+
+  // Value: protects=a failed prayer die (1–6) keeps the use spent and leaves a plain 重答 / 逃跑 that ends the turn (class
+  // dice); fails_when=the failed prayer still keeps the turn, or the cleric may pray again.
+  it("a cleric's failed prayer die leaves a plain 重答 that passes the turn, with no second prayer", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, q, use, lockWrong } = game("cleric");
+    lockWrong();
+    use(4);
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0], prayFailed: true });
+    expect(lastBroadcast(room).view.awaitingPrayer).toBeNull();
+    use();
+    expect(err(conns[0])).toMatch(/cannot pray/);
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+  });
+
+  // Value: protects=a cleric cannot press 重答 while its prayer die rolls; fails_when=the roll_pending guard goes and a retry
+  // pressed in the beat keeps the turn though the die then fails; why_new=no test chooses during the beat; seam=none; no_claim=逃跑
+  it("refuses the cleric's 重答 while its prayer die rolls, so a failed die still passes the turn", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, q, use, setDie, lockWrong } = game("cleric");
+    lockWrong();
+    setDie(4);
+    use(); // the die starts its beat
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(err(conns[0])).toBe("roll_pending");
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0], prayFailed: true });
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  // Value: protects=the mage's skill die spends at the roll and a small failure gives the use back (class dice);
+  // fails_when=a 2–6 keeps the use spent, or a 1 refunds it, or either lets the mage cast again on the question (a free reroll).
+  it("the mage's 1 casts nothing and keeps the use spent; a 2–6 removes one option and gives it back; neither casts again", () => {
+    vi.useFakeTimers();
+    const { room, conns, q, use } = game("mage");
+    use(1);
+    expect(lastBroadcast(room).view.eliminated[q] ?? []).toHaveLength(0);
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(lastBroadcast(room).view.mageCasts).toEqual({ [checkKey(q, room.game!.teams[0].id)]: true });
+    use(12);
+    expect(err(conns[0])).toBe("cast_done");
+    expect(room.game!.teams[0].abilityUses).toBe(2);
+    const small = game("mage");
+    small.use(4);
+    expect(lastBroadcast(small.room).view.eliminated[small.q]).toHaveLength(1);
+    expect(small.room.game!.teams[0].abilityUses).toBe(3);
+    small.use(12);
+    expect(err(small.conns[0])).toBe("cast_done");
+    expect(small.room.game!.teams[0].abilityUses).toBe(3);
   });
 
   it("a cleric's wrong boss lock waits for 祈禱 instead of the beat; praying rotates the question and keeps the turn", () => {
@@ -3885,7 +3971,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     vi.advanceTimersByTime(10_000);
     expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0] });
     expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
-    use();
+    use(12);
     expect(room.game!.pendingWrong).toBeNull();
     expect(room.game!.boss.currentQuestionId).toBe("boss-mc2");
     expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
@@ -3910,7 +3996,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     vi.useFakeTimers();
     const { room, ids, conns, use, lockWrong } = game("cleric", true);
     lockWrong();
-    use(); // pray: rotates to a new boss question, keeps the turn
+    use(12); // pray: rotates to a new boss question, keeps the turn
     const q2 = room.game!.boss.currentQuestionId!;
     const wrong = room.game!.optionOrder[q2].indexOf(0);
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q2, optionIndex: wrong });
@@ -3929,7 +4015,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     lockWrong();
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
     expect(err(conns[0])).toBe("stale_question");
-    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     expect(room.game!.pendingWrong?.prayed).toBeUndefined();
   });
 });
@@ -3943,9 +4029,12 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
   });
   const err = (conn: Conn) => lastSentTo(conn as never)?.detail ?? lastSentTo(conn as never)?.error;
 
-  /** Team 0 is a cleric facing r0-t1 (or the boss's boss-t1), with 「台中」 sent; team 1 has no class. */
+  /** Team 0 is a cleric facing r0-t1 (or the boss's boss-t1), with 「台中」 sent; team 1 has no class. `setDie(v)` makes the
+   * next d20 the room rolls a `v` (its prayer die). */
   function game(boss = false) {
-    const room = new DungeonRoom(makeRoom() as any, () => 0, { bank });
+    let r = 0;
+    const setDie = (v: number) => (r = (v - 1) / 20);
+    const room = new DungeonRoom(makeRoom() as any, () => r, { bank });
     const hostConn = makeConn("host-conn");
     room.onConnect(hostConn);
     claim(room, hostConn);
@@ -3961,14 +4050,15 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
     send(room, conns[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "台中" });
     const host = (fleeChoice: "team" | "pray" | "retry" | "flee", eventId?: number) =>
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: q, correct: false, fleeChoice, ...(eventId !== undefined ? { eventId } : {}) });
-    return { room, hostConn, ids, conns, q, host };
+    return { room, hostConn, ids, conns, q, host, setDie };
   }
 
   // Value: protects=the host's 答錯 on a cleric's fill-in waits for the team, and the phone's 祈禱 then keeps the turn on the
   // same question with an empty answer (AC8); fails_when=the 答錯 settles at once, or 祈禱 passes the turn; seam=room;
   // no_claim=how the phone draws the buttons (e2e)
   it("the host's 答錯 waits for the cleric; its 祈禱 keeps the turn on the same question, answer cleared", () => {
-    const { room, ids, conns, q, host } = game();
+    vi.useFakeTimers();
+    const { room, ids, conns, q, host, setDie } = game();
     const before = lastBroadcast(room).eventId;
     expect(lastBroadcast(room).view.teams[0].mayPray).toBe(true);
     expect(lastBroadcast(room).view.teams[1].mayPray).toBeUndefined();
@@ -3977,10 +4067,13 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
     expect(lastBroadcast(room).view.awaitingPrayer).toBe(ids[0]);
     expect(lastBroadcast(room).view.teams[0].typedAnswer).toBe("台中");
     expect(lastBroadcast(room).eventId).toBe(before);
+    setDie(12);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: q });
+    expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "cleric", value: 12 });
+    vi.advanceTimersByTime(2000);
     expect(room.game!.pendingWrong).toBeNull();
     expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
-    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 1, typedAnswer: undefined });
+    expect(room.game!.teams[0]).toMatchObject({ currentQuestionId: q, abilityUses: 2, typedAnswer: undefined });
     // Prayed this turn: a second 答錯 settles as usual.
     expect(lastBroadcast(room).view.teams[0].mayPray).toBeUndefined();
   });
@@ -3995,7 +4088,7 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
       else host("flee");
       expect(room.game!.pendingWrong).toBeNull();
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
-      expect(room.game!.teams[0].abilityUses).toBe(2);
+      expect(room.game!.teams[0].abilityUses).toBe(3);
       expect(room.game!.teams[0].currentQuestionId).not.toBe(q);
     }
   });
@@ -4003,19 +4096,22 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
   // Value: protects=the host can pick 祈禱 for a team that does not, with the eventId it judged from, and 重答 passes the turn
   // without spending (AC9); fails_when=the host's 祈禱 is dropped as stale, or 重答 spends a use; seam=room; no_claim=none
   it("the host can pick 祈禱 for the team with the same eventId, or 重答, which spends nothing", () => {
+    vi.useFakeTimers();
     const a = game();
     const eventId = lastBroadcast(a.room).eventId;
     a.host("team", eventId);
+    a.setDie(12);
     a.host("pray", eventId);
+    vi.advanceTimersByTime(2000);
     expect(currentTurnTeamId(a.room.game!)).toBe(a.ids[0]);
-    expect(a.room.game!.teams[0].abilityUses).toBe(1);
+    expect(a.room.game!.teams[0].abilityUses).toBe(2);
 
     const b = game();
     b.host("team");
     b.host("retry");
     expect(b.room.game!.pendingWrong).toBeNull();
     expect(currentTurnTeamId(b.room.game!)).toBe(b.ids[1]);
-    expect(b.room.game!.teams[0]).toMatchObject({ currentQuestionId: b.q, abilityUses: 2 });
+    expect(b.room.game!.teams[0]).toMatchObject({ currentQuestionId: b.q, abilityUses: 3 });
   });
 
   // Value: protects=the first press of the wait wins and a late one changes nothing (AC10); fails_when=the host's 祈禱 after the
@@ -4026,7 +4122,7 @@ describe("cleric on a fill-in question: 祈禱 / 重答 / 逃跑 after the host'
     send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
     host("pray");
     expect(err(hostConn)).toBe("no_wrong_answer");
-    expect(room.game!.teams[0].abilityUses).toBe(2);
+    expect(room.game!.teams[0].abilityUses).toBe(3);
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
@@ -4183,7 +4279,7 @@ describe("fill-in: TEAM_SUBMIT_TEXT (#104)", () => {
     sent.submit("x");
     sent.rollFor(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     expect(err(sent.conns[0])).toBe("answer_submitted");
-    expect(sent.room.game!.teams[0].abilityUses).toBe(4);
+    expect(sent.room.game!.teams[0].abilityUses).toBe(3);
     const rolling = game(true);
     rolling.rollFor(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     rolling.submit("x");
@@ -4232,11 +4328,14 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
   });
 
   // Value: protects=the chef's share reaching the dish card (chef design D5); fails_when=the room drops chefBonus.
-  it("a chef's dish carries its share of the points", async () => {
+  it("a chef's dish carries its share of the points, read from its answer die", async () => {
+    vi.useFakeTimers();
     const { room, hostConn, ids } = cookRoom(BANK, "chef");
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
-    await flush();
-    expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 12, chefBonus: 2 }); // pregate-literal: WARRIOR_TARGET=12 not the warrior target
+    expect((room as any).pendingRoll).toMatchObject({ kind: "answer", value: 1 }); // rng 0: a 1, ×0.1
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 1, chefBonus: -9 });
+    vi.useRealTimers();
   });
 
   it("a team with no class gets no chefBonus on its dish", async () => {
@@ -4964,13 +5063,18 @@ describe("sort questions", () => {
     vi.advanceTimersByTime(2000);
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
-    expect(room.game!.teams[0].reward).toBe(15); // 10, plus half for the 20 (critable like multiple choice)
+    expect(room.game!.teams[0].reward).toBe(20); // a warrior's 20 pays double
     expect(lastBroadcast(room).reveal).toMatchObject({ sorted: { items: ["A", "B", "C", "D"], teamId: T1 } });
   });
 
-  it("the mage names the first item", () => {
-    const { room, conns } = sortGame("mage");
-    send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
-    expect(room.game!.mageHints?.["r0-s1"]).toBe("A");
+  it("the mage's success names the first item, its 20 the whole order, and its 2–6 nothing but the use back", () => {
+    for (const [die, hint, uses] of [[12, "A", 2], [20, "A → B → C → D", 2], [4, undefined, 3]] as const) {
+      const { room, conns } = sortGame("mage", die);
+      send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
+      expect((room as any).pendingRoll).toMatchObject({ kind: "mage", value: die });
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.mageHints?.["r0-s1"]).toBe(hint);
+      expect(room.game!.teams[0].abilityUses).toBe(uses);
+    }
   });
 });

@@ -26,16 +26,16 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await expect(team.getByText("戰士・剩 4 次")).toBeVisible();
+  await expect(team.getByText("戰士・剩 3 次")).toBeVisible();
 
   await team.getByRole("button", { name: /擲骰代替答題/ }).click();
   await expect(team.getByText(/擲出 \d+( 大成功)?！看大螢幕/)).toBeVisible(); // a 20 on a multipleChoice question is a crit
   await expect(screen.getByTestId("roll-overlay")).toBeVisible();
   // The host waits the beat out: the room judges the roll (and the use is already spent).
   await expect(host.getByText("戰士隊擲出了骰子…")).toBeVisible();
-  await expect(team.getByText("戰士・剩 3 次")).toBeVisible();
+  await expect(team.getByText("戰士・剩 2 次")).toBeVisible();
   // The die lands on the room's value and the verdict bar reads it.
-  await expect(screen.getByTestId("roll-overlay")).toContainText(/(1\d) ≥ 10 命中！|20 大成功！命中|[1-9]，差一點/);
+  await expect(screen.getByTestId("roll-overlay")).toContainText(/\d+ 命中！拿 8 成|20 大成功！雙倍|\d+，差一點……答錯|1 大失敗/); // E2E_DIE: a 10, a hit
 
   // After the 2 s beat the room judges the roll and the overlay goes away.
   await expect(screen.getByTestId("roll-overlay")).toHaveCount(0, { timeout: 5000 });

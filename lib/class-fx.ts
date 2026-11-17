@@ -10,16 +10,20 @@ export type ClassFx = { kind: ClassFxKind; teamId: string; name: string };
 /** How long the badge stays up. */
 export const CLASS_FX_MS = 1200;
 
-const KINDS: readonly string[] = ["mage", "cleric", "thief"];
-
-/** The class ability a team just spent, or null. Every spend lowers the team's `abilityUses` (spendAbility, pray); a
- * refund raises it and plays nothing. The warrior is left out: its d20 is its moment. A screen's first STATE after
- * connecting (`prev` null), or a STATE across a phase change, plays nothing: live only. */
+/** The class ability a team just used, or null (class dice): a mage's or cleric's skill die that just started rolling
+ * (its kind, not the uses count: a small failure gives the use back), or the thief's 偷襲, which lowers its
+ * `abilityUses`. The warrior is left out: its d20 is its moment. A screen's first STATE after connecting (`prev` null),
+ * or a STATE across a phase change, plays nothing: live only. */
 export function classFxFor(prev: StateMessage | null, msg: StateMessage): ClassFx | null {
   if (!prev || prev.phase !== "playing" || msg.phase !== "playing") return null;
+  const roll = msg.pendingRoll;
+  if ((roll?.kind === "mage" || roll?.kind === "cleric") && !(prev.pendingRoll?.kind === roll.kind && prev.pendingRoll.teamId === roll.teamId)) {
+    const t = msg.view.teams.find((x) => x.id === roll.teamId);
+    if (t) return { kind: roll.kind, teamId: t.id, name: t.name };
+  }
   for (const t of msg.view.teams) {
     const was = prev.view.teams.find((p) => p.id === t.id);
-    if (was && t.abilityUses < was.abilityUses && t.classId && KINDS.includes(t.classId)) return { kind: t.classId as ClassFxKind, teamId: t.id, name: t.name };
+    if (was && t.abilityUses < was.abilityUses && t.classId === "thief") return { kind: "thief", teamId: t.id, name: t.name };
   }
   return null;
 }

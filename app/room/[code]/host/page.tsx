@@ -1297,7 +1297,7 @@ export default function HostPage() {
               </div>
               )}
               {game.question && !game.question.options && (
-                <MageHint hint={game.view.mageHints?.[game.question.id]} sort={!!game.question.items} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
+                <MageHint hint={game.view.mageHints?.[game.question.id]} kind={game.view.mageHintKinds?.[game.question.id]} sort={!!game.question.items} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
               )}
               {/* #104: a text question's typed answer, judged with the buttons below. */}
               {turn.team && !buzz && game.question && !game.question.options && !game.question.items && (

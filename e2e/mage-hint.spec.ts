@@ -14,7 +14,7 @@ async function mageRoom(browser: Browser) {
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("法師隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await expect(team.getByText("選擇題刪 2 個錯的選項；填空題看答案第一個字")).toBeVisible();
+  await expect(team.getByText("擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效")).toBeVisible();
   await team.getByRole("button", { name: /法師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
@@ -32,11 +32,11 @@ test.describe("a fill-in answer with a first character", () => {
   test("mage: no first-character button before the check, nor after a check that gave it", async ({ browser }) => {
     const { screen, team } = await mageRoom(browser);
     await expect(team.getByTestId("roll-check")).toBeVisible();
-    await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
     await rollCheck(team);
     await expect(team.getByTestId("check-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-check-hint")).toHaveText("🔮 第一個字：萬");
-    await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
     await expect(team.getByText("法師・剩 3 次")).toBeVisible();
   });
 
@@ -52,13 +52,13 @@ test.describe("a fill-in answer with a first character", () => {
     await expect(screen.getByTestId("screen-check-dc")).toContainText("說服 DC 16");
     await rollCheck(team);
     await expect(team.getByTestId("check-result")).toHaveText("🗣️ 沒過，直接答吧");
-    await team.getByRole("button", { name: /看答案第一個字/ }).click();
+    await team.getByRole("button", { name: /施法：看答案提示/ }).click();
     await expect(team.getByTestId("mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(host.getByTestId("host-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(team.getByText("法師・剩 2 次")).toBeVisible();
     // One hint per question: the button is gone.
-    await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
   });
 });
 
@@ -71,9 +71,9 @@ test.describe("a 1-character fill-in answer", () => {
     const { host, team } = await mageRoom(browser);
     // The check passes but a 1-character answer has no hint to give, so the mage's button is offered after it.
     await rollCheck(team);
-    await team.getByRole("button", { name: /看答案第一個字/ }).click();
+    await team.getByRole("button", { name: /施法：看答案提示/ }).click();
     await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 3 次")).toBeVisible();
-    await expect(team.getByRole("button", { name: /看答案第一個字/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
     await expect(host.getByTestId("host-mage-hint")).toHaveCount(0);
   });
 });

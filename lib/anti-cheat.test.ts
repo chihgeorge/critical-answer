@@ -218,7 +218,7 @@ describe("🚨 成立 (upholdCatch)", () => {
     g = armSneak(g, "a");
     const id = q(g);
     const after = upholdCatch(fileCatch(g, "b", id), first).game;
-    expect(team(after, "a")).toMatchObject({ reward: 0, sneakArmed: undefined, abilityUses: 1 });
+    expect(team(after, "a")).toMatchObject({ reward: 0, sneakArmed: undefined, abilityUses: 2 });
     expect(after.teams.map((t) => t.currentQuestionId)).not.toContain(id);
   });
 

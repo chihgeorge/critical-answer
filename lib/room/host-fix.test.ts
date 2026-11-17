@@ -106,9 +106,10 @@ describe("⚙ 更多 修正", () => {
 
   it("ability uses stay within 0..the class's set; a chef or a classless team has none to fix", () => {
     const g = started();
-    expect(g.team(A).abilityUses).toBe(2);
+    expect(g.team(A).abilityUses).toBe(3);
     g.fix(A, "ability+");
     expect(g.lastTo(g.host)).toMatchObject({ detail: "at_limit" });
+    g.fix(A, "ability-");
     g.fix(A, "ability-");
     g.fix(A, "ability-");
     g.fix(A, "ability-");
@@ -123,18 +124,18 @@ describe("⚙ 更多 修正", () => {
 
   it("uses an event room gave raise the cap, and each press moves one step its own way (/review)", () => {
     const g = started();
-    // Two 🌸 springs gave the thief 2 more uses: 4 against a set of 2.
-    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === A ? { ...t, abilityUses: 4, events: ["spring" as const, "good" as const] } : t)) };
+    // Two 🌸 springs gave the thief 2 more uses: 5 against a set of 3.
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === A ? { ...t, abilityUses: 5, events: ["spring" as const, "good" as const] } : t)) };
     g.fix(A, "ability-");
-    expect(g.team(A).abilityUses).toBe(3);
+    expect(g.team(A).abilityUses).toBe(4);
     g.fix(A, "ability+");
     g.fix(A, "ability+");
     expect(g.lastTo(g.host)).toMatchObject({ detail: "at_limit" });
     expect(g.team(A).fixes).toEqual([
-      { fix: "ability-", from: 4, to: 3 },
-      { fix: "ability+", from: 3, to: 4 },
+      { fix: "ability-", from: 5, to: 4 },
+      { fix: "ability+", from: 4, to: 5 },
     ]);
-    expect(g.state().view.teams.find((t: { id: string }) => t.id === A).abilityCap).toBe(4);
+    expect(g.state().view.teams.find((t: { id: string }) => t.id === A).abilityCap).toBe(5);
     expect(g.state().view.teams.find((t: { id: string }) => t.id === B).abilityCap).toBeUndefined();
   });
 
@@ -166,10 +167,10 @@ describe("⚙ 更多 修正", () => {
 
   it("a thief's armed 偷襲 counts as a use spent, so its refund never goes past the set", () => {
     const g = started();
-    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === A ? { ...t, abilityUses: 1, sneakArmed: true as const } : t)) };
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => (t.id === A ? { ...t, abilityUses: 2, sneakArmed: true as const } : t)) };
     g.fix(A, "ability+");
     expect(g.lastTo(g.host)).toMatchObject({ detail: "at_limit" });
-    expect(g.team(A).abilityUses).toBe(1);
+    expect(g.team(A).abilityUses).toBe(2);
   });
 
   it("takes back a held potion only, armed or not, without counting it as drunk", () => {
@@ -223,6 +224,6 @@ describe("⚙ 更多 修正", () => {
     g.fix(A, "ability-");
     const second = new DungeonRoom({ broadcast: vi.fn(), storage: g.storage } as unknown as RoomIO, () => 0, { bank: bank(), epilogueDelayMs: 0 });
     expect(await second.restore()).toBe("restored");
-    expect(second.game!.teams[0]).toMatchObject({ reward: 5, abilityUses: 1, fixes: [{ fix: "score+", from: 0, to: 5 }, { fix: "ability-", from: 2, to: 1 }] });
+    expect(second.game!.teams[0]).toMatchObject({ reward: 5, abilityUses: 2, fixes: [{ fix: "score+", from: 0, to: 5 }, { fix: "ability-", from: 3, to: 2 }] });
   });
 });

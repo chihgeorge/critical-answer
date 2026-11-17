@@ -128,6 +128,35 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.team(A).itemArmedFor).toBe("m1"); // the phone's 「藥水還在」 (E2)
   });
 
+  // Value: protects=a potion doubles a mage's skill die (drinkable on a fill-in after its check) and a cleric's prayer die
+  // (drinkable on its wrong lock); fails_when=startRoll or the drink gate stays crit/check only; why_new=only crit, check and
+  // warrior dice were covered; seam=none; no_claim=the phones' potion button
+  it("doubles a mage's skill die after a fill-in check and a cleric's prayer die on its wrong lock", () => {
+    const m = started(text("t1"), ["mage", null]);
+    m.give(A);
+    m.dice.push(2); // a failed check: no hint, so the mage's die is still to come
+    send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
+    vi.advanceTimersByTime(2000);
+    m.drink();
+    expect(m.team(A).itemArmedFor).toBe("t1");
+    m.dice.push(5, 16);
+    send(m.room, m.phones[0], { type: "TEAM_USE_ABILITY", questionId: "t1" });
+    expect(m.state().pendingRoll).toMatchObject({ kind: "mage", value: 16, values: [5, 16] });
+    expect(m.team(A).item).toBeUndefined();
+
+    const c = started(mc("m1"), ["cleric", null]);
+    c.give(A);
+    send(c.room, c.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: c.room.game!.optionOrder.m1.indexOf(1) });
+    send(c.room, c.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1" });
+    send(c.room, c.host, { type: "HOST_REVEAL", teamId: A, questionId: "m1" });
+    vi.advanceTimersByTime(2000);
+    c.drink();
+    expect(c.team(A).itemArmedFor).toBe("m1");
+    c.dice.push(15, 3); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
+    send(c.room, c.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
+    expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
+  });
+
   it("a wrong answer with no roll keeps the potion, no longer armed", () => {
     const g = started(text("t1"));
     g.give(A);
@@ -190,6 +219,29 @@ describe("🧪 lucky potion in the room", () => {
     const second = new DungeonRoom({ broadcast: vi.fn(), storage } as unknown as RoomIO, () => 0, { bank: bank(mc("m1")), epilogueDelayMs: 0 });
     expect(await second.restore()).toBe("restored");
     expect(second.game!.teams[0]).toMatchObject({ item: undefined, potionsDrunk: 1 });
+  });
+
+  // Value: protects=a restart inside a cleric's prayer die restores a failed prayer, never a free one (class dice);
+  // fails_when=restore keeps prayed with no die, so the cleric's 重答 keeps the turn; why_new=no restart test rolled a class
+  // die; seam=none; no_claim=real Durable Object storage (memory storage)
+  it("a restart inside a cleric's prayer die restores a failed prayer, with the use spent", async () => {
+    const storage = memoryStorage();
+    const c = started(mc("m1"), ["cleric", null], storage);
+    send(c.room, c.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: c.room.game!.optionOrder.m1.indexOf(1) });
+    send(c.room, c.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1" });
+    send(c.room, c.host, { type: "HOST_REVEAL", teamId: A, questionId: "m1" });
+    vi.advanceTimersByTime(2000);
+    c.dice.push(12);
+    send(c.room, c.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" }); // the prayer die rolls; the room restarts in its beat
+    expect(c.state().pendingRoll).toMatchObject({ kind: "cleric" });
+    const second = new DungeonRoom({ broadcast: vi.fn(), storage } as unknown as RoomIO, () => 0, { bank: bank(mc("m1")), epilogueDelayMs: 0 });
+    expect(await second.restore()).toBe("restored");
+    expect(second.game!.pendingWrong).toEqual({ teamId: A, questionId: "m1", optionIndex: c.room.game!.optionOrder.m1.indexOf(1), prayFailed: true });
+    expect(second.game!.teams[0].abilityUses).toBe(c.room.game!.teams[0].abilityUses);
+    // Without the restart the 12 lands and the prayer stands, no longer marked as rolling.
+    vi.advanceTimersByTime(2000);
+    expect(c.room.game!.pendingWrong).toMatchObject({ prayed: true });
+    expect(c.room.game!.pendingWrong?.praying).toBeUndefined();
   });
 
   describe("the owl's give line (E5)", () => {

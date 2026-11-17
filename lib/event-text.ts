@@ -33,6 +33,9 @@ export const BOON_TEXT: Record<Boon, string> = {
   blessing: "✨ 祝福：下次答對多一半",
 };
 
+/** A change with its sign: 「+3」, 「−5」 (a chef below a success takes some away). */
+export const signed = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n)}`;
+
 /** What the event did, in one line: 「+20 飽足感（廚師 +3）」, 「職業能力 +1 次」, 「下次答對獎勵減半」. */
 export function eventEffectLine(r: Pick<EventResult, "satiety" | "chefBonus" | "abilityUse" | "boon">): string {
   if (r.abilityUse) return "職業能力 +1 次";
@@ -40,7 +43,7 @@ export function eventEffectLine(r: Pick<EventResult, "satiety" | "chefBonus" | "
   if (r.boon === "blessing") return "下次答對多拿一半";
   // A rotten dish on an empty belly takes nothing.
   if (r.satiety === 0) return "飽足感已經見底，沒被扣";
-  const chef = r.chefBonus ? `（廚師 +${r.chefBonus}）` : "";
+  const chef = r.chefBonus ? `（廚師 ${signed(r.chefBonus)}）` : "";
   return `${r.satiety >= 0 ? "+" : "−"}${Math.abs(r.satiety)} 飽足感${chef}`;
 }
 

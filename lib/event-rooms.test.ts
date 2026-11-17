@@ -144,9 +144,10 @@ describe("openEvent", () => {
     expect(currentTurnTeamId(after)).toBe("t1");
   });
 
-  it("a chef gets 20% more from what an event gives, never from what it takes", () => {
+  it("a chef gets nothing extra from an event: its die reads only answers (class dice)", () => {
     const { result } = openEvent(inEvent("great", game(["chef", undefined])), "t0", first);
-    expect(result).toMatchObject({ satiety: 30, chefBonus: 5 });
+    expect(result).toMatchObject({ satiety: 25 });
+    expect(result.chefBonus).toBeUndefined();
   });
 
   it("once a team is in the boss room, opening an event walks the team into the boss room, effect and all", () => {
@@ -185,7 +186,7 @@ describe("openEvent", () => {
     const none = openEvent(inEvent("good"), "t0", first);
     expect(none.result).toMatchObject({ satiety: 10 });
     expect(none.result.abilityUse).toBeUndefined();
-    expect(openEvent(inEvent("spring", game(["chef", undefined])), "t0", first).result).toMatchObject({ satiety: 12, chefBonus: 2 });
+    expect(openEvent(inEvent("spring", game(["chef", undefined])), "t0", first).result).toMatchObject({ satiety: 10 });
   });
 
   it("a curse halves the next correct answer's base once, a blessing adds half; a wrong answer keeps it", () => {

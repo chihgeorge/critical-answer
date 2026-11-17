@@ -12,6 +12,14 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL } from
 import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, type EventReveal, type FileVideo, type FortuneView, type LobbyTeams, type MediaCommand, type PendingRoll, type PodiumReveal, type PublicMediaContent, type PublicQuestion, type Reaction, type ScreenAudio, type CalibrateRun, type ServerMessage, type ClientMessage, type SoundCue, type StateMessage, type HostEffect } from "@/lib/protocol";
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
+import { answerReader } from "@/lib/class-dice";
+
+/** Whose class reads a crit or answer die: the team's chef or armed thief; a 改成答對's die is the chef's or the thief's,
+ * whichever the team is (its 偷襲 was spent on the wrong answer). */
+function rollReader(roll: PendingRoll, team: { classId?: SpectatorView["teams"][number]["classId"]; sneakArmed?: true } | undefined): "chef" | "thief" | undefined {
+  if (roll.rejudge) return team?.classId === "chef" ? "chef" : "thief";
+  return roll.kind === "crit" || roll.kind === "answer" ? answerReader(team) : undefined;
+}
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
@@ -437,7 +445,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
-      {question && <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
+      {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {/* A buzzer phase's typed answer is for the host only (boss-music-buzzer.md M2): the others could still buzz. */}
       {turn?.typedAnswer && !buzz && (
@@ -776,7 +784,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         )}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
         {!asking && !reveal && !card && question && !question.options && (
-          <MageHint hint={view.mageHints?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
+          <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
         {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
@@ -865,7 +873,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
       ) : (
-        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} values={pendingRoll.values} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} />
+        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} values={pendingRoll.values} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} castOn={question?.options ? "multipleChoice" : question?.items ? "sort" : "text"} reader={rollReader(pendingRoll, view.teams.find((t) => t.id === pendingRoll.teamId))} rejudge={!!pendingRoll.rejudge} />
       )}
     </>
   );

@@ -274,7 +274,7 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
       expect(state(g.room).undoWrong).toEqual({ teamId: T1, questionId: g.q });
       g.undo();
       expect(g.room.game!.pendingWrong).toBeNull();
-      expect(g.room.game!.teams[0]).toMatchObject({ reward: 10, abilityUses: 2, roomIndex: 1 });
+      expect(g.room.game!.teams[0]).toMatchObject({ reward: 10, abilityUses: 3, roomIndex: 1 });
     }
     const p = game(true);
     p.judge(false, "team");

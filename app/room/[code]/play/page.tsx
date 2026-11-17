@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type CalibrateRun, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MAGE_ABILITY_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
@@ -29,22 +29,22 @@ import { MageHint } from "@/components/mage-hint";
 import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  warrior: `擲 1d20 代替答題，${WARRIOR_TARGET} 以上算答對`,
-  mage: "選擇題刪 2 個錯的選項；填空題看答案第一個字",
-  cleric: "答錯後，這回合再答一次",
-  thief: `偷襲：這題答對，獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`,
-  chef: `被動：每次拿到獎勵分都多 ${CHEF_BONUS_PERCENT}%（每 10 分多 ${CHEF_BONUS_PERCENT / 10} 分，魔王搶答階段不加），不用按`,
+  warrior: `擲 d20 代替答題：${WARRIOR_TARGET} 以上算答對拿八成，20 雙倍，1 扣整題`,
+  mage: "擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效",
+  cleric: "答錯後祈禱擲骰：7 以上這回合再答一次，20 不扣次數",
+  thief: `偷襲：答對後看答對骰，7 以上獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2，20 再翻倍`,
+  chef: "被動：答對時看答對骰，1 ×0.1、2–6 ×0.8、7–19 ×1.3、20 ×2（魔王搶答階段不算），不用按",
 };
 
 /** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（戰士技能一場 {MORE_ABILITY_USES} 次，法師 {MAGE_ABILITY_USES} 次，其他 {ABILITY_USES} 次；魔王搶答階段都不能用）</div>
+      <div className="text-[18px]">選一個職業（技能一場 {ABILITY_USES} 次，都要擲 d20：1 大失敗、2–6 小失敗、7–19 成功、20 大成功；魔王搶答階段都不能用）</div>
       <div className="grid grid-cols-2 gap-2">
         {CLASS_IDS.map((id) => {
           const picked = current === id;
@@ -76,16 +76,31 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
 
 /** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. The caller shows it only while
  * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
-function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "crit" | "check"; send: (m: ClientMessage) => void }) {
+function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "crit" | "check" | "mage" | "cleric"; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   if (!me?.item || me.itemArmed || game.view.buzz) return null;
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水<small className="text-[13px]">{die === "crit" ? "答對時的暴擊骰擲兩次取高" : "說服檢定擲兩次取高"}</small>
+      🧪 喝下幸運藥水<small className="text-[13px]">{POTION_DIE[die]}</small>
+      {die === "crit" && me.classId === "mage" && me.abilityUses > 0 ? <small className="text-[13px]">先施法的話，用在技能骰</small> : null}
       {/* The server never doubles the warrior's answer die (dungeon-room.ts startRoll); its button sits right below. */}
       {die === "crit" && me.classId === "warrior" && me.abilityUses > 0 ? <small className="text-[13px]">戰士的答題骰不算</small> : null}
     </PixelButton>
   );
+}
+
+/** Which die a potion drunk now doubles: the next one this team rolls (class dice). */
+const POTION_DIE = { crit: "答對時的暴擊骰擲兩次取高", check: "說服檢定擲兩次取高", mage: "法師技能骰擲兩次取高", cleric: "祈禱骰擲兩次取高" } as const;
+
+/** What a roll in its beat says on the phone; the big screen shows it. */
+function rollStatus(kind: string | undefined, value: number): string {
+  if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
+  if (kind === "crit") return `答對！暴擊骰擲出 ${value}，看大螢幕 ▶`;
+  if (kind === "check") return `說服檢定擲出 ${value}，看大螢幕 ▶`;
+  if (kind === "mage") return `🔮 施法擲出 ${value}，看大螢幕 ▶`;
+  if (kind === "cleric") return `✝️ 祈禱擲出 ${value}，看大螢幕 ▶`;
+  if (kind === "answer") return `答對！答對骰擲出 ${value}，看大螢幕 ▶`;
+  return value === 20 ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${value}！看大螢幕 ▶`; // a warrior's 20 is a crit on any question
 }
 
 /** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
@@ -120,7 +135,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
         {/* A kill's 4d20 has four dice: the big screen shows them (kill-roll.md). */}
         <D20 value={roll.kind === "kill" ? "?" : roll.value} size={54} />
-        <span className="text-[20px]">{roll.kind === "kill" ? "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶" : roll.kind === "crit" ? `答對！暴擊骰擲出 ${roll.value}，看大螢幕 ▶` : roll.kind === "check" ? `說服檢定擲出 ${roll.value}，看大螢幕 ▶` : roll.value === 20 && !!(q?.options || q?.items) ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${roll.value}！看大螢幕 ▶`}</span>
+        <span className="text-[20px]">{rollStatus(roll.kind, roll.value)}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {
@@ -143,20 +158,23 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief" && !q.checkFirst) {
     // Not before the check: 偷襲 is armed once the question is up.
-    body = button("🗝️", "偷襲：這題答對加碼", `${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+    body = button("🗝️", "偷襲：這題答對加碼", `答對骰 7 以上 ${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+  } else if (me.classId === "mage" && game.view.mageCasts?.[checkKey(q.id, teamId)]) {
+    // One cast per question, whatever the die showed (rules 「一題一次」).
+    return null;
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
-    // The room keeps one wrong option: with 2 left it removes 1.
-    body = button("🔮", `刪掉 ${Math.min(2, q.options.length - 2 - gone.length)} 個錯的選項`, `剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+    // The skill die decides how many go (class dice); the bar after counts what went.
+    body = button("🔮", "施法：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
   } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
-    body = button("🔮", "看第 1 個是誰", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "施法：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && !q.checkFirst && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // Not before the check (the question is not up yet); after it, only when it gave no first character.
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
-    body = button("🔮", "看答案第一個字", `大家都看得到・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "施法：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else return null;
   return body;
 }
@@ -241,10 +259,10 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
       {wrong && (
         <div className="flex items-center gap-2 text-[22px]">
           <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
-          {prayed ? "祈禱了！這回合再答一次" : bossMiss && !canPray ? "答錯了！" : "答錯了！要怎麼辦？"}
+          {rolling && prayed ? "祈禱中……看大螢幕 ▶" : prayed ? "祈禱了！這回合再答一次" : bossMiss && !canPray ? "答錯了！" : "答錯了！要怎麼辦？"}
         </div>
       )}
-      {sorting && <MageHint hint={game.view.mageHints?.[q.id]} sort testId="mage-hint" />}
+      {sorting && <MageHint hint={game.view.mageHints?.[q.id]} kind={game.view.mageHintKinds?.[q.id]} sort testId="mage-hint" />}
       {sorting && !frozen && <div className="text-[16px]">按住 ☰ 拖曳排順序</div>}
       {sorting ? (
         <SortList
@@ -284,22 +302,28 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         })}
       </div>
       )}
-      {bossMiss && canPray ? (
+      {wrong && rolling ? (
+        <ClassAbility game={game} teamId={teamId} send={send} />
+      ) : bossMiss && canPray ? (
+        <>
+        <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />
         <div className="mt-1 flex gap-2">
           <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
-            ✝️ 祈禱<small className="text-[13px]">立刻答新題・剩 {me!.abilityUses} 次</small>
+            ✝️ 祈禱<small className="text-[13px]">擲 d20，7 以上立刻答新題・剩 {me!.abilityUses} 次</small>
           </PixelButton>
           <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "var(--lav)" }} onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
             不用<small className="text-[13px]">換下一隊</small>
           </PixelButton>
         </div>
+        </>
       ) : bossMiss ? (
         <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
       ) : wrong ? (
         <>
+          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />}
           {canPray && (
             <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
-              ✝️ 祈禱<small className="text-[13px]">現在再答一次・剩 {me!.abilityUses} 次</small>
+              ✝️ 祈禱<small className="text-[13px]">擲 d20，7 以上現在再答一次・剩 {me!.abilityUses} 次</small>
             </PixelButton>
           )}
           <PixelButton variant="ok" className="!m-0 mt-1 flex !min-h-[64px] flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
@@ -307,9 +331,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
           </PixelButton>
           <FleeButtons questionId={q.id} send={send} prayed={prayed} />
         </>
-      ) : rolling ? (
-        <ClassAbility game={game} teamId={teamId} send={send} />
-      ) : lock ? (
+      ) : rolling ? null : lock ? (
         <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
       ) : inFlight ? (
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
@@ -332,7 +354,8 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         </PixelButton>
         </>
       )}
-      {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
+      {/* One mount through the die: a remount would lose the mage's cast and hide 「🔮 刪掉了」. */}
+      {!wrong && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
       {(lockFailed || dropped) && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
   );
@@ -496,17 +519,20 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
       {!buzzed && questionLine(q) && <QuestionStrip text={questionLine(q)!} />}
-      {!buzzed && <MageHint hint={game.view.mageHints?.[q.id]} testId="mage-hint" />}
-      {wrong ? (
+      {!buzzed && <MageHint hint={game.view.mageHints?.[q.id]} kind={game.view.mageHintKinds?.[q.id]} testId="mage-hint" />}
+      {wrong && rolling ? (
+        <ClassAbility game={game} teamId={teamId} send={send} />
+      ) : wrong ? (
         <>
           <div className="flex items-center gap-2 text-[22px]" role="status">
             <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
             答錯了！要怎麼辦？
           </div>
+          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />}
           <div className="mt-1 flex gap-2">
             {canPray && (
               <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
-                祈禱<small className="text-[13px]">現在再答一次・剩 {me!.abilityUses} 次</small>
+                祈禱<small className="text-[13px]">擲 d20，7 以上現在再答一次・剩 {me!.abilityUses} 次</small>
               </PixelButton>
             )}
             <PixelButton variant="ok" className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" onClick={() => send({ type: "TEAM_WRONG_CHOICE", questionId: q.id, choice: "retry" })}>
@@ -598,6 +624,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </form>
         </>
       )}
+      {/* A mage's skill die may still take a potion once the check is done (class dice), before its hint shows. */}
+      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint && <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} />}
       {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
@@ -1301,7 +1329,7 @@ export default function PlayPage() {
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
-              {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.choice.chefBonus}）</span> : null}
+              {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.choice.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}
@@ -1315,7 +1343,7 @@ export default function PlayPage() {
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
-              {revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 +{revealed.sorted.chefBonus}）</span> : null}
+              {revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.sorted.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}
@@ -1421,7 +1449,7 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
         <LabelChip>❓ 神秘房</LabelChip>
         <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
         <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
-        {reveal.chefBonus ? <div className="text-[15px]">（廚師 +{reveal.chefBonus}）</div> : null}
+        {reveal.chefBonus ? <div className="text-[15px]">（廚師 {signed(reveal.chefBonus)}）</div> : null}
       </Panel>
       <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
     </div>
