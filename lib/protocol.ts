@@ -65,6 +65,11 @@ export type HiddenFile = { kind: "file"; audioOnly?: true };
 export type FileVideo = { kind: "file"; url: string; audioOnly?: true };
 /** What SCREEN_VIDEO and SCREEN_TEST carry: only ever sent to host pages and keyed big screens. */
 export type ScreenVideo = Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo;
+/** Why the room refused a TEAM_LOCK_OPTION (the ERROR invalid_action detail): the phone drops 鎖定中… at once instead of
+ * waiting out its confirm timer. The room's lock handler can send only these. */
+export const LOCK_REFUSALS = ["reveal_pending", "memorizing", "answer_pending", "not_your_turn", "stale_question", "no_selection", "selection_changed"] as const;
+export type LockRefusal = (typeof LOCK_REFUSALS)[number];
+
 /** Why the big screen's test load of one clip failed (docs/designs/screen-media-test.md D3). */
 export const SCREEN_TEST_ERRORS = ["blocked", "gone", "error", "timeout", "no_picture"] as const;
 export type ScreenTestError = (typeof SCREEN_TEST_ERRORS)[number];

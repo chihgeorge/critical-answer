@@ -57,7 +57,6 @@ const ascii = (bytes: Uint8Array, from: number, to: number) => String.fromCharCo
 const VIDEO_BRANDS = new Set(["isom", "iso2", "iso5", "iso6", "mp41", "mp42", "avc1"]);
 const AUDIO_BRANDS = new Set(["M4A ", "M4B "]);
 
-// shortcut: checks the container only, not the codec (an HEVC MP4 passes); the editor preview catches what the browser can't play.
 function sniffMedia(bytes: Uint8Array, declared: string): MediaContentType | null {
   if (bytes.length >= 12 && ascii(bytes, 4, 8) === "ftyp") {
     const brand = ascii(bytes, 8, 12);
@@ -72,6 +71,38 @@ function sniffMedia(bytes: Uint8Array, declared: string): MediaContentType | nul
   return null;
 }
 
+/** The top-level `moov` box of an MP4 (before or after `mdat`), or null when the boxes don't parse. */
+function moovBox(bytes: Uint8Array): Uint8Array | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let at = 0; at + 8 <= bytes.length; ) {
+    let size = view.getUint32(at);
+    let header = 8;
+    if (size === 1) {
+      if (at + 16 > bytes.length) return null;
+      size = view.getUint32(at + 8) * 2 ** 32 + view.getUint32(at + 12);
+      header = 16;
+    } else if (size === 0) size = bytes.length - at; // runs to the end of the file
+    if (size < header) return null; // smaller than its own header (a 64-bit size of 0 too): unreadable, and it would never advance
+    if (ascii(bytes, at + 4, at + 8) === "moov") return bytes.subarray(at, Math.min(at + size, bytes.length));
+    at += size;
+  }
+  return null;
+}
+
+/** True when an MP4's sample entries name HEVC (iPhone's default; many browsers can't play it). Only `moov` is searched:
+ * the compressed media in `mdat` may hold the same four bytes by chance. Boxes that don't parse count as not HEVC. */
+export function isHevc(bytes: Uint8Array): boolean {
+  const moov = moovBox(bytes);
+  if (!moov) return false;
+  // One character per byte (TextDecoder's latin1 is not on every runtime), so the search matches only those exact bytes.
+  let text = "";
+  for (const b of moov) text += String.fromCharCode(b);
+  // A sample entry's type is followed by 6 reserved zero bytes; a title or comment in udta/meta saying "hvc1" is not.
+  // shortcut: only HEVC is refused; AV1 or VP9 in an MP4 still pass and the editor preview catches them. Refuse them too if one turns up.
+  return /(hvc1|hev1|dvh1|dvhe)\0{6}/.test(text);
+}
+
+const HEVC = "這支影片是 HEVC（H.265）編碼，很多瀏覽器放不出來：請轉成 H.264 再上傳（iPhone 可以在「設定 > 相機 > 格式」選「最相容」再錄）";
 const UNSUPPORTED = "不支援這種檔案：圖片請用 PNG、JPEG 或 WEBP，影片請用 MP4（H.264／AAC），聲音用 M4A 或 MP3";
 const MEDIA_TOO_LARGE = "影片或聲音超過 25 MB，請先剪短或壓縮";
 const IMAGE_TOO_LARGE = "圖片超過 5 MB，請先縮小";
@@ -147,6 +178,7 @@ export async function handleBankImageApi(request: Request, deps: BankImageApiDep
   const contentType = image ?? sniffMedia(bytes, request.headers.get("Content-Type") ?? "");
   if (!contentType) return reject(400, "unsupported", UNSUPPORTED);
   if (image && bytes.byteLength > MAX_IMAGE_BYTES) return reject(413, "image_too_large", IMAGE_TOO_LARGE);
+  if (contentType.endsWith("/mp4") && isHevc(bytes)) return reject(400, "hevc", HEVC);
 
   try {
     const { key } = await deps.putImage(bytes, contentType);
@@ -155,5 +187,40 @@ export async function handleBankImageApi(request: Request, deps: BankImageApiDep
   } catch (err) {
     console.error(JSON.stringify({ event: "image_upload_failed", error: String(err) }));
     return new Response("上傳失敗，請再試一次", { status: 502, headers: cors });
+  }
+}
+
+/** Starts the error BankStore.sweepOrphanedMedia throws while a bank is unreadable: the handler answers 409 with it. */
+export const MEDIA_SWEEP_STUCK = "有題庫讀不出來或格式太舊：先救回題庫，或在編輯器把它存一次，再清理";
+
+export interface MediaSweepDeps {
+  ownerKey: string | undefined;
+  allowedOrigins: string;
+  /** Lists the bucket and returns the files no bank, backup or cleanup queue knows about (`orphans`, queued for
+   * cleanup when `queue`) and the keys that are not server-made uploads (`skipped`, never queued). */
+  sweep(queue: boolean): Promise<{ orphans: string[]; skipped: string[] }>;
+}
+
+/** Owner-only sweep for media files the cleanup queue lost track of (docs/designs/multi-bank.md): GET lists them, POST
+ * queues them. Nothing is deleted here; the cleanup alarm deletes them after the usual wait, if no bank uses them then. */
+export async function handleMediaSweepApi(request: Request, deps: MediaSweepDeps): Promise<Response> {
+  const cors = corsHeaders(request.headers.get("Origin"), deps.allowedOrigins, "GET, POST, OPTIONS");
+  if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (request.method !== "GET" && request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: cors });
+  const authError = ownerAuthResponse(request, deps.ownerKey, cors);
+  if (authError) return authError;
+  const queue = request.method === "POST";
+  try {
+    const { orphans, skipped } = await deps.sweep(queue);
+    return Response.json({ queued: queue, orphans, skipped }, { headers: cors });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(JSON.stringify({ event: "media_sweep_failed", queue, error: message }));
+    // A Durable Object RPC keeps the error's message (not its class), the same as BANK_NOT_FOUND in bank-api.ts.
+    // A fixed text, never the caught message: the stuck bank ids are in the log above.
+    if (message.includes(MEDIA_SWEEP_STUCK)) return new Response(MEDIA_SWEEP_STUCK, { status: 409, headers: cors });
+    // The listing, the Durable Object or the alarm failed, or a cleanup ran meanwhile. Sweeping again is safe: a file
+    // already queued is known and is not queued twice.
+    return new Response("清理掃描沒做完，請稍後再試一次（再掃一次不會重複排）", { status: 503, headers: cors });
   }
 }

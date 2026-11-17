@@ -442,6 +442,10 @@ describe("after a restart", () => {
   it.each([
     ["names no team", (snap: any) => ({ teamId: "ghost", questionId: snap.game.boss.currentQuestionId, optionIndex: 0 })],
     ["names a question the team no longer faces", () => ({ teamId: T1, questionId: "stale-q", optionIndex: 0 })],
+    ["has a damaged option index", (snap: any) => {
+      const t = snap.game.teams.find((x: any) => x.id === T1);
+      return { teamId: T1, questionId: t.inBoss ? snap.game.boss.currentQuestionId : t.currentQuestionId, optionIndex: "2" };
+    }],
   ])("a saved pendingWrong that %s is dropped, so it cannot pin the turn forever", async (_, pendingWrong) => {
     const a = setup();
     startedGame(a.room);
@@ -452,6 +456,23 @@ describe("after a restart", () => {
     b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
     expect(await b.room.restore()).toBe("restored");
     expect(b.room.game!.pendingWrong).toBeNull();
+  });
+
+  // Value: protects=a damaged saved `eliminated` cannot make every later lock throw; fails_when=restore keeps a
+  // non-array entry or a non-object map; why_new=TODO 手機答題的剩餘小風險 item 2
+  it.each([
+    ["a non-object map", () => "broken"],
+    ["damaged entries", () => ({ good: [1, 2], bad: "1", worse: [0, "x"], neg: [-1] })],
+  ])("a saved eliminated with %s keeps only lists of option indexes", async (_, eliminated) => {
+    const a = setup();
+    startedGame(a.room);
+    const snap = structuredClone(a.storage.data.get(SNAPSHOT_KEY)) as any;
+    snap.game.eliminated = eliminated();
+    const b = setup(a.clock.t);
+    b.storage.data.set(SNAPSHOT_KEY, snap);
+    b.storage.data.set(BANK_KEY, a.storage.data.get(BANK_KEY));
+    expect(await b.room.restore()).toBe("restored");
+    expect(b.room.game!.eliminated).toEqual(typeof eliminated() === "string" ? {} : { good: [1, 2] });
   });
 
   it("the alarm is set again from the saved last activity", async () => {

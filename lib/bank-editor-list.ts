@@ -165,3 +165,7 @@ export function restoreToSaved(bank: Bank, r: Removed, saved: Bank | null): Bank
   const next = restoreQuestion(bank, r);
   return saved && JSON.stringify(next) === JSON.stringify(saved) ? saved : next;
 }
+
+/** The bank an earlier 另存成新題庫 made but could not save into, while it is still listed: pressing it again saves into
+ * that one instead of making another empty bank. */
+export const saveAsLeftover = (made: string | null, banks: { id: string }[]): string | null => (made !== null && banks.some((b) => b.id === made) ? made : null);

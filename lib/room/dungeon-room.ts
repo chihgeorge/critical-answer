@@ -124,6 +124,7 @@ import {
   type HostEffect,
   HOST_FX_WINDOW_MS,
   DEFAULT_BANK_ENTRY,
+  type LockRefusal,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
@@ -333,8 +334,15 @@ function withCritDropped(g: GameState, teamId: string, questionId: string): Game
 function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
-  if (!p || !team) return null;
+  if (!p || !team || !(p.optionIndex === null || (Number.isInteger(p.optionIndex) && p.optionIndex >= 0))) return null;
   return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+}
+
+/** A saved `eliminated` map keeps only lists of option indexes: a damaged entry would make `includes` throw and wedge the room. */
+function restoredEliminated(g: GameState): GameState["eliminated"] {
+  const e: unknown = g.eliminated;
+  if (typeof e !== "object" || e === null || Array.isArray(e)) return {};
+  return Object.fromEntries(Object.entries(e).filter(([, v]) => Array.isArray(v) && v.every((i) => Number.isInteger(i) && i >= 0)));
 }
 
 /** The 改判 ledger: kept whole (dropping an entry would renumber the host's list), or empty if any entry is malformed. */
@@ -1079,7 +1087,7 @@ export class DungeonRoom {
       return "discarded";
     }
     this.roomEpoch = s.roomEpoch;
-    this.game = s.game && restoredCatch({ ...s.game, pendingWrong: restoredPendingWrong(s.game), judgments: restoredJudgments(s.game) });
+    this.game = s.game && restoredCatch({ ...s.game, pendingWrong: restoredPendingWrong(s.game), eliminated: restoredEliminated(s.game), judgments: restoredJudgments(s.game) });
     this.pendingTeams = s.pendingTeams;
     this.hostToken = s.hostToken;
     this.lateTeams = s.lateTeams ?? [];
@@ -3763,7 +3771,7 @@ export class DungeonRoom {
     if (!teamId || !game) return;
     const team = game.teams.find((t) => t.id === teamId);
     const q = this.question(questionId);
-    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
+    const reject = (detail: LockRefusal) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (this.paused()) return reject("reveal_pending");
     if (this.memorizing()) return reject("memorizing");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");

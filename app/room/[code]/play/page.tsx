@@ -9,7 +9,7 @@ import { DISCONNECTED_NOTICE, UNREACHABLE_NOTICE, UNREACHABLE_RETRY_LABEL, offli
 import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
-import { MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
+import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
 import { ABILITY_USES, CATCH_PAY, CHEF_BONUS_PERCENT, ORACLE_USES, MAGE_ABILITY_USES, MORE_ABILITY_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
@@ -170,11 +170,12 @@ function questionLine(q: PublicQuestion): string | null {
 
 /** The question on the answering team's own turn (docs/designs/phone-question-text.md D2): a dark
  * strip flush with the top of its turn panel, so nobody reads it as a fifth option. The default
- * margins cancel the panel's px-[10px] py-[10px] padding. */
+ * margins cancel the panel's px-[10px] py-[10px] padding. A long question (a local bank has no length cap) stops at
+ * 5 lines and scrolls inside the strip, so it never pushes 鎖定答案 or 下輪再答／逃跑 off an iPhone 12. */
 
 function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" }: { id?: string; text: string; className?: string }) {
   return (
-    <h2 id={id} className={`bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
+    <h2 id={id} className={`max-h-[calc(5*1.35em_+_20px)] overflow-y-auto overscroll-contain bg-[var(--k)] px-3 py-[10px] text-[20px] font-normal leading-[1.35] text-[var(--cream)] [overflow-wrap:anywhere] ${className}`}>
       {text}
     </h2>
   );
@@ -183,8 +184,11 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
  * either the beat (locked) or, after a wrong lock, 下輪再答 / 逃跑. Eliminated options are grey and inert.
+ * `drops` counts lock refusals and socket drops: one after a press means the lock is lost now, with no confirm wait.
+ * (A refusal of another action with the same detail can flash 沒送出 until the lock's STATE lands; a second press is
+ * refused as answer_pending, so it cannot lock twice.)
  */
-function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void }) {
+function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; teamId: string; send: (m: ClientMessage) => void; drops: number }) {
   const q = game.question!;
   const options = q.options ?? [];
   const pick = game.view.teams.find((t) => t.id === teamId)?.currentSelection ?? null;
@@ -201,10 +205,14 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
   const prayed = !!wrong?.prayed;
   // A press waiting for the room: keyed to the question and eventId, so a later turn on the same
   // question (after 重答, which bumps eventId) never looks like it is still in flight.
-  const [locking, setLocking] = useState<{ qid: string; eventId: number } | null>(null);
+  const [locking, setLocking] = useState<{ qid: string; eventId: number; drops: number } | null>(null);
   const [lockFailed, setLockFailed] = useState(false);
   // Not while the crit die rolls: the lock has landed, and the judgment that moves eventId comes after the die.
-  const inFlight = !lock && !wrong && !rolling && locking?.qid === q.id && locking.eventId === game.eventId;
+  const pressed = !lock && !wrong && !rolling && locking?.qid === q.id && locking.eventId === game.eventId;
+  // Refused or cut off since the press: failed now, not in 3 s. `locking` stays set after the lock lands, so a confirmed
+  // lock the room then loses in a restart shows here too.
+  const dropped = pressed && locking.drops !== drops;
+  const inFlight = pressed && !dropped;
   useEffect(() => {
     if (!inFlight) return;
     const id = setTimeout(() => {
@@ -313,7 +321,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
           className="!m-0 mt-1 !min-h-[62px] !text-[23px]"
           onClick={() => {
             setLockFailed(false);
-            setLocking({ qid: q.id, eventId: game.eventId });
+            setLocking({ qid: q.id, eventId: game.eventId, drops });
             // A sort order is picked here, all at once: the room keeps the pick, the lock names it.
             if (sorting) send({ type: "TEAM_SELECT_OPTION", questionId: q.id, optionIndex: myCode });
             send({ type: "TEAM_LOCK_OPTION", questionId: q.id, optionIndex: sorting ? myCode : pick! });
@@ -324,7 +332,7 @@ function MyChoicePanel({ game, teamId, send }: { game: StateMessage; teamId: str
         </>
       )}
       {!wrong && !rolling && <ClassAbility game={game} teamId={teamId} send={send} frozen={frozen} />}
-      {lockFailed && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
+      {(lockFailed || dropped) && !frozen && <div className="text-center text-[14px]">沒送出，再按一次</div>}
     </Panel>
   );
 }
@@ -829,6 +837,8 @@ export default function PlayPage() {
   /** A network drop (not a rest): the room skips an offline team's turn, so the team should know
    * it's disconnected, and after reconnecting whether the game moved on (lib/offline-notice.ts). */
   const [disconnected, setDisconnected] = useState(false);
+  /** Lock refusals and socket drops so far (MyChoicePanel's `drops`). */
+  const [lockDrops, setLockDrops] = useState(0);
   const [offlineMsg, setOfflineMsg] = useState<string | null>(null);
   const lastGame = useRef<StateMessage | null>(null);
   // The phase seen on this connection: a phone that reconnects into finished goes to the podium, as the screen does.
@@ -874,6 +884,7 @@ export default function PlayPage() {
       tap.onOpen();
     },
     onClose({ rested, openedBefore }) {
+      setLockDrops((n) => n + 1);
       if (rested || !openedBefore) return;
       setDisconnected(true);
       const g = lastGame.current;
@@ -884,6 +895,7 @@ export default function PlayPage() {
       if (tap.onMessage(msg, lastGame.current)) return;
       switch (msg.type) {
         case "ERROR": {
+          if (msg.error === "invalid_action" && LOCK_REFUSALS.some((d) => d === msg.detail)) setLockDrops((n) => n + 1);
           if (msg.error === "bad_code" && claimed.current) break;
           // Not once turned away: the refusal screen has its own wrong-code sentence.
           if (msg.error === "bad_code" && waited.current && !removed.current) {
@@ -1263,7 +1275,7 @@ export default function PlayPage() {
 
         {game && buzz?.picker === teamId && game.buzzCategories && <CategoryPanel categories={game.buzzCategories} chosen={buzz.category} send={send} />}
 
-        {game && !finished && !buzz && !held && isMyTurn && !game.question?.memorize && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} />}
+        {game && !finished && !buzz && !held && isMyTurn && !game.question?.memorize && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} drops={lockDrops} />}
 
         {/* #104: our own host-judged text turn is a fill-in: the team types its answer for the host. */}
         {game && !finished && !buzz && !held && isMyTurn && game.question && !game.question.memorize && !game.question.options && !game.question.items && (
