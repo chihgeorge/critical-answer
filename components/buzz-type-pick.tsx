@@ -16,8 +16,8 @@ function TypeButtons({ types, chosen, disabled, big, onPick }: { types: Types; c
           disabled={disabled || !t.left}
           title={t.left ? undefined : "這個題型的題目用完了"}
           className={`!m-0 ${big ? "!min-h-[56px] !text-[20px]" : "min-h-[40px] !px-3 text-[15px]"} [overflow-wrap:anywhere]`}
-          // A used-up type uses DESIGN.md's faded-tile tokens.
-          style={t.left ? { background: t.type === chosen ? "var(--ok)" : "var(--cream)" } : { background: "var(--cream2)", color: "var(--dim-ink)", textDecoration: "line-through" }}
+          // A used-up type uses DESIGN.md's faded-tile tokens, drawn, not :disabled opacity (as the cooling reaction buttons).
+          style={t.left ? { background: t.type === chosen ? "var(--ok)" : "var(--cream)" } : { background: "var(--cream2)", color: "var(--dim-ink)", textDecoration: "line-through", opacity: 1, boxShadow: "0 -4px 0 0 var(--dim-line), 0 4px 0 0 var(--dim-line), -4px 0 0 0 var(--dim-line), 4px 0 0 0 var(--dim-line)" }}
           onClick={() => onPick(t.type)}
         >
           {t.type}
@@ -34,7 +34,7 @@ export function TypePickPanel({ types, chosen, send }: { types: Types; chosen?: 
       <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
         <div className="text-[20px]">答對了！選下一題的題型</div>
         <TypeButtons types={types} chosen={chosen} big onPick={(qtype) => send({ type: "TEAM_PICK_TYPE", qtype })} />
-        <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人出題前都能改` : "沒有時間限制；不選就照順序出下一題"}</div>
+        <div className="text-[13px]">{chosen ? `已選：${chosen}・下一題開放搶答前都能改` : "沒有時間限制；不選就照順序出下一題"}</div>
       </Panel>
     </div>
   );

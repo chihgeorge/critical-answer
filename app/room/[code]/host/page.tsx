@@ -1637,7 +1637,7 @@ export default function HostPage() {
       </div>
 
       {/* The buzzer phase's next question itself (#321): it plays right after, not on the next rotation. */}
-      {picking === "buzz" && picks && game?.phase === "playing" && game.view.buzz && (
+      {picking === "buzz" && picks && game?.phase === "playing" && game.view.buzz && game.buzzTypes && (
         <QuestionPicker
           title="指定搶答下一題"
           note="換成這題，主持人按 ▶（或揭曉結束）後開放搶答。隊伍選的題型不算了。只有你看得到這個清單。"

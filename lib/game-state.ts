@@ -1090,7 +1090,7 @@ export function pickNextQuestion(game: GameState, teamId: string | null, by: "ca
   const start = questionIds.indexOf(currentQuestionId);
   const ring = questionIds.map((_, i) => questionIds[(start + i) % questionIds.length]);
   const id = ring.find((q) => of[q] === value && !game.revealedQuestionIds.includes(q));
-  if (!id) throw new InvalidActionError("no_such_category");
+  if (!id) throw new InvalidActionError(by === "qtype" ? "no_such_type" : "no_such_category");
   return pickQuestion(game, id, { ...unpicked(buzz), [by]: value, ...(teamId === null ? { hostPicked: true as const } : {}) });
 }
 

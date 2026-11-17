@@ -419,6 +419,9 @@ describe("parseBank", () => {
       const t = (content: MediaContent) => questionType({ kind: "text", id: "a1", content, answer: "x" });
       expect([audio, video, imageContent(), { kind: "text", value: "x" } as MediaContent].map(t)).toEqual(["聽歌", "影片", "看圖", "填空"]);
       expect(questionType({ kind: "timing", id: "a1", content: audio, target: 3 })).toBe("卡點");
+      const text = { kind: "text", value: "x" } as MediaContent;
+      expect(questionType({ kind: "multipleChoice", id: "a1", content: text, options: ["a", "b"], correctIndex: 0 })).toBe("選擇");
+      expect(questionType({ kind: "sort", id: "a1", content: text, items: ["a", "b"] })).toBe("排序");
       expect(hiddenVideo(audio)).toEqual({ kind: "youtube", audioOnly: true });
       expect([...imageKeysOf(parseBank(one({ ...q("a1", video), explanation: audio })))].sort()).toEqual([UUID_A, UUID_B]);
     });

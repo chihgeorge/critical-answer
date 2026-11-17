@@ -523,7 +523,23 @@ describe("buzzer boss phase in the room", () => {
     g.judge(IDS[1], true);
     expect(g.state().buzzTypes).toEqual([{ type: "聽歌", left: false }, { type: "填空", left: true }]);
     send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
-    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "no_such_category" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "no_such_type" });
+  });
+
+  it("the host may pick before any winner, and a host pick also ends the winner's category pick (#321)", () => {
+    const g = buzzerGame((id) => ({ ...typed(id), category: "動漫" }));
+    // Before the first ▶ there is no winner, but the host may set the type.
+    expect(g.state().buzzTypes).toEqual([{ type: "聽歌", left: true }, { type: "填空", left: true }]);
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "聽歌" });
+    expect(g.state().view.buzz).toMatchObject({ questionId: "b-a", qtype: "聽歌", hostPicked: true });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    expect(g.state().buzzCategories).toEqual(["動漫"]);
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-c" });
+    expect(g.state().buzzCategories).toBeUndefined();
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "not_picker" });
   });
 
   it("the host overrides the winner by type or by question; the winner's pick is then over (#321)", () => {
