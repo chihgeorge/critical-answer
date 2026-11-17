@@ -1344,7 +1344,11 @@ export default function PlayPage() {
               <div data-testid="phone-reveal-question" className="text-[18px] [overflow-wrap:anywhere]">{revealed.asked.content.kind === "text" ? revealed.asked.content.value : revealed.asked.prompt}</div>
             )}
             {revealed.asked?.content.kind === "image" && <QuestionMedia key={`asked-${revealed.questionId}`} content={revealed.asked.content} maxWidth={260} maxHeight={180} />}
-            <div className="text-[18px]">正解：{revealed.answer}</div>
+            {revealed.persuaded ? (
+              <div data-testid="phone-reveal-persuaded" className="text-[18px]">🗣️ 說服成功：{revealed.at?.monster.name ?? revealed.dish?.monster.name ?? "怪物"}讓路了</div>
+            ) : (
+              <div className="text-[18px]">正解：{revealed.answer}</div>
+            )}
             {revealed.explanation && revealed.explanation.kind === "text" && (
               <div className="text-[16px]">{revealed.explanation.value}</div>
             )}
@@ -1355,7 +1359,7 @@ export default function PlayPage() {
               // other media render site in this diff carries (adversarial review finding, /ship).
               <QuestionMedia key={revealed.questionId} content={revealed.explanation} label="詳解" maxWidth={260} maxHeight={180} zhCaptions />
             )}
-            {dishUp(cookStep) && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}</div>}
+            {dishUp(cookStep) && revealed.dish && <div data-testid="phone-dish" className="text-[18px]">🍲 今晚的菜：{revealed.dish.name}{revealed.dish.gift ? `（${revealed.dish.monster.name}送的${revealed.dish.part}）` : ""}</div>}
           </Panel>
         )}
 

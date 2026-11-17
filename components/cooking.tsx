@@ -133,8 +133,10 @@ export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0, motio
 
 /** The narrator's line once the dish is up (cooking I1): typed and read on the big screen. */
 export function dishLine(dish: Dish, team: string, boss: boolean): string {
-  if (boss) return `今晚的大菜：${dish.name}！`;
-  return team ? `今晚的菜：${dish.name}！${team}吃下 ${dish.points} 飽足感。` : `今晚的菜：${dish.name}！`;
+  // A persuaded monster shared an ingredient (persuasion-gift): the line says who gave it.
+  const gift = dish.gift ? `是${dish.monster.name}送的${dish.part}。` : "";
+  if (boss) return `今晚的大菜：${dish.name}！${gift}`;
+  return team ? `今晚的菜：${dish.name}！${gift}${team}吃下 ${dish.points} 飽足感。` : `今晚的菜：${dish.name}！${gift}`;
 }
 
 const POP = { fontSize: 26, padding: "2px 10px", background: "var(--k)", color: "#fff" } as const;
@@ -220,7 +222,7 @@ function DishCard({ dish, title }: { dish: Dish; title: string }) {
           🍲 {title}：{dish.name}
         </div>
         <div className="text-[18px]" style={{ color: "#6a4d74" }}>
-          {dish.part}・{dish.method}
+          {dish.gift ? `${dish.monster.name}送的${dish.part}` : dish.part}・{dish.method}
         </div>
         <div className="text-[20px]">「{dish.comment}」</div>
         <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>

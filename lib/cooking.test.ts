@@ -20,6 +20,14 @@ describe("dishLine", () => {
     expect(dishLine(dish, "", false)).toBe("今晚的菜：史萊姆凍！");
     expect(dishLine(dish, "紅隊", true)).toBe("今晚的大菜：史萊姆凍！");
   });
+
+  // Value: protects=a persuaded monster's dish says it was a gift (persuasion-gift); fails_when=the gift line is dropped or lands on a plain dish
+  it("says who gave the ingredient of a gift dish, and the card says it too", () => {
+    const gift = { ...dish, part: "一塊果凍", gift: true as const };
+    expect(dishLine(gift, "紅隊", false)).toBe("今晚的菜：史萊姆凍！是史萊姆送的一塊果凍。紅隊吃下 10 飽足感。");
+    expect(dishLine(gift, "", true)).toBe("今晚的大菜：史萊姆凍！是史萊姆送的一塊果凍。");
+    expect(renderToStaticMarkup(createElement(DishOnStage, { dish: gift, cardTop: 0, bottom: 0 }))).toContain("史萊姆送的一塊果凍・冰鎮");
+  });
 });
 
 /** The hook's first frame, as a page that has just opened sees it. */

@@ -27,12 +27,15 @@ describe("the monster catalog", () => {
   });
 
   // Value: protects=every dish fits the TV card; fails_when=a dish field is empty or over DISH_LIMITS; why_new=dishes moved from the bank into the catalog; seam=none; no_claim=the wording is good
-  it("has every dish field filled and within its limit", () => {
+  it("has every dish and gift field filled and within its limit", () => {
     for (const m of MONSTERS) {
       for (const k of Object.keys(DISH_LIMITS) as (keyof BankDish)[]) {
         expect(m.dish[k].trim(), `${m.id} ${k}`).not.toBe("");
         expect(Array.from(m.dish[k]).length, `${m.id} ${k}`).toBeLessThanOrEqual(DISH_LIMITS[k]);
+        expect(m.gift[k].trim(), `${m.id} gift ${k}`).not.toBe("");
+        expect(Array.from(m.gift[k]).length, `${m.id} gift ${k}`).toBeLessThanOrEqual(DISH_LIMITS[k]);
       }
+      expect(m.gift.name, m.id).not.toBe(m.dish.name);
     }
   });
 
