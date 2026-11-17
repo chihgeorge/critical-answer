@@ -3862,6 +3862,22 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
+  // Value: protects=a cleric cannot press 重答 while its prayer die rolls; fails_when=the roll_pending guard goes and a retry
+  // pressed in the beat keeps the turn though the die then fails; why_new=no test chooses during the beat; seam=none; no_claim=逃跑
+  it("refuses the cleric's 重答 while its prayer die rolls, so a failed die still passes the turn", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, q, use, setDie, lockWrong } = game("cleric");
+    lockWrong();
+    setDie(4);
+    use(); // the die starts its beat
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(err(conns[0])).toBe("roll_pending");
+    vi.advanceTimersByTime(2000);
+    expect(room.game!.pendingWrong).toMatchObject({ teamId: ids[0], prayFailed: true });
+    send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: q, choice: "retry" });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
   // Value: protects=the mage's skill die spends at the roll and a small failure gives the use back (class dice);
   // fails_when=a 2–6 keeps the use spent, or a 1 refunds it, or either lets the mage cast again on the question (a free reroll).
   it("the mage's 1 casts nothing and keeps the use spent; a 2–6 removes one option and gives it back; neither casts again", () => {
