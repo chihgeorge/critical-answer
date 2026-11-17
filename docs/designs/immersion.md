@@ -855,7 +855,7 @@ Metrics appended to `~/.gstack/analytics/spec-review.jsonl` (iterations 3, found
 
 Claude CEO voice (summary): critical, PR3 at 11/18 leaves no real-device check; high, `clipPlaying` stop-record machinery out of proportion, rely on the screen-side drop; high, layered "replaces X" wording will mislead a background lane, publish one effective PR2 spec; medium, ask the owner whether 🌑 is worth it (40% black hurts far-row readability, and Codex already noted it is not the event lights); medium, the event bank's boss maxHp; medium, a busy host may not press at all; consider automatic thunder on game events.
 
-Codex CEO voice (summary): high, a late end report can stop a restarted clip (no press in the report); high, multiple keyed screens have no playback policy; medium, three prominent controls for an unvalidated interaction, rehearse and defer dim if it competes with judging; medium, success should be a pre-launch check, not buttons existing.
+Codex CEO voice (summary): high, a late end report can stop a restarted clip (no press in the report); high, multiple keyed screens have no playback policy; medium, three prominent controls for an unvalidated interaction, try it on the real setup and defer dim if it competes with judging; medium, success should be a pre-launch check, not buttons existing.
 
 ```
 CEO DUAL VOICES — CONSENSUS TABLE:
