@@ -2,9 +2,11 @@
 // question hides its picture until the answer, and phones never embed the video. youtube.com is blocked and a fake
 // window.YT records every player call, so nothing here needs the network or a real video.
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame, nextQuestion, screenUrl, rollCheck } from "./answer";
+import { startGame, nextQuestion, screenUrl, rollCheck, closeLeftoverContexts } from "./answer";
 import { stubSpeechSynthesis, tapScreen } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+closeLeftoverContexts();
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };

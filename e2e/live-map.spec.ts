@@ -1,4 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // The big screen's live map (docs/designs/live-map.md), driven by a fake room: the socket never reaches
 // the server, so each test sets exactly the teams it needs.

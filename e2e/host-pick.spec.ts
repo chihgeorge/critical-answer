@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, nextQuestion } from "./answer";
+import { textOnlyBank, startGame, nextQuestion, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // Judged by hand with 答對！, which a multipleChoice turn doesn't take.
 textOnlyBank();

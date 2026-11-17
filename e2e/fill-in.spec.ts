@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck, screenUrl } from "./answer";
+import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // Fill-in (#104): on a text question the team types its answer, the host and the TV show it, the host judges.
 textOnlyBank();

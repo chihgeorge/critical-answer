@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl } from "./answer";
+import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // The persuasion check (dnd design R6, R-E1): a fill-in question starts with 擲骰說服 on the phone, and the question
 // shows on the big screen and the phone only once the die has rolled (check first, question after). The e2e worker

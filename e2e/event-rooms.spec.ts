@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, startGame, textOnlyBank, screenUrl } from "./answer";
+import { answerCorrectly, nextQuestion, startGame, textOnlyBank, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // 叉路 (docs/designs/branch-fork.md). The e2e worker runs with E2E_EVENT_TEAM=EventTeam (playwright.config.ts): the team
 // named EventTeam comes to a fork on every eligible room entry, and no other team ever does; E2E_MONSTER_SIDE=left hides

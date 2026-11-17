@@ -1,4 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /**
  * When a room is idle for hours it closes every connection with code 4001 on purpose (4002 once it has been

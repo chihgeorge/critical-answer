@@ -1,5 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // A test can pass while an older GET is still inside its route handler. On a slow runner the typed key is
 // already remembered when the page mounts (most likely typed before hydration), so it auto-loads twice (dev

@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck, screenUrl } from "./answer";
+import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 async function mageRoom(browser: Browser) {
   const host = await (await browser.newContext()).newPage();

@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, startGame, nextQuestion, screenUrl } from "./answer";
+import { answerCorrectly, startGame, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
 import { readFile } from "node:fs/promises";
+
+closeLeftoverContexts();
 
 /** The host's ⚙ 更多 drawer: the narration transcript downloads as a JSON file with a real narration line. */
 test("the host downloads a transcript with the narration lines", async ({ browser }) => {

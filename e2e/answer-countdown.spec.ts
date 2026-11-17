@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart } from "./answer";
+import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // 每題作答倒數 (docs/designs/answer-countdown.md): the host picks the seconds in the lobby, the big screen, the turn's
 // phone and the host page count down, and sending the answer stops it. Expiry and the rules are in lib/room/answer-clock.test.ts.

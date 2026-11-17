@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 restoreRoom0AfterEach();
 

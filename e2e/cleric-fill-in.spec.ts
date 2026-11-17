@@ -1,5 +1,7 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck } from "./answer";
+import { textOnlyBank, startGame, rollCheck, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 下輪再答 / 逃跑・同房 / 逃跑・換房.
 textOnlyBank();

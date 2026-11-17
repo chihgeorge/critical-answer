@@ -1,5 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl } from "./answer";
+import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();

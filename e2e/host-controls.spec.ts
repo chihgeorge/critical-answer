@@ -1,6 +1,8 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart } from "./answer";
+import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
+
+closeLeftoverContexts();
 
 async function hostRoom(browser: Browser) {
   const host = await (await browser.newContext()).newPage();
