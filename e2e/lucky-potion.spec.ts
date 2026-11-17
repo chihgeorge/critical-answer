@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 restoreRoom0AfterEach();
 
@@ -8,6 +10,9 @@ restoreRoom0AfterEach();
 // shows one die; seam=none; no_claim=which values land (unit tests)
 test("lucky potion: host gives it, the team drinks it, the crit rolls two dice and the potion is gone", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
+  // Every message the host page sends, to prove 取消 sent no HOST_GIVE_ITEM.
+  const sent: string[] = [];
+  host.on("websocket", (ws) => ws.on("framesent", (f) => sent.push(String(f.payload))));
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
@@ -22,14 +27,22 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
   // 給…一瓶幸運藥水？ asks first (#267): 取消 gives nothing, so the button stays and the next press still asks.
-  host.once("dialog", (d) => void d.dismiss());
+  const asked: string[] = [];
+  host.once("dialog", (d) => void (asked.push(d.message()), d.dismiss()));
   await host.getByTestId("give-potion").click();
+  await expect.poll(() => asked).toEqual([expect.stringContaining("給藥水隊一瓶幸運藥水？")]);
+  await expect(host.getByTestId("give-potion")).toBeEnabled();
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 給藥水");
-  host.once("dialog", (d) => void d.accept());
+  await expect(screen.getByTestId("pawn-potion")).toHaveCount(0);
+  await expect(team.getByTestId("phone-potion")).toHaveCount(0);
+  host.once("dialog", (d) => void (asked.push(d.message()), d.accept()));
   await host.getByTestId("give-potion").click();
+  await expect.poll(() => asked.length).toBe(2);
   await expect(host.getByTestId("give-potion")).toBeDisabled();
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 已有");
   await expect(screen.getByTestId("pawn-potion")).toBeVisible();
+  // The room's echo is in, so both presses' frames are logged, in order: only the accepted press gave a potion.
+  expect(sent.filter((m) => m.includes('"HOST_GIVE_ITEM"'))).toHaveLength(1);
   await expect(screen.getByTestId("screen-potion")).toHaveText("🧪 有幸運藥水");
   await expect(team.getByTestId("phone-potion")).toHaveText("🧪 有一瓶幸運藥水");
 

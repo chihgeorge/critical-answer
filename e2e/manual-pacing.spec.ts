@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { clickStart } from "./answer";
+import { clickStart, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // 手動停頓 (docs/designs/manual-pacing.md): the host's switch, the hold panel and ▶ 下一步, through 擲先攻. The e2e worker
 // holds the order only INITIATIVE_HOLD_MS (300 ms), so an order still up a second later is the manual hold. Every other

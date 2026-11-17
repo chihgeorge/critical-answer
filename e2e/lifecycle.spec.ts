@@ -2,6 +2,9 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { rmSync } from "node:fs";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /**
  * A room that nobody uses stops costing money: after the idle time the real Durable Object closes every

@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { screenUrl } from "./answer";
+import { screenUrl, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /** Direction D 「石框木牌」 (DESIGN.md): the stone frames and wooden tiles are on by default, and /screen?frames=0 takes them
  * off one TV without a deploy (the 11/19–22 merge freeze). */

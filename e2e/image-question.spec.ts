@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { startGame, rollCheck, nextQuestion, screenUrl } from "./answer";
+import { startGame, rollCheck, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+closeLeftoverContexts();
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };

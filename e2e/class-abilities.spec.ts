@@ -1,6 +1,8 @@
 import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+closeLeftoverContexts();
 
 restoreRoom0AfterEach();
 

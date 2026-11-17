@@ -1,6 +1,9 @@
 import { test, expect, type Page, type Locator, type Request } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 import { QUESTIONS_PER_PAGE } from "../lib/bank-editor-pages";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /** Every question row carries `data-testid="question-{id}"` (app/bank-editor/page.tsx) — far more
  * robust than climbing from a labeled field via xpath now that a row's content/explanation

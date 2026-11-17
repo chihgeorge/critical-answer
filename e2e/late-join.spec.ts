@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { startGame } from "./answer";
+import { startGame, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 const phone = async (browser: Browser, code: string, name: string) => {
   const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();

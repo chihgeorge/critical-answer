@@ -1,6 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
-import { screenUrl } from "./answer";
+import { screenUrl, closeLeftoverContexts } from "./answer";
 import { ERROR_TITLE } from "../components/error-screen";
+
+closeLeftoverContexts();
 
 /** A fake navigator.wakeLock that counts requests, since headless Chromium cannot hold a real one. */
 async function countWakeLocks(page: Page) {

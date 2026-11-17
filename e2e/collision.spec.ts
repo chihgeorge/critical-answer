@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /**
  * Room codes are 4 letters and rooms now outlive their connections (they are saved), so a newly created room

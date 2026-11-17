@@ -1,6 +1,8 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame, screenUrl } from "./answer";
+import { startGame, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+closeLeftoverContexts();
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };

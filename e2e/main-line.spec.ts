@@ -1,7 +1,9 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl } from "./answer";
+import { answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl, closeLeftoverContexts } from "./answer";
 import { stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
+
+closeLeftoverContexts();
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();

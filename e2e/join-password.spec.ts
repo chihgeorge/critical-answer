@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 test("a join password keeps strangers out of the lobby and lets the right password in through the home form", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();

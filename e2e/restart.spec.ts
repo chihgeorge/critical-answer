@@ -2,6 +2,9 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { rmSync } from "node:fs";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 /**
  * The point of saving a room: kill the server in the middle of a game (no goodbye, like a crash or a

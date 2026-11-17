@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl } from "./answer";
+import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
 import { setScreenAudio } from "./tts";
+
+closeLeftoverContexts();
 
 textOnlyBank();
 

@@ -1,6 +1,8 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { screenUrl, startGame } from "./answer";
+import { screenUrl, startGame, closeLeftoverContexts } from "./answer";
 import { PAUSED_OFFLINE } from "../lib/turn-info";
+
+closeLeftoverContexts();
 
 const UNREACHABLE = "連不上伺服器：請檢查網路，或稍後再試。";
 

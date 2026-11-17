@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
-import { startGame } from "./answer";
+import { startGame, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
+
+closeLeftoverContexts();
 
 // The e2e server has no ANTHROPIC_API_KEY and no way to reach a fake Anthropic (the key check runs in the
 // Worker, not the browser), so these cover the paths that need no network: a refused key never reaches
@@ -30,6 +32,9 @@ test("owner mode on a server without its own key says so, and the game still sta
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  // The key's status waits for HOST_OK. Early in a CI shard the first connect can miss and wait out partysocket's
+  // backoff, which once ate the whole 5 s wait for the status (run 44000555668: still 連線中…). Wait for the room first.
+  await expect(host.getByTestId("screen-link")).toHaveAttribute("href", /\/screen#s=./, { timeout: 15_000 });
 
   await host.getByRole("radio", { name: "站長金鑰" }).check();
   await host.getByRole("textbox", { name: /OWNER_KEY/ }).fill(E2E_OWNER_KEY);

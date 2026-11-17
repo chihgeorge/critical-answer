@@ -1,4 +1,7 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
+import { closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // ⚔️ 最後衝刺 on the big screen (docs/designs/last-sprint.md), driven by a fake room like live-map.spec.ts: the socket
 // never reaches the server, so each test sets exactly the state it needs.

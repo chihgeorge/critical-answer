@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
-import { NEXT_WAIT_MS, textOnlyBank, startGame } from "./answer";
+import { NEXT_WAIT_MS, textOnlyBank, startGame, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();

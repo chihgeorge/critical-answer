@@ -1,5 +1,7 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { screenUrl, clickStart } from "./answer";
+import { screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+
+closeLeftoverContexts();
 
 // 擲先攻 (lib/initiative.ts): each phone rolls its d20 and the big screen shows every die. The e2e worker fixes every
 // d20 at 10 (playwright.config.ts E2E_DIE), so the teams tie and keep the lobby order; the order holds only
