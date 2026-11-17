@@ -1338,7 +1338,10 @@ export class DungeonRoom {
     const id = currentQuestionIdOf(game, teamId);
     if (this.question(id)?.kind !== "text") return false;
     const roll = this.pendingRoll;
-    return (roll?.kind === "check" && roll.teamId === teamId && roll.questionId === id) || !game.checks?.[checkKey(id, teamId)];
+    const check = game.checks?.[checkKey(id, teamId)];
+    // A natural 20 that kills the boss rolls its 4d20 next: still unseen, so its question stays hidden through that beat too.
+    const won = roll?.kind === "kill" && check?.value === 20 && !check.dropped;
+    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check;
   }
 
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,

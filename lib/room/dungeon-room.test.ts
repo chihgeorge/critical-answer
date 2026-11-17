@@ -1299,6 +1299,24 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.boss.killedByTeamId).toBe(ids[0]);
     });
 
+    // Value: protects=a natural 20 that kills the boss keeps its unseen question hidden through the 4d20 beat and the end
+    // (persuasion-gift); fails_when=awaitingCheck lets the question out once the kill die replaces the check die
+    it("a natural 20 that kills the boss never shows its question, even during the kill dice", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const { room, roll } = checkGame(1);
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill" });
+      vi.advanceTimersByTime(4000);
+      expect(room.game!.phase).toBe("finished");
+      const sent = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+      expect(sent.some((m) => m.includes('"value":"？"') || m.includes("萬家福"))).toBe(false);
+      const reveal = sent.map((m) => JSON.parse(m)).findLast((m) => m.type === "STATE" && m.reveal)?.reveal;
+      expect(reveal).toMatchObject({ persuaded: true, answer: "", dish: { gift: true } });
+    });
+
     it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, hostConn, ids, roll } = checkGame();
@@ -1410,10 +1428,10 @@ describe("TEAM_SELECT_OPTION", () => {
       nat.roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       const reveal = lastBroadcast(nat.room).reveal;
-      for (const conn of [nat.hostConn, ...nat.conns]) {
-        const sent = (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0])).filter((m) => m.includes('"type":"STATE"'));
-        expect(sent.some((m) => m.includes("萬家福"))).toBe(false);
-      }
+      // Every STATE the room broadcast (the screen and the phones read these), from the start to the reveal.
+      const states = (nat.room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]));
+      expect(states.some((m) => m.includes('"reveal":{'))).toBe(true);
+      expect(states.some((m) => m.includes("萬家福") || m.includes('"value":"？"'))).toBe(false);
       expect(reveal.dish).toMatchObject({ ...monster.gift, gift: true, points: reveal.scored.points });
       expect(nat.room.game!.teams[0].dishes).toEqual([monster.gift.name]);
       // The same points as a correct answer the host judged on a shown question.
