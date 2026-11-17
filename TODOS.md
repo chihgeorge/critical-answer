@@ -106,7 +106,7 @@
 
 **What:** 首領還沒倒的那一擊揭曉時，大螢幕的背景、怪物名牌和樓層牌已經換成下一隊的房間（例如「地下 5 樓・幽暗深淵」），旁白卻還在說「某隊重擊首領」。原因是 `Playing` 的 `stageRoom` 和 `describeTurn` 跟著現在輪到的隊伍走；沒有料理（`dish`）時就沒有 `dish.room` 可以留住揭曉當下的房間。修法是讓揭曉帶上它發生的房間，跟 `dish.room` 一樣。
 
-**Why:** #271 的樓層牌讓這個不一致更明顯。2026-11-16 美術 QA 找到（報告在本機 `~/.gstack/projects/chihgeorge-critical-answer/reports/art-qa-2026-11-17.md`，只在本機）。要改協定，所以不放進活動前的修正。
+**Why:** #271 的樓層牌讓這個不一致更明顯。2026-11-17 美術 QA 找到（報告在本機 `~/.gstack/projects/chihgeorge-critical-answer/reports/art-qa-2026-11-17.md`，只在本機）。要改協定，所以不放進活動前的修正。
 
 **Effort/Priority:** S / P3，活動後
 
