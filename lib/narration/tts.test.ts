@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shouldSpeakNarration, pickVoice, speechTimeoutMs } from "./tts";
+import { shouldSpeakNarration, pickVoice, chineseVoices, speechTimeoutMs } from "./tts";
 
 describe("shouldSpeakNarration", () => {
   it("suppresses onConnect's resent lastNarration (eventId at or below the connection baseline)", () => {
@@ -86,6 +86,41 @@ describe("pickVoice", () => {
   it("falls back to a bare Hant-tagged voice (no region) only when no TW-tagged voice exists", () => {
     const hant = { lang: "zh-Hant" };
     expect(pickVoice([hant])).toBe(hant);
+  });
+
+  it("prefers a known Taiwan female voice, in list order, over the browser's first TW voice", () => {
+    const zhiwei = { lang: "zh-TW", name: "Microsoft Zhiwei - Chinese (Traditional, Taiwan)" };
+    const hanhan = { lang: "zh-TW", name: "Microsoft Hanhan - Chinese (Traditional, Taiwan)" };
+    const google = { lang: "zh-TW", name: "Google 國語（臺灣）" };
+    const meijia = { lang: "zh-TW", name: "Meijia" };
+    expect(pickVoice([zhiwei, hanhan])).toBe(hanhan);
+    expect(pickVoice([zhiwei, hanhan, google])).toBe(google);
+    expect(pickVoice([google, meijia])).toBe(meijia);
+  });
+
+  it("skips a known male voice when another TW voice exists, but still uses it when it is the only one", () => {
+    const yunjhe = { lang: "zh-TW", name: "Microsoft YunJhe Online (Natural) - Chinese (Taiwan)" };
+    const other = { lang: "zh-TW", name: "Some Voice" };
+    expect(pickVoice([yunjhe, other])).toBe(other);
+    expect(pickVoice([yunjhe])).toBe(yunjhe);
+  });
+
+  it("returns the saved voice (by voiceURI) first, whatever its language, and ignores one this browser lacks", () => {
+    const meijia = { lang: "zh-TW", name: "Meijia", voiceURI: "meijia" };
+    const cn = { lang: "zh-CN", name: "Tingting", voiceURI: "tingting" };
+    expect(pickVoice([meijia, cn], "tingting")).toBe(cn);
+    expect(pickVoice([meijia, cn], "gone")).toBe(meijia);
+    expect(pickVoice([meijia, cn], null)).toBe(meijia);
+  });
+});
+
+describe("chineseVoices", () => {
+  it("lists TW voices first, then the other zh / cmn voices, and drops the rest", () => {
+    const cn = { lang: "zh-CN" };
+    const tw = { lang: "zh-TW" };
+    const hk = { lang: "zh-HK" };
+    const cmnTw = { lang: "cmn-Hant-TW" };
+    expect(chineseVoices([cn, { lang: "en-US" }, tw, hk, cmnTw])).toEqual([tw, cmnTw, cn, hk]);
   });
 });
 

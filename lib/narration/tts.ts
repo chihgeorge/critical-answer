@@ -50,10 +50,35 @@ export function shouldSpeakNarration(narration: SpokenNarration, baselineEventId
  * one) get picked as a fallback, and even then never one tagged HK or MO (adversarial review
  * finding: an earlier version matched "TW" OR "Hant" with no requirement that TW also be
  * present, so a Hong Kong Traditional-Chinese voice — Cantonese-accented, not the intended
- * Taiwan Mandarin — silently won over a missing TW-tagged voice). */
-export function pickVoice<V extends { lang: string }>(voices: readonly V[]): V | undefined {
+ * Taiwan Mandarin — silently won over a missing TW-tagged voice).
+ *
+ * The voice saved by the screen's voice picker wins while this browser still offers it. Among TW voices: a known female
+ * voice (FEMALE_TW order) first, then any voice not known to be male, then the first one. */
+export function pickVoice<V extends VoiceLike>(voices: readonly V[], savedUri?: string | null): V | undefined {
+  const saved = savedUri ? voices.find((v) => v.voiceURI === savedUri) : undefined;
+  if (saved) return saved;
   const candidates = voices.filter((v) => /^(zh|cmn)/i.test(v.lang));
-  return candidates.find((v) => /TW/i.test(v.lang)) ?? candidates.find((v) => /Hant/i.test(v.lang) && !/HK|MO/i.test(v.lang));
+  const tw = candidates.filter((v) => /TW/i.test(v.lang));
+  for (const name of FEMALE_TW) {
+    const found = tw.find((v) => name.test(v.name ?? ""));
+    if (found) return found;
+  }
+  return tw.find((v) => !MALE_TW.test(v.name ?? "")) ?? tw[0] ?? candidates.find((v) => /Hant/i.test(v.lang) && !/HK|MO/i.test(v.lang));
+}
+
+type VoiceLike = { lang: string; name?: string; voiceURI?: string };
+
+/** Known Taiwan female voices, best first (a playtest found a male default voice unwanted), matched on the voice's
+ * name: Apple's Meijia, Chrome's Google 國語（臺灣）, then Microsoft's (Edge / Windows). */
+const FEMALE_TW = [/Meijia|美佳/i, /Google\s*國語/i, /HsiaoChen|曉臻/i, /HsiaoYu|曉雨/i, /Hanhan|涵涵/i, /Yating|雅婷/i];
+/** Known Taiwan male voices: never the default while another TW voice is offered. */
+const MALE_TW = /Zhiwei|志偉|Yunjhe|雲哲/i;
+
+/** Every Chinese voice, for the screen's voice picker: TW-tagged first, then the other zh / cmn ones, each group in the
+ * browser's own order. */
+export function chineseVoices<V extends VoiceLike>(voices: readonly V[]): V[] {
+  const zh = voices.filter((v) => /^(zh|cmn)/i.test(v.lang));
+  return [...zh.filter((v) => /TW/i.test(v.lang)), ...zh.filter((v) => !/TW/i.test(v.lang))];
 }
 
 /** Longest a line may take to speak before the screen gives up on its onend and reads on: some browsers sometimes

@@ -212,3 +212,13 @@ NO UNRESOLVED DECISIONS
 ## 後記重播判斷改成 server 標記（v0.9.4.0，2026-09-29）
 
 原本 `/screen` 用「這次連線有沒有先看過即時 GAME_OVER」判斷 EPILOGUE 是不是 `onConnect` 的重播。連線如果剛好落在 GAME_OVER 和即時 EPILOGUE 之間的約 4 秒，即時的那則會被誤判成重播而不念。現在 `onConnect` 重送後記時帶 `replay: true`，即時廣播不帶；`shouldSpeakEpilogue` 只看這個欄位。Worker 要比前端先部署（見 README 的部署段落），這樣讀這個欄位的頁面不會連到還沒送這個欄位的 server。
+
+## Voice picker（2026-11-16）
+
+試玩時預設挑到男聲，主辦想在活動那台電腦上試聽後自己挑。
+
+- **放大螢幕頁，不放主持人「⚙ 更多」：** 語音清單是各瀏覽器自己的，主持人的手機和大螢幕電腦的語音不同，在主持人頁挑沒有意義。大廳左上角「🗣 旁白聲音」打開 `components/voice-picker.tsx`，列出 `chineseVoices()`（TW 在前，其他 zh / cmn 在後），每個有「試聽」（念 `VOICE_SAMPLE`）和「選這個」。
+- **只在大廳出現：** 試聽要先 `speechSynthesis.cancel()`，遊戲中按會切掉正在念的旁白；大廳沒有旁白在念。
+- **存法：** `voiceURI` 存 localStorage 的 `screenVoice`（`lib/stored.ts`，例外吞掉）。這台瀏覽器沒有那個語音了（換瀏覽器、系統更新）就退回預設。
+- **預設：** `pickVoice(voices, savedUri)` 在 TW 語音裡先照順序找已知的臺灣女聲（Meijia、Google 國語（臺灣）、Microsoft HsiaoChen / HsiaoYu / Hanhan / Yating），再找不是已知男聲（Zhiwei、Yunjhe）的，最後才是第一個 TW 語音，沒有 TW 才走原本的 Hant fallback。
+- 念旁白的邏輯（`speak` / `speakAt`）沒變，只換 `ttsVoice`。

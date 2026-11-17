@@ -17,7 +17,9 @@ import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, P
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
-import { pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
+import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
+import { readStored, writeStored } from "@/lib/stored";
+import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
@@ -60,6 +62,8 @@ const bgmSupported = () => "AudioContext" in window;
 
 /** True only in a browser that actually implements the Web Speech API. */
 const ttsSupported = () => "speechSynthesis" in window;
+/** This screen computer's narration voice, by voiceURI (the lobby's 🗣 旁白聲音 picker). */
+const VOICE_KEY = "screenVoice";
 /** Browser support never changes while the page is open, so there is nothing to subscribe to. */
 const noSubscribe = () => () => {};
 
@@ -1263,6 +1267,12 @@ export default function ScreenPage() {
   /** The how-to-play page whose owl line was last spoken (D11). */
   const introSpoken = useRef<number | null>(null);
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
+  /** Every Chinese voice this browser offers, for the lobby's 🗣 旁白聲音 picker. */
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  function pickNarrationVoice(voice: SpeechSynthesisVoice) {
+    writeStored(VOICE_KEY, voice.voiceURI);
+    setTtsVoice(voice);
+  }
   /** Reset on every socket open AND on every LOBBY (a room reset can happen without a socket
    * reconnect, and a new game's eventIds start over from 0 — see tts.ts's shouldSpeakNarration
    * doc comment). null = "not yet established"; the next STATE message sets it from that
@@ -1284,7 +1294,9 @@ export default function ScreenPage() {
   useEffect(() => {
     if (!ttsSupported()) return;
     const load = () => {
-      const found = pickVoice(window.speechSynthesis.getVoices());
+      const all = window.speechSynthesis.getVoices();
+      setVoices(chineseVoices(all));
+      const found = pickVoice(all, readStored(VOICE_KEY));
       if (found) setTtsVoice(found);
     };
     load(); // some browsers already have the list on first call
@@ -1431,6 +1443,7 @@ export default function ScreenPage() {
   // --- Background music (lib/bgm.ts): the host's 🎵 switch, on by default ---
   const bgmOn = screenAudio.music;
   const showBgmToggle = useSyncExternalStore(noSubscribe, bgmSupported, () => false);
+  const showVoicePicker = useSyncExternalStore(noSubscribe, ttsSupported, () => false);
   const bgm = useRef<BgmPlayer | null>(null);
   /** The AudioContext is awake (a tap on the page woke it): sound can play. */
   const [audioRunning, setAudioRunning] = useState(false);
@@ -2099,6 +2112,8 @@ export default function ScreenPage() {
           {unlockLabel ?? "👆 開聲音"}
         </PixelButton>
       )}
+      {/* Lobby only: auditioning cancels any speech, which must never cut a narration short. */}
+      {showVoicePicker && !game && <VoicePicker voices={voices} current={ttsVoice} onPick={pickNarrationVoice} />}
     </FogRevealContext.Provider>
   );
 }
