@@ -143,6 +143,9 @@ export type AnswerReveal = {
   /** 🚨 成立 (docs/designs/anti-ai-cheating.md): `teamId` was caught asking an AI on this question, reported by `by`.
    * The answer shows, nothing is scored: no `scored`, `choice`, `sorted` or `dish`. */
   caught?: { teamId: string; by: string };
+  /** The monster the answer was given to and its room (`room` null for the boss), so the stage keeps that room through the
+   * reveal instead of the next team's, dish or not. Absent from older servers: the stage then falls back to `dish`. */
+  at?: { monster: PublicQuestion["monster"]; room: number | null };
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
   scored?: { teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).

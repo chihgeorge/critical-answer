@@ -46,7 +46,9 @@ describe("request", () => {
     await expect(make(f as unknown as typeof fetch).narrate(e)).resolves.toBe("第二名藍隊！\n<invalid/>\n火把熄滅，冒險結束。");
     const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
     expect(body.system).toContain("輸出 3 行");
-    expect(body.system).toContain("第1行：宣布第二名是「藍隊」");
+    expect(body.system).toContain("第1行：宣布第二名是事件裡「頒獎台第1行」的隊伍");
+    expect(body.system).not.toContain("藍隊"); // player-typed names stay out of the system prompt
+    expect(body.messages[0].content).toContain("頒獎台各行的隊伍：第1行「藍隊」；第2行「紅隊」。");
     expect(body.system).toContain("最後一行：寫 2 到 3 句話的遊戲後記");
   });
 
@@ -67,11 +69,13 @@ describe("request", () => {
     await make(f as unknown as typeof fetch).narrate(e);
     const body = JSON.parse(((f.mock.calls[0] as unknown as [string, RequestInit])[1].body) as string);
     expect(body.system).toContain("輸出 11 行");
-    expect(body.system).toContain("第1行：幫隊伍「乙」想一個好笑的榮譽稱號");
+    expect(body.system).toContain("第1行：幫事件裡「頒獎台第1行」的隊伍想一個好笑的榮譽稱號");
+    expect(body.messages[0].content).toContain("第1行「乙」");
     expect(body.system).toContain("玩了 6 回合，吃了 2 道料理，逃跑 1 次，開了神秘房（寶箱：黑暗料理……），有進魔王房");
     expect(body.system).toContain("「稱號｜理由」");
     expect(body.system).toContain("不要暗示名次或分數");
-    expect(body.system).toContain("第8行：宣布第三名是「丙」");
+    expect(body.system).toContain("第8行：宣布第三名是事件裡「頒獎台第8行」的隊伍");
+    expect(body.messages[0].content).toContain("第8行「丙」");
     expect(body.max_tokens).toBeGreaterThanOrEqual(1000);
   });
 

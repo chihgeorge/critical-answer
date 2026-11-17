@@ -16,6 +16,7 @@ function state(teams: Team[], o: Partial<StateMessage> & { turn?: string } = {})
   } as unknown as StateMessage;
 }
 const a = { id: "a", roomIndex: 0 };
+const slime = { sprite: "slime", name: "史萊姆", hue: 0 };
 
 describe("ambienceFor", () => {
   it("rotates drips, wind, campfire by the room of the team on turn", () => {
@@ -33,9 +34,15 @@ describe("ambienceFor", () => {
   });
 
   it("a dish reveal keeps the eaten monster's room, or the boss's (none)", () => {
-    const dish = (room: number | null) => ({ reveal: { dish: { room } } as never });
+    const dish = (room: number | null) => ({ reveal: { dish: { room, monster: slime } } as never });
     expect(ambienceFor(state([{ id: "a", roomIndex: 3 }], dish(1)))).toBe("wind");
     expect(ambienceFor(state([a], dish(null)))).toBeNull();
+  });
+
+  it("any reveal keeps the room it was answered in (reveal.at): a boss hit stays the boss's, not the next team's", () => {
+    const at = (room: number | null) => ({ reveal: { at: { room, monster: slime } } as never });
+    expect(ambienceFor(state([{ id: "a", roomIndex: 3 }], at(1)))).toBe("wind");
+    expect(ambienceFor(state([{ id: "a", roomIndex: 3 }], at(null)))).toBeNull();
   });
 
   it("the host's 🌧 環境音 off silences it; music and voice switches do not", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, floorLabel, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, turnLive, turnOpened } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, floorLabel, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -189,5 +189,23 @@ describe("pausedOffline", () => {
     // An offline team that keeps the turn (a wrong answer to settle, a typed answer) still has the host's buttons.
     expect(pausedOffline(view({ currentTurnTeamId: "a" }, [{ online: false }, { online: false }]))).toBe(false);
     expect(pausedOffline(view({ currentTurnTeamId: null }, []))).toBe(false); // no teams: nothing to wait for
+  });
+});
+
+describe("revealStage (the reveal keeps the room it was answered in)", () => {
+  const boss = { sprite: "dragon", name: "首領", hue: 10 } as PublicQuestion["monster"];
+  const slime = { sprite: "slime", name: "史萊姆", hue: 20 } as PublicQuestion["monster"];
+  it("a boss hit that does not kill keeps the boss room and the boss, in its phase colour", () => {
+    expect(revealStage({ at: { monster: boss, room: null } }, 2)).toEqual({ bossScene: true, room: null, monster: monsterLook(boss, PHASE_HUE_STEP) });
+  });
+  it("a room answer keeps its room and monster, never hue-shifted", () => {
+    expect(revealStage({ at: { monster: slime, room: 3 } }, 3)).toEqual({ bossScene: false, room: 3, monster: monsterLook(slime) });
+  });
+  it("an older server's dish still works; at wins when both are there; neither means the turn's own stage", () => {
+    const dish = { monster: slime, room: 1 } as never;
+    expect(revealStage({ dish }, 1)?.room).toBe(1);
+    expect(revealStage({ dish, at: { monster: boss, room: null } }, 1)?.room).toBeNull();
+    expect(revealStage({}, 1)).toBeNull();
+    expect(revealStage(null, 1)).toBeNull();
   });
 });

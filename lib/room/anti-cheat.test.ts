@@ -223,6 +223,7 @@ describe("the rulings", () => {
     expect(s.eventId).toBe(before + 1);
     expect(s.reveal).toMatchObject({ questionId: q, caught: { teamId: A, by: B } });
     expect(s.reveal.answer).toBeTruthy();
+    expect(s.reveal.at).toMatchObject({ room: 0 }); // the stage keeps the caught team's room, not the next team's
     expect(s.reveal.scored).toBeUndefined();
     expect(s.view.teams[1].reward).toBe(CATCH_PAY.bounty);
     expect(s.view.currentTurnTeamId).toBe(B);
