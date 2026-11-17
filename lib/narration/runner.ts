@@ -17,6 +17,8 @@ export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
 export const MAX_EPILOGUE_LINE = 160;
 /** A place call, read in one podium beat (podium-reveal.md D9). */
 export const MAX_CALL_LINE = 20;
+/** A call's length limit: MAX_CALL_LINE, raised for a long team name (up to 20 characters) so it still leaves 10 for the call. */
+export const callLimit = (team: string) => Math.max(MAX_CALL_LINE, [...team].length + 10);
 /** The longest raw AI title line 「稱號｜理由」 (podium-titles.md R2-4): a story must be longer. */
 export const MAX_TITLE_LINE = MAX_TITLE + 1 + MAX_TITLE_REASON;
 /** Words that place a team or hint at its score: a title is read before every place, so it says none (eng E1). */
@@ -38,7 +40,9 @@ export function fitsPart(parts: EpiloguePart[], i: number, line: string): boolea
   // With titles or calls before it, a title-length story is one of them out of place.
   if (part.kind === "story") return validLine(line, MAX_EPILOGUE_LINE) && (parts.length === 1 || line.trim().length > MAX_TITLE_LINE);
   const later = parts.slice(i + 1).flatMap((p) => (p.kind === "place" && p.team !== part.team ? [p.team] : []));
-  return validLine(line, MAX_CALL_LINE) && saysLine(line, part.team) && !later.some((n) => saysLine(line, n));
+  // A later team whose name is inside this one's (火龍 in 火龍隊) is looked for only outside this team's own name.
+  const rest = bare(line).split(bare(part.team)).join("\n");
+  return validLine(line, callLimit(part.team)) && saysLine(line, part.team) && !later.some((n) => bare(n).length > 0 && rest.includes(bare(n)));
 }
 
 /**

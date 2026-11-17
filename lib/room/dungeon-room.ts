@@ -3652,6 +3652,8 @@ export class DungeonRoom {
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
     // together in one STATE — no window where a client shows the next question first.
     this.reveal = null;
+    // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
+    const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
     if (caught && justAnswered) {
       // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
@@ -3661,7 +3663,7 @@ export class DungeonRoom {
       const q = this.question(questionId);
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
-      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), caught: { teamId, by: caught.by } };
+      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), ...(at ? { at } : {}), caught: { teamId, by: caught.by } };
     } else if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       this.clipError = null;
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
@@ -3687,6 +3689,7 @@ export class DungeonRoom {
         ...(fieldMarks ? { fields: fieldMarks } : {}),
         ...(timing ? { timing } : {}),
         ...(unseen || recalled ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
+        ...(at ? { at } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };

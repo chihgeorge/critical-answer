@@ -13,7 +13,7 @@ import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, ty
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
-import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, roomTheme } from "@/lib/turn-info";
+import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -314,11 +314,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // Who scored; a team removed mid-reveal gets no line rather than a nameless one.
   const scorer = reveal?.scored && view.teams.find((t) => t.id === reveal.scored!.teamId);
   const eater = view.teams[eaterIdx];
-  const bossScene = dish ? dish.room === null : turnInfo.bossScene;
-  const monster = dish ? monsterLook(dish.monster) : turnInfo.monster;
-  // The room on stage: the dish's room through its reveal, else the boss room or the team's room. The backdrop and the
+  // Any reveal keeps the room it was answered in (a boss hit too), from `reveal.at` or an older server's dish.
+  const stage = revealStage(reveal, view.bossPhase);
+  const bossScene = stage ? stage.bossScene : turnInfo.bossScene;
+  const monster = stage ? stage.monster : turnInfo.monster;
+  // The room on stage: the answer's room through its reveal, else the boss room or the team's room. The backdrop and the
   // floor chip both come from it, so they never disagree at the reveal.
-  const stageRoom = dish ? dish.room : bossScene ? null : turnInfo.room;
+  const stageRoom = stage ? stage.room : bossScene ? null : turnInfo.room;
   const classic = useClassicArt();
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
@@ -804,7 +806,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             (a class coming back would replay its animation, px-hit's shake after a miss). */}
         <div className={raging ? "px-rage" : undefined}>
           <div className={parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : undefined}>
-            <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : hits > 0 && inBoss ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
+            <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : hits > 0 && (stage ? bossScene : inBoss) ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
               <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
             </div>
           </div>

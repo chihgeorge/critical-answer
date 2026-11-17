@@ -100,7 +100,17 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
   };
 }
 
-type HoldFields = Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "phaseCard" | "phaseCardDue">;
+/** What the stage shows while a reveal is up: the monster answered and its room (null the boss's), not the next team's,
+ * which the same STATE already deals (cooking I6). From `reveal.at`, else an older server's `dish`; null without either.
+ * The boss keeps its phase colour (`bossPhase`), as on the finale. */
+export function revealStage(reveal: Pick<NonNullable<StateMessage["reveal"]>, "at" | "dish"> | null | undefined, bossPhase: number) {
+  const at = reveal?.at ?? reveal?.dish;
+  if (!at) return null;
+  const bossScene = at.room === null;
+  return { bossScene, room: at.room, monster: monsterLook(at.monster, bossScene ? PHASE_HUE_STEP * (bossPhase - 1) : 0) };
+}
+
+type HoldFields =Pick<StateMessage, "reveal" | "eventReveal" | "fortune" | "phaseCard" | "phaseCardDue">;
 
 /** The host page and the big screen say this while every team's phone is offline (rehearsal QA 2026-11-16 P1-1). */
 export const PAUSED_OFFLINE = "⏸ 遊戲暫停中，等隊伍連回";

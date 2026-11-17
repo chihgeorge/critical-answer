@@ -4240,6 +4240,26 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     expect(room.game!.teams[0].dishes).toContain(answer); // eaten all the same, just never told
   });
 
+  // TODOS 打中首領後的揭曉畫面在下一隊的房間演: a reveal names the room it was answered in, dish or not.
+  it("every correct reveal carries the room it was answered in: room 0 first, then null for a boss hit that does not kill", () => {
+    const { room, hostConn } = cookRoom();
+    const reveals: { at?: { room: number | null; monster: { name: string } }; dish?: unknown }[] = [];
+    for (let i = 0; i < 200 && room.game!.phase === "playing" && room.game!.boss.hp === room.game!.boss.maxHp; i++) {
+      const g = room.game!;
+      const t = g.teams[0];
+      serveNext(room, hostConn, seqOf(room));
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId, correct: true });
+      landKill(room);
+      reveals.push(states(room).at(-1).reveal);
+    }
+    expect(reveals[0].at).toMatchObject({ room: 0 });
+    const hit = reveals.at(-1)!;
+    expect(room.game!.boss.hp).toBeLessThan(room.game!.boss.maxHp);
+    expect(room.game!.phase).toBe("playing");
+    expect(hit.dish).toBeUndefined();
+    expect(hit.at).toMatchObject({ room: null, monster: { name: catalogMonster(BANK.boss.monster).name } });
+  });
+
   it("after the boss kill ends the game, 上菜 and 下一題 change nothing: the finished screen cooks on its own (cooking R8)", () => {
     const { room, hostConn } = cookRoom();
     for (let i = 0; i < 200 && room.game!.phase === "playing"; i++) {

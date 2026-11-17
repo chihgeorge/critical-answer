@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createRunner, saysLine, targetSegmentCount, type TranscriptEntry } from "./runner";
+import { createRunner, fitsPart, MAX_CALL_LINE, saysLine, targetSegmentCount, type TranscriptEntry } from "./runner";
 import { NarrationError } from "./errors";
 import type { NarrationProvider } from "./scripted";
 import { epilogueParts, type NarrationEvent } from "./events";
@@ -193,6 +193,17 @@ describe("narration runner", () => {
       const long = setup(provider(async () => `閃避專家｜逃了兩次\n跑跑王｜跑得快\n第二名是藍隊，他們今晚真的非常非常非常努力！\n第一名：紅 隊！\n${story}`));
       await long.runner.run(9, epi);
       expect(long.emitted[0].lines.slice(2, 4)).toEqual(["備用第2名", "第一名：紅 隊！"]);
+    });
+
+    // TODOS 頒獎排名的 9 個小問題: a team name inside another's no longer scripts the call; a long name still fits.
+    it("a call keeps its own team name out of the later-place check, and a long name raises the length limit", () => {
+      const parts = epilogueParts({ type: "epilogue", ranking: [{ name: "火龍", score: 9 }, { name: "火龍隊", score: 5 }], winners: ["火龍"], calls: [{ place: 2, team: "火龍隊" }, { place: 1, team: "火龍" }] });
+      expect(fitsPart(parts, 0, "第二名，火龍隊！")).toBe(true);
+      expect(fitsPart(parts, 0, "火龍隊第二，火龍拿第一")).toBe(false); // still spoils the winner
+      const long = "超級無敵宇宙霹靂火焰龍捲風隊";
+      const longParts = epilogueParts({ type: "epilogue", ranking: [{ name: "甲", score: 9 }, { name: long, score: 5 }], winners: ["甲"], calls: [{ place: 2, team: long }, { place: 1, team: "甲" }] });
+      expect(fitsPart(longParts, 0, `第二名是……${long}！`)).toBe(true);
+      expect(fitsPart(parts, 1, `第一名是火龍${"！".repeat(MAX_CALL_LINE)}`)).toBe(false); // short names keep 20
     });
 
     it("a call or story with a bar, or a story no longer than a title line, is scripted", async () => {
