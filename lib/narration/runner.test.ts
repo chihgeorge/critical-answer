@@ -200,6 +200,10 @@ describe("narration runner", () => {
       const parts = epilogueParts({ type: "epilogue", ranking: [{ name: "火龍", score: 9 }, { name: "火龍隊", score: 5 }], winners: ["火龍"], calls: [{ place: 2, team: "火龍隊" }, { place: 1, team: "火龍" }] });
       expect(fitsPart(parts, 0, "第二名，火龍隊！")).toBe(true);
       expect(fitsPart(parts, 0, "火龍隊第二，火龍拿第一")).toBe(false); // still spoils the winner
+      // The other way round: 火龍 is called first and 火龍隊 (which holds 火龍) is still to come.
+      const reversed = epilogueParts({ type: "epilogue", ranking: [{ name: "火龍隊", score: 9 }, { name: "火龍", score: 5 }], winners: ["火龍隊"], calls: [{ place: 2, team: "火龍" }, { place: 1, team: "火龍隊" }] });
+      expect(fitsPart(reversed, 0, "第二名是火龍！")).toBe(true);
+      expect(fitsPart(reversed, 0, "第二名是火龍隊！")).toBe(false); // names the winner early
       const long = "超級無敵宇宙霹靂火焰龍捲風隊";
       const longParts = epilogueParts({ type: "epilogue", ranking: [{ name: "甲", score: 9 }, { name: long, score: 5 }], winners: ["甲"], calls: [{ place: 2, team: long }, { place: 1, team: "甲" }] });
       expect(fitsPart(longParts, 0, `第二名是……${long}！`)).toBe(true);
