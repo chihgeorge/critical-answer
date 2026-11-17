@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { clickStart, closeLeftoverContexts } from "./answer";
+import { clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -24,11 +24,16 @@ test("manual pacing: 擲先攻 waits for 下一步, twice, and the switch goes b
   await a.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(a.getByTestId("roster")).toContainText("甲隊");
 
+  // The switch is in ⚙ 更多; the header marks manual while it is on.
   const pacing = host.getByTestId("host-pacing");
+  await openMore(host);
   await expect(pacing.getByRole("button", { name: "自動" })).toHaveAttribute("aria-pressed", "true");
   await pacing.getByRole("button", { name: "⏸ 手動" }).click();
   await expect(pacing.getByRole("button", { name: "⏸ 手動" })).toHaveAttribute("aria-pressed", "true");
+  await closeMore(host);
+  await expect(host.getByTestId("host-manual-mark")).toBeVisible();
 
+  await openSettings(host);
   await host.getByRole("checkbox", { name: "開始前播放玩法說明" }).uncheck();
   await clickStart(host);
 
@@ -45,6 +50,9 @@ test("manual pacing: 擲先攻 waits for 下一步, twice, and the switch goes b
   await expect(a.getByText("輪到我們了！")).toBeVisible();
   await expect(host.getByTestId("host-hold")).toHaveCount(0);
 
+  await openMore(host);
   await pacing.getByRole("button", { name: "自動" }).click();
   await expect(pacing.getByRole("button", { name: "自動" })).toHaveAttribute("aria-pressed", "true");
+  await closeMore(host);
+  await expect(host.getByTestId("host-manual-mark")).toHaveCount(0);
 });

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { closeLeftoverContexts } from "./answer";
+import { openMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -9,6 +9,8 @@ test("a join password keeps strangers out of the lobby and lets the right passwo
   await host.getByRole("button", { name: /主持遊戲/ }).click();
   await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  // The join password is in ⚙ 更多's 開局準備.
+  await openMore(host);
   await expect(host.getByText("目前沒有密碼")).toBeVisible();
   await host.getByPlaceholder("不設就留空").fill("dragon");
   await host.getByRole("button", { name: "設定" }).click();

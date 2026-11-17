@@ -19,7 +19,7 @@ const smallBtn = "!m-0 min-h-[44px] min-w-[52px] !px-3 !py-0 text-[15px]";
 const input = "px-input w-full";
 
 /**
- * The host's narration panel above the judge buttons (docs/designs/host-narration-edit.md D2–D18): one summary row,
+ * The host's narration panel in ⚙ 更多's 地城主旁白 (docs/designs/host-narration-edit.md D2–D18): one summary row,
  * opened into every line the big screen reads for the next team. A line not yet read can be swapped (HOST_EDIT_NARRATION);
  * below the lines, 下一句這樣說 queues a line for the next narration (HOST_NEXT_LINE).
  */
