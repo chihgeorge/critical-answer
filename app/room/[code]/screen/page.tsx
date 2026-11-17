@@ -826,7 +826,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
         </div>
       )}
-      {(cook === null || cook === 0) && !playerUp && nameplate({ left: "50%", bottom: 112, transform: "translateX(-50%)", zIndex: 5 })}
+      {/* Centred under the monster; a wide boss plate (16-20 hearts, the phase card) starts right of the 地城主 tag (x 214)
+          and grows rightwards instead of sliding under it. */}
+      {(cook === null || cook === 0) && !playerUp && nameplate({ left: "50%", bottom: 112, transform: "translateX(max(-50%, -256px))", zIndex: 5 })}
 
       {/* While a player is up the nameplate rides the dialogue box's top edge, like its 地城主 tag: a longer narration line
           lifts it with the box instead of the box covering it. Beside a panel player it sits at the box's right end, clear of
