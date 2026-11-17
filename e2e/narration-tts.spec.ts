@@ -90,6 +90,31 @@ test("screen TTS: no 語音 toggle on the screen; its first tap primes the voice
   expect(await ttsCalls(screen)).toEqual([""]);
 });
 
+test("screen TTS: the lobby's 🗣 旁白聲音 auditions a voice and keeps the chosen one across a reload", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: /主持遊戲/ }).click();
+  await page.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+
+  const screen = await page.context().newPage();
+  await stubSpeechSynthesis(screen);
+  await screen.goto(await screenUrl(page));
+  await screen.getByRole("button", { name: "🗣 旁白聲音" }).click();
+  const picker = screen.getByTestId("voice-picker");
+  // Nothing saved yet: the default, the first TW voice not known to be male.
+  await expect(picker.getByRole("button", { name: "選這個 Test zh-TW Voice" })).toHaveCount(0);
+
+  await picker.getByRole("button", { name: "試聽 Test Second Voice" }).click();
+  await expect.poll(async () => (await ttsCalls(screen)).at(-1)).toMatch(/地城的大門/);
+
+  await picker.getByRole("button", { name: "選這個 Test Second Voice" }).click();
+  await expect(picker.getByRole("button", { name: "選這個 Test Second Voice" })).toHaveCount(0);
+
+  await screen.reload();
+  await screen.getByRole("button", { name: "🗣 旁白聲音" }).click();
+  await expect(screen.getByTestId("voice-picker").getByRole("button", { name: "選這個 Test zh-TW Voice" })).toBeVisible();
+  await expect(screen.getByTestId("voice-picker").getByRole("button", { name: "選這個 Test Second Voice" })).toHaveCount(0);
+});
+
 test("screen TTS: speaks live narration (both line and the next-team prompt), but never the onConnect replay", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");

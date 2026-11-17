@@ -1,19 +1,21 @@
 import { expect, type Page } from "@playwright/test";
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
- * and every cancel(). getVoices() returns one usable zh-TW voice so pickVoice() finds it
+ * and every cancel(). getVoices() returns two usable zh-TW voices so pickVoice() finds one
  * immediately (no need to wait for a real voiceschanged event in the test environment). */
 export async function stubSpeechSynthesis(page: Page) {
   await page.addInitScript(() => {
     const calls: string[] = [];
     let cancelCount = 0;
-    const voice = { lang: "zh-TW", name: "Test zh-TW Voice", default: true } as SpeechSynthesisVoice;
+    const voice = { lang: "zh-TW", name: "Test zh-TW Voice", voiceURI: "test-zh-tw", default: true } as SpeechSynthesisVoice;
+    // A second one for the lobby's 🗣 旁白聲音 picker to choose.
+    const second = { lang: "zh-TW", name: "Test Second Voice", voiceURI: "test-second", default: false } as SpeechSynthesisVoice;
     (window as unknown as { __ttsCalls: string[] }).__ttsCalls = calls;
     (window as unknown as { __ttsCancelCount: () => number }).__ttsCancelCount = () => cancelCount;
     Object.defineProperty(window, "speechSynthesis", {
       configurable: true,
       value: {
-        getVoices: () => [voice],
+        getVoices: () => [voice, second],
         addEventListener: () => {},
         removeEventListener: () => {},
         // Ends each line a moment later, like a real voice: the screen reads one line at a time and waits for onend.
