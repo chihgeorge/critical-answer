@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
 import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -367,6 +367,8 @@ test("host narration panel: every line has its own 改, and an edited line reach
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   // The opening NARRATION fires right after start. No big screen is open, so nothing is read yet.
   await answerCorrectly(host);
+  // The narration panel is in ⚙ 更多.
+  await openMore(host);
   const toggle = host.getByTestId("narration-panel").getByRole("button", { name: /地城主旁白/ });
   await expect(toggle).toContainText(/\d 句・/);
   await toggle.click();
@@ -381,8 +383,9 @@ test("host narration panel: every line has its own 改, and an edited line reach
   await expect(team.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
 });
 
-/** Opens the host's narration panel if needed and swaps its last line for `text`. */
+/** Opens the host's narration panel (in ⚙ 更多) if needed, swaps its last line for `text`, and closes the drawer. */
 async function editLastLine(host: Page, text: string) {
+  await openMore(host);
   const panel = host.getByTestId("narration-panel");
   const toggle = panel.getByRole("button", { name: /地城主旁白/ });
   // The summary counts lines once the narration is in (not 旁白生成中…), so the panel won't close on its arrival (D12).
@@ -393,6 +396,7 @@ async function editLastLine(host: Page, text: string) {
   await input.fill(text);
   await input.press("Enter");
   await expect(panel.getByRole("button", { name: /地城主旁白/ })).toHaveAttribute("aria-expanded", "false"); // D12: closes once it lands
+  await closeMore(host);
 }
 
 // Value: protects=with the voice on, each how-to-play page's owl line is spoken once when the page comes up (how-to-play.md D11);
@@ -416,6 +420,7 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await tapScreen(screen);
   expect(await ttsCalls(screen)).toEqual([""]);
 
+  await openSettings(host);
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
   await clickStart(host);
   const page1 = "冒險者們，先聽我說規則……主持人會唸題目。";

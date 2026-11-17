@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -21,6 +21,7 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("倒數隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
 
+  await openSettings(host);
   await expect(host.getByTestId("answer-seconds")).toHaveValue("60");
   await host.getByTestId("answer-seconds").selectOption("30");
   // The lobby's 進王門檻 menu (#261) reaches the room too: the host's team row counts to 10, not the standard 15.
