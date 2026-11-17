@@ -20,9 +20,13 @@ export function VoicePicker({ voices, current, onPick }: { voices: SpeechSynthes
     utter.lang = voice.lang;
     window.speechSynthesis.speak(utter);
   }
+  function close() {
+    window.speechSynthesis.cancel(); // stop a sample still playing (lobby only: no narration to cut)
+    setOpen(false);
+  }
   if (!open) {
     return (
-      <PixelButton onClick={() => setOpen(true)} className="!m-0 !px-3 !py-1 text-[14px]" style={{ position: "fixed", top: 48, left: 12, zIndex: 30 }}>
+      <PixelButton onClick={() => setOpen(true)} className="!m-0 !px-3 !py-1 text-[14px]" style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30 }}>
         🗣 旁白聲音
       </PixelButton>
     );
@@ -33,11 +37,12 @@ export function VoicePicker({ voices, current, onPick }: { voices: SpeechSynthes
       aria-label="旁白聲音"
       data-testid="voice-picker"
       className="flex flex-col gap-2"
-      style={{ position: "fixed", top: 48, left: 12, zIndex: 30, width: "min(560px, calc(100vw - 24px))", maxHeight: "calc(100vh - 60px)", background: "var(--cream)", color: "var(--ink)", border: "4px solid var(--k)", padding: 12 }}
+      onKeyDown={(e) => e.key === "Escape" && close()}
+      style={{ position: "fixed", bottom: 12, right: 12, zIndex: 30, width: "min(560px, calc(100vw - 24px))", maxHeight: "calc(100vh - 24px)", background: "var(--cream)", color: "var(--ink)", border: "4px solid var(--k)", padding: 12 }}
     >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[18px]">🗣 旁白聲音（只存在這台電腦）</span>
-        <PixelButton onClick={() => setOpen(false)} className="!m-0 !px-3 !py-1 text-[14px]">
+        <PixelButton onClick={close} autoFocus className="!m-0 !px-3 !py-1 text-[14px]">
           關閉
         </PixelButton>
       </div>
@@ -45,10 +50,11 @@ export function VoicePicker({ voices, current, onPick }: { voices: SpeechSynthes
         <p className="text-[16px]">這個瀏覽器沒有中文語音。</p>
       ) : (
         <ul className="flex flex-col gap-1 overflow-y-auto" style={{ minHeight: 0 }}>
-          {voices.map((v) => {
-            const chosen = v.voiceURI === current?.voiceURI;
+          {voices.map((v, i) => {
+            // Not by voiceURI alone: some engines leave it empty.
+            const chosen = v.voiceURI === current?.voiceURI && v.name === current?.name;
             return (
-              <li key={v.voiceURI} className="flex items-center gap-2 text-[15px]" style={{ background: chosen ? "var(--turn)" : undefined, padding: "2px 4px" }}>
+              <li key={`${i}|${v.voiceURI}|${v.name}`} className="flex items-center gap-2 text-[15px]" style={{ background: chosen ? "var(--turn)" : undefined, padding: "2px 4px" }}>
                 <span className="min-w-0 flex-1 truncate" title={v.name}>
                   {v.name} <span style={{ opacity: 0.7 }}>{v.lang}</span>
                 </span>

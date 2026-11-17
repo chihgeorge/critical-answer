@@ -1269,7 +1269,10 @@ export default function ScreenPage() {
   const [ttsVoice, setTtsVoice] = useState<SpeechSynthesisVoice | undefined>(undefined);
   /** Every Chinese voice this browser offers, for the lobby's 🗣 旁白聲音 picker. */
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  /** The voice picked on this page load: holds against a late voiceschanged even when storage is blocked. */
+  const pickedVoice = useRef<string | null>(null);
   function pickNarrationVoice(voice: SpeechSynthesisVoice) {
+    pickedVoice.current = voice.voiceURI;
     writeStored(VOICE_KEY, voice.voiceURI);
     setTtsVoice(voice);
   }
@@ -1296,7 +1299,7 @@ export default function ScreenPage() {
     const load = () => {
       const all = window.speechSynthesis.getVoices();
       setVoices(chineseVoices(all));
-      const found = pickVoice(all, readStored(VOICE_KEY));
+      const found = pickVoice(all, pickedVoice.current ?? readStored(VOICE_KEY));
       if (found) setTtsVoice(found);
     };
     load(); // some browsers already have the list on first call
