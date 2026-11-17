@@ -338,7 +338,7 @@ const mp4 = (codec: string, mdat = box("mdat", new Uint8Array(64)), moovFirst = 
 };
 
 describe("handleBankImageApi: HEVC video", () => {
-  it.each(["hvc1", "hev1", "dvh1"])("rejects an MP4 whose video is %s (400, says to convert to H.264), storing nothing", async (codec) => {
+  it.each(["hvc1", "hev1", "dvh1", "dvhe"])("rejects an MP4 whose video is %s (400, says to convert to H.264), storing nothing", async (codec) => {
     const putImage = vi.fn();
     const res = await post(mp4(codec), { putImage });
     expect(res.status).toBe(400);
@@ -355,6 +355,12 @@ describe("handleBankImageApi: HEVC video", () => {
   it("accepts H.264, and HEVC's four bytes inside mdat alone (compressed media can hold them by chance)", async () => {
     expect((await post(mp4("avc1"))).status).toBe(200);
     expect((await post(mp4("avc1", box("mdat", new TextEncoder().encode("..hvc1..")), false))).status).toBe(200);
+  });
+
+  it("accepts H.264 whose moov metadata merely says hvc1 (a title, not a sample entry)", async () => {
+    const ftyp = box("ftyp", new TextEncoder().encode("isom"));
+    const moov = box("moov", join(box("trak", box("avc1", new Uint8Array(16))), box("udta", new TextEncoder().encode("©nam my hvc1 clip"))));
+    expect((await post(join(ftyp, moov))).status).toBe(200);
   });
 
   it("accepts boxes it cannot walk as before: a size smaller than its header, a 64-bit size of 0, a cut-off header", async () => {
@@ -391,6 +397,6 @@ describe("handleMediaSweepApi", () => {
     expect(await stuck.text()).toContain("default");
     const down = await handleMediaSweepApi(sweepReq("POST"), sweepDeps(async () => Promise.reject(new Error("R2 list failed"))));
     expect(down.status).toBe(503);
-    expect(await down.text()).toContain("什麼都沒排進去");
+    expect(await down.text()).toContain("請稍後再試一次");
   });
 });

@@ -91,15 +91,17 @@ export class BankStoreDO extends DurableObject<Env> {
 
   /** Files in the bucket the cleanup queue lost track of (see BankStore.sweepOrphanedMedia). The bucket holds only
    * uploads from /api/bank/image; any other key is reported, never queued. */
-  async sweepMedia(queue: boolean): Promise<{ orphans: string[]; skipped: string[] }> {
-    const keys: string[] = [];
-    let cursor: string | undefined;
-    do {
-      const page = await this.env.images.list({ cursor, limit: 1000 });
-      keys.push(...page.objects.map((o) => o.key));
-      cursor = page.truncated ? page.cursor : undefined;
-    } while (cursor);
-    return this.store.sweepOrphanedMedia(keys, queue);
+  sweepMedia(queue: boolean): Promise<{ orphans: string[]; skipped: string[] }> {
+    return this.store.sweepOrphanedMedia(async () => {
+      const keys: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await this.env.images.list({ cursor, limit: 1000 });
+        keys.push(...page.objects.map((o) => o.key));
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      return keys;
+    }, queue);
   }
 
   getVersionedBank(id?: string): Promise<VersionedBank> {

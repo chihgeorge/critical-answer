@@ -94,10 +94,12 @@ function moovBox(bytes: Uint8Array): Uint8Array | null {
 export function isHevc(bytes: Uint8Array): boolean {
   const moov = moovBox(bytes);
   if (!moov) return false;
-  // One character per byte (TextDecoder's latin1 is not on every runtime), so the search matches only those exact four bytes.
+  // One character per byte (TextDecoder's latin1 is not on every runtime), so the search matches only those exact bytes.
   let text = "";
   for (const b of moov) text += String.fromCharCode(b);
-  return /hvc1|hev1|dvh1|dvhe/.test(text);
+  // A sample entry's type is followed by 6 reserved zero bytes; a title or comment in udta/meta saying "hvc1" is not.
+  // shortcut: only HEVC is refused; AV1 or VP9 in an MP4 still pass and the editor preview catches them. Refuse them too if one turns up.
+  return /(hvc1|hev1|dvh1|dvhe)\0{6}/.test(text);
 }
 
 const HEVC = "這支影片是 HEVC（H.265）編碼，很多瀏覽器放不出來：請轉成 H.264 再上傳（iPhone 可以在「設定 > 相機 > 格式」選「最相容」再錄）";
@@ -189,7 +191,7 @@ export async function handleBankImageApi(request: Request, deps: BankImageApiDep
 }
 
 /** Starts the error BankStore.sweepOrphanedMedia throws while a bank is unreadable: the handler answers 409 with it. */
-export const MEDIA_SWEEP_STUCK = "有題庫現在讀不出來，先救回題庫再清理";
+export const MEDIA_SWEEP_STUCK = "有題庫讀不出來或格式太舊：先救回題庫，或在編輯器把它存一次，再清理";
 
 export interface MediaSweepDeps {
   ownerKey: string | undefined;
@@ -214,8 +216,10 @@ export async function handleMediaSweepApi(request: Request, deps: MediaSweepDeps
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(JSON.stringify({ event: "media_sweep_failed", queue, error: message }));
+    // A Durable Object RPC keeps the error's message (not its class), the same as BANK_NOT_FOUND in bank-api.ts.
     if (message.includes(MEDIA_SWEEP_STUCK)) return new Response(message, { status: 409, headers: cors });
-    // The bucket listing or the bank's Durable Object failed: the queue is written last, so nothing was queued.
-    return new Response("清理掃描失敗，什麼都沒排進去，請稍後再試一次", { status: 503, headers: cors });
+    // The listing, the Durable Object or the alarm failed, or a cleanup ran meanwhile. Sweeping again is safe: a file
+    // already queued is known and is not queued twice.
+    return new Response("清理掃描沒做完，請稍後再試一次（再掃一次不會重複排）", { status: 503, headers: cors });
   }
 }

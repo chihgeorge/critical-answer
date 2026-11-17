@@ -650,7 +650,7 @@ describe("BankStore.sweepOrphanedMedia: files the cleanup queue lost track of", 
   it("lists only files no bank, backup or queue knows, and a dry run queues nothing", async () => {
     const { store, storage } = await setup();
     vi.spyOn(console, "log").mockImplementation(() => {});
-    expect(await store.sweepOrphanedMedia(BUCKET, false)).toEqual({ orphans: [LOST], skipped: ["by-hand.png"] });
+    expect(await store.sweepOrphanedMedia(async () => BUCKET, false)).toEqual({ orphans: [LOST], skipped: ["by-hand.png"] });
     expect(await storage.get("pendingMediaDeletes")).toEqual([{ key: QUEUED, deleteAt: 50 }]);
   });
 
@@ -658,7 +658,7 @@ describe("BankStore.sweepOrphanedMedia: files the cleanup queue lost track of", 
     const { store, onImagesOrphaned, at } = await setup();
     vi.spyOn(console, "log").mockImplementation(() => {});
     const SAVED_BACK = key(7);
-    await store.sweepOrphanedMedia([...BUCKET, SAVED_BACK], true);
+    await store.sweepOrphanedMedia(async () => [...BUCKET, SAVED_BACK], true);
     // A stale tab saves one of them into the default bank before the wait is over.
     await store.putBank(withImage(SAVED_BACK), 1);
     at(DELAY - 1);
@@ -675,7 +675,47 @@ describe("BankStore.sweepOrphanedMedia: files the cleanup queue lost track of", 
   it("refuses while a bank is unreadable, naming it, and queues nothing", async () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: { rooms: "not an array" }, version: 3 }); // pregate-literal: BANK_FORMAT=3 the stored version, not the format
     vi.spyOn(console, "error").mockImplementation(() => {});
-    await expect(new BankStore(storage).sweepOrphanedMedia([LOST], true)).rejects.toThrow(`${MEDIA_SWEEP_STUCK}：${DEFAULT_BANK_ID}`);
+    await expect(new BankStore(storage).sweepOrphanedMedia(async () => [LOST], true)).rejects.toThrow(`${MEDIA_SWEEP_STUCK}：${DEFAULT_BANK_ID}`);
     expect(await storage.get("pendingMediaDeletes")).toBeUndefined();
+  });
+
+  it("keeps the files of a backup in the old imageKey shape", async () => {
+    const { store, storage } = await setup();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await storage.put("legacyBank", { bank: { questions: [{ kind: "image", imageKey: LOST }] }, format: 1, version: 1 });
+    expect((await store.sweepOrphanedMedia(async () => BUCKET, true)).orphans).toEqual([IN_BACKUP]); // the other backup is gone now
+  });
+
+  it("refuses when a cleanup finished deleting while the bucket was listed (it may list a file that is gone)", async () => {
+    const { store, storage, at } = await setup();
+    at(100); // QUEUED and OLD_QUEUED are due
+    await expect(
+      store.sweepOrphanedMedia(async () => {
+        await store.runImageCleanup();
+        return BUCKET; // still lists QUEUED: the listing started before the delete
+      }, true),
+    ).rejects.toThrow("nothing queued");
+    expect((await storage.get("pendingMediaDeletes")) as { key: string }[]).not.toContainEqual(expect.objectContaining({ key: QUEUED }));
+  });
+
+  it("refuses while a cleanup that started earlier is still deleting, then works once it is done", async () => {
+    const { store, storage, onImagesOrphaned, at } = await setup();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    let finish = () => {};
+    onImagesOrphaned.mockImplementationOnce(() => new Promise<void>((resolve) => (finish = resolve)));
+    at(100);
+    const cleanup = store.runImageCleanup();
+    await vi.waitFor(() => expect(onImagesOrphaned).toHaveBeenCalledWith([QUEUED, OLD_QUEUED]));
+    await expect(store.sweepOrphanedMedia(async () => BUCKET, true)).rejects.toThrow("nothing queued");
+    expect(((await storage.get("pendingMediaDeletes")) as { key: string }[]).map((p) => p.key)).toEqual([]);
+    finish();
+    await cleanup;
+    // Done: the deleted files are no longer in the bucket listing, and LOST is queued.
+    expect((await store.sweepOrphanedMedia(async () => [LOST], true)).orphans).toEqual([LOST]);
+  });
+
+  it("leaves old imageKey files out of putBank's queue (never deleted, as before)", () => {
+    expect([...legacyImageKeys({ q: [{ kind: "image", imageKey: LOST }] })]).toEqual([]);
+    expect([...legacyImageKeys({ q: [{ kind: "image", imageKey: LOST }] }, undefined, true)]).toEqual([LOST]);
   });
 });

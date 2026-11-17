@@ -372,6 +372,12 @@ export default function BankEditorPage() {
         headers: { Authorization: `Bearer ${ownerKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ bank: next, version: to.version }),
       });
+      if (res.status === 409 && to.id === saveAsMade.current) {
+        // Most likely the earlier save did land and only its answer was lost: point at the new bank, not the deleted one.
+        saveAsMade.current = null;
+        setError(`題目可能已經存進「${banks.find((b) => b.id === to.id)?.name ?? "新題庫"}」了：在上面的題庫選單切換過去看看。`);
+        return;
+      }
       if (res.status === 409) {
         setError("題庫在你載入後被別人存過了：先按「載入題庫」拿最新版，再改一次存檔。");
         return;
