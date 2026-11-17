@@ -57,7 +57,8 @@ Nine conditions; every team tied on the highest value matches.
 - **Counters** (optional numbers on `Team`, absent reads as 0, so older saves load):
   - `natural1s`: every die that counts a natural 20 counts a natural 1 the same way: a correct answer's crit die, a
     persuasion check, each of the kill's 4d20. The warrior's d20 counts its 1 in `warriorRoll`, whether or not the
-    question makes it the crit die (E7). Class dice will count theirs in their own PR.
+    question makes it the crit die (E7). The class dice count both too (#341): the mage's skill die, the cleric's
+    prayer die and the answer die (a fill-in's, and a 改成答對's).
   - `correctAnswers`: +1 for each correct judgment (room, boss turn, boss buzz; a music question counts once).
   - `wrongAnswers`: +1 for each wrong judgment the team retries (`fleeChoice === "retry"`), a cleric's prayed one
     included; a flee or a switch counts in `flees` only (E10, G7). A wrong buzz counts (it is always a retry).

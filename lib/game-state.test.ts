@@ -2033,6 +2033,21 @@ describe("class dice: every tier per class", () => {
     const after = (v: number) => warriorRoll(rich, "T0", q0(g), v, first).game.teams[0].reward;
     expect([1, 4, 12, 20].map(after)).toEqual([20, 30, 38, 50]);
   });
+
+  // Value: protects=every class die's natural 20 and 1 counts toward 🎲 大成功王 and the fortune teller's 20 / 1
+  // conditions (#341); fails_when=a mage, prayer or answer die (改成答對's too) leaves natural20s / natural1s unchanged.
+  it("counts each class die's natural 20s and 1s", () => {
+    const naturals = (g: GameState) => [g.teams[0].natural20s ?? 0, g.teams[0].natural1s ?? 0];
+    expect([1, 12, 20].map((v) => naturals(cast(mc, v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
+    const c = game(["cleric", undefined]);
+    const prayed = pray(recordWrongLock(c, "T0", q0(c), 0), "T0");
+    expect([1, 12, 20].map((v) => naturals(prayerRoll(prayed, "T0", v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
+    const chef = game(["chef", undefined]);
+    const die = (v: number) => answerQuestion(chef, "T0", q0(chef), true, "retry", first, undefined, undefined, undefined, false, v).game;
+    expect([1, 12, 20].map((v) => naturals(die(v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
+    const ledger: GameState = { ...chef, judgments: [{ teamId: "T0", questionId: q0(chef), correct: false, points: 10, reads: "chef" }] };
+    expect([1, 12, 20].map((v) => naturals(hostRejudge(ledger, 0, "T0", q0(chef), true, v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
+  });
 });
 
 describe("submitText (fill-in, #104)", () => {

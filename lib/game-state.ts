@@ -1295,7 +1295,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, ...(sneakBack ? { abilityUses: t.abilityUses + sneakBack } : {}), typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && critValue !== undefined ? [critValue] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, ...(sneakBack ? { abilityUses: t.abilityUses + sneakBack } : {}), typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, [...(correct && critValue !== undefined ? [critValue] : []), ...(correct && answerDie !== undefined ? [answerDie] : [])]), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
   // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
   // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
   const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
@@ -1543,13 +1543,13 @@ export function mageCast(game: GameState, teamId: string, questionId: string, ta
   if (game.mageCasts?.[checkKey(questionId, teamId)]) throw new InvalidActionError("cast_done");
   const tier = skillTier(value);
   // Marked whatever the tier, so a 1 or a refunded 2–6 is not a free reroll.
-  // A 20 shows the whole answer to the room, so the question counts as revealed and is never dealt again (#343).
+  // A 20 shows the whole answer to the room, so the question counts as revealed, like a shown wrong lock (#343).
   const cast = {
     ...game,
     mageCasts: { ...game.mageCasts, [checkKey(questionId, teamId)]: true as const },
     ...(tier === 3 ? { revealedQuestionIds: withRevealed(game.revealedQuestionIds, questionId) } : {}),
   };
-  const refunded = tier === 1 ? { ...cast, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) } : cast;
+  const refunded = { ...cast, teams: patchTeam(game.teams, teamId, (t) => ({ ...(tier === 1 ? { abilityUses: t.abilityUses + 1 } : {}), ...withNaturals(t, [value]) })) };
   if (target.kind === "multipleChoice") {
     const old = game.eliminated[questionId] ?? [];
     const wrong = Array.from({ length: target.optionCount }, (_, i) => i).filter((i) => i !== target.correctIndex && !old.includes(i));
@@ -1686,6 +1686,7 @@ export function prayerRoll(game: GameState, teamId: string, value: number): Game
   const wrong = game.pendingWrong;
   if (wrong?.teamId !== teamId || !wrong.prayed) throw new InvalidActionError("no_prayer");
   const tier = skillTier(value);
+  game = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, [value])) };
   if (tier <= 1) return { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayFailed: true } };
   const stood = { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayed: true as const } };
   if (tier === 3) return { ...stood, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) };
@@ -1924,7 +1925,7 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
   if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
-  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
+  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }], ...withNaturals(x, needsDie ? [die!] : []) })) };
 }
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
  * `spring` are only for saves from before the 3-scene deck. */
