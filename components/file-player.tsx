@@ -48,7 +48,7 @@ export function FilePlayer({
   const el = useRef<HTMLVideoElement>(null);
   const applied = useRef<MediaWant | null>(null);
   const [status, setStatus] = useState<ClipStatus>("loading");
-  /** Goes up to load the file again: a ▶ or ⟲ while it shows 影片無法播放 retries (venue Wi-Fi). */
+  /** Goes up to load the file again: a ▶ or ⟲ while it shows 影片無法播放 retries (slow or filtered Wi-Fi). */
   const [attempt, setAttempt] = useState(0);
   // The reveal swaps in an explanation's file on the same player: it starts over, not under the last clip's error (review).
   const [seenUrl, setSeenUrl] = useState(url);

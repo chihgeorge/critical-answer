@@ -82,7 +82,7 @@ export function BankHealthPanel({
           <div className="text-[12px]" style={{ color: "#6a5a7a" }}>
             {health.unchecked > 0 && `Instagram 詳解 ${health.unchecked} 題沒辦法自動檢查。`}
             {!health.reloaded && "這次檢查的是房間裡原本那份題庫（沒有重新載入）。"}
-            自動檢查看不出地區限制、場地網路和大螢幕的播放能力，到場請按「📺 大螢幕試播影音」。
+            自動檢查看不出地區限制、現場網路和大螢幕的播放能力，到場請按「📺 大螢幕試播影音」。
           </div>
         </div>
       )}
@@ -94,7 +94,7 @@ export function BankHealthPanel({
         <div role="status" data-testid="host-screen-test-result" className="flex flex-col gap-2">
           <div className="text-[16px] font-bold">{screenTestLine(screenTest)}</div>
           {screenTest.rows.length > 0 && <Rows rows={redFirst(screenTest.rows)} />}
-          <div className="text-[12px]" style={{ color: "#6a5a7a" }}>試播的是這台大螢幕、這個網路。換場地或換電腦請再按一次。</div>
+          <div className="text-[12px]" style={{ color: "#6a5a7a" }}>試播的是這台大螢幕、這個網路。換網路或換電腦請再按一次。</div>
         </div>
       ) : (
         <div className="text-[12px]" style={{ color: "#6a5a7a" }}>帶金鑰的大螢幕會靜音、看不到畫面地把每支影片和聲音載入一次。</div>

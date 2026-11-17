@@ -4655,7 +4655,7 @@ describe("team handoff: HOST_HANDOFF, TEAM_CLAIM (docs/designs/team-handoff.md)"
     expect(lastSentTo(other)).toMatchObject({ type: "ERROR", error: "bad_code" });
   });
 
-  // Value: protects=the host page stops showing a code that no longer works (rehearsal QA 2026-11-16 P2-4);
+  // Value: protects=the host page stops showing a code that no longer works (real-device QA 2026-11-16 P2-4);
   // fails_when=a claim or a burn no longer sends HANDOFF_GONE to the host; why_new=the host showed a used code as valid; seam=none
   it("tells the host when a code is used or burned", () => {
     const { room, hostConn, fresh } = gameWithLostPhone();

@@ -79,7 +79,7 @@ function Probe({ video, onDone }: { video: ScreenVideo; onDone: Done }) {
             },
           });
         },
-        // The venue network blocks YouTube's script: nothing is known about the video itself, so yellow, not red.
+        // The local network blocks YouTube's script: nothing is known about the video itself, so yellow, not red.
         () => finish("timeout"),
       );
     } else if (video.kind === "instagram") {

@@ -108,7 +108,7 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   for (const s of firstSockets) await s.close();
   await first.context().close();
   await expect(host.getByText("甲隊（離線）")).toBeVisible();
-  // The only team is offline: the game is paused and says so (rehearsal QA 2026-11-16 P1-1).
+  // The only team is offline: the game is paused and says so (real-device QA 2026-11-16 P1-1).
   await expect(host.getByTestId("host-paused")).toBeVisible();
   await expect(screen.getByTestId("screen-paused")).toHaveText(PAUSED_OFFLINE);
   await host.getByRole("button", { name: "交給新手機" }).click();

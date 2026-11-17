@@ -989,7 +989,7 @@ function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undef
 /** Sets the round's all-stunned latch (BuzzState.allStunned) when every online boss-room team is stunned on an open
  * round. Mid-round that starts only with the last unstunned team dropping (setTeamOnline), a ⟲ (restartTaps) or the
  * question coming round as itself (rotatedBuzz). A stunned team reconnecting into an empty room is not latched: every
- * team offline is a restore or a venue outage, and the teams coming back must not latch an order nobody chose; a tap
+ * team offline is a restore or a network outage, and the teams coming back must not latch an order nobody chose; a tap
  * taken in that window latches the round in tapIn instead. */
 function latchStun(game: GameState): GameState {
   const b = game.buzz;
