@@ -131,7 +131,7 @@ function play(classes: C[], maxTurns = 600) {
     const abilityOk = (min: number) => inBoss || g.teams.some((x) => x.inBoss) || d >= min;
     const t = team();
     if (t.abilityUses > 0) {
-      if (t.classId === "mage" && abilityOk(MAGE_MIN) && !knows()) {
+      if (t.classId === "mage" && abilityOk(MAGE_MIN) && !knows() && !g.mageCasts?.[G.checkKey(q, id)]) {
         const target: GT.MageTarget | null = text && !hinted() ? { kind: "text", answer: "ab" } : sort && !hinted() ? { kind: "sort", items: ["first", "b", "c", "d"] } : kind === "mc" && gone().length === 0 ? { kind: "multipleChoice", correctIndex: 0, optionCount: 4 } : null;
         if (target) { g = G.spendAbility(g, id, "mage"); g = G.mageCast(g, id, q, target, potionRoll(), R); }
       }

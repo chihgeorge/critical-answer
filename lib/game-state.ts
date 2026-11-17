@@ -19,7 +19,7 @@
 // spends one of its ABILITY_USES on its turn. The warrior rolls instead of answering:
 // spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
 // answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
-// exactly once. The mage removes wrong options (mageEliminate), the thief arms a Sneak Attack
+// exactly once. The mage rolls a skill die for removed options or a hint (mageCast), the thief arms a Sneak Attack
 // that raises this answer's reward ×1.5 and doubles its boss damage (armSneak), and the cleric prays on a wrong
 // lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
@@ -73,8 +73,10 @@ export function abilityUsesFor(classId: ClassId | undefined): number {
 /** One d20's tier, the same for every class: 0 大失敗 (1), 1 小失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
 export type SkillTier = 0 | 1 | 2 | 3;
 export function skillTier(value: number): SkillTier {
-  return value <= 1 ? 0 : value <= 6 ? 1 : value <= 19 ? 2 : 3;
+  return value <= 1 ? 0 : value < SKILL_SUCCESS ? 1 : value <= 19 ? 2 : 3;
 }
+/** The lowest value of the success tier (7). */
+export const SKILL_SUCCESS = 7;
 /** Each tier's name, for the screens and the narrator. */
 export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
 
@@ -93,7 +95,7 @@ export function chefShare(gain: number, value: number | undefined): number {
 }
 
 /** The warrior's d20 counts as a correct answer at this value or more: the shared tiers' success (owner, 2026-11-09). */
-export const WARRIOR_TARGET = 7;
+export const WARRIOR_TARGET = SKILL_SUCCESS;
 /** The share of the question's reward a warrior's hit pays on 7–19 (owner, 2026-11-17: 「拿八成」). */
 export const WARRIOR_HIT_SHARE = 0.8;
 /** The share of the question's reward a warrior's hit pays, by its die: WARRIOR_HIT_SHARE on 7–19, twice on a 20. */
@@ -373,6 +375,9 @@ export interface GameState {
   mageHints?: Record<string, string>;
   /** A hint that is not the first character or item (class dice): the letter count, or the whole answer or order. */
   mageHintKinds?: Record<string, MageHintKind>;
+  /** Per checkKey(questionId, teamId): that mage team cast there (a die that landed, whatever its tier), so not again
+   * (rules 「一題一次」). */
+  mageCasts?: Record<string, true>;
   /** Boss question difficulties below 5, per question id, from the bank at game start (absent: 5). */
   bossDifficulties?: Record<string, Difficulty>;
   /** Persuasion checks, per checkKey(questionId, teamId) (dnd design R6). Absent from a game saved before them. */
@@ -1468,7 +1473,7 @@ export function answerQuestion(
   // Any team: a room short of questions can deal one question to two teams at once.
   // A team that fled and was dealt the same question again (a room with one question left) faces it afresh, not still.
   const stillFaced = nextGame.teams.some((t) => currentQuestionIdOf(nextGame, t.id) === questionId && !(t.id === teamId && outcome.type === "incorrect-flee"));
-  const checked = Object.keys(nextGame.checks ?? {}).some((k) => isCheckOn(nextGame, k, questionId));
+  const checked = [...Object.keys(nextGame.checks ?? {}), ...Object.keys(nextGame.mageCasts ?? {})].some((k) => isCheckOn(nextGame, k, questionId));
   if (!stillFaced && (questionId in nextGame.eliminated || questionId in (nextGame.mageHints ?? {}) || checked)) nextGame = { ...nextGame, ...dropEliminated(nextGame, questionId) };
   // This team's check goes once the question is answered or the team has moved off it; a retry keeps it (R6).
   else if (checkKey(questionId, teamId) in (nextGame.checks ?? {}) && (correct || currentQuestionIdOf(nextGame, teamId) !== questionId)) {
@@ -1522,8 +1527,11 @@ export type MageTarget = { kind: "multipleChoice"; correctIndex: number; optionC
 export function mageCast(game: GameState, teamId: string, questionId: string, target: MageTarget, value: number, rng: () => number = Math.random): GameState {
   assertAbilityTurn(game, teamId, "mage");
   assertCurrentQuestion(game, teamId, questionId);
+  if (game.mageCasts?.[checkKey(questionId, teamId)]) throw new InvalidActionError("cast_done");
   const tier = skillTier(value);
-  const refunded = tier === 1 ? { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) } : game;
+  // Marked whatever the tier, so a 1 or a refunded 2–6 is not a free reroll.
+  const cast = { ...game, mageCasts: { ...game.mageCasts, [checkKey(questionId, teamId)]: true as const } };
+  const refunded = tier === 1 ? { ...cast, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) } : cast;
   if (target.kind === "multipleChoice") {
     const old = game.eliminated[questionId] ?? [];
     const wrong = Array.from({ length: target.optionCount }, (_, i) => i).filter((i) => i !== target.correctIndex && !old.includes(i));
@@ -1887,9 +1895,8 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   const needsDie = correct && rejudgeNeedsDie(j);
   if (needsDie && die === undefined) throw new InvalidActionError("die_needed");
   const tier = die === undefined ? 2 : skillTier(die);
-  // The chef's tier multiplier, or the thief's sneak by tier (2–6 also gives the 偷襲 use back).
+  // The chef's tier multiplier, or the thief's sneak by tier. Only the score moves: a thief's 2–6 gives no use back here.
   const paid = !needsDie ? (j.taken ?? j.points) : Math.round(j.points * (j.reads === "chef" ? CHEF_MULTIPLIERS[tier] : [1, 1, SNEAK_REWARD_MULTIPLIER, 2][tier]));
-  const back = needsDie && j.reads === "thief" && tier === 1 ? 1 : 0;
   const from = getTeam(game, teamId).reward;
   const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;
@@ -1898,7 +1905,7 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
   if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
-  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, abilityUses: x.abilityUses + back, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
+  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }] })) };
 }
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
  * `spring` are only for saves from before the 3-scene deck. */
@@ -2194,10 +2201,10 @@ function ate(team: Team, dish: string | undefined): Pick<Team, "dishes"> | objec
 }
 
 /** `eliminated`, `mageRemoved`, `mageHints` and every team's check without `questionId`: it left play, and a later deal of it starts clean. */
-function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "mageHintKinds" | "checks"> {
+function dropEliminated(game: GameState, questionId: string): Pick<GameState, "eliminated" | "mageRemoved" | "mageHints" | "mageHintKinds" | "mageCasts" | "checks"> {
   const drop = <T>(m: Record<string, T>) => Object.fromEntries(Object.entries(m).filter(([id]) => id !== questionId));
   const checks = Object.fromEntries(Object.entries(game.checks ?? {}).filter(([k]) => !isCheckOn(game, k, questionId)));
-  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), mageHintKinds: drop(game.mageHintKinds ?? {}), checks };
+  return { eliminated: drop(game.eliminated), mageRemoved: drop(game.mageRemoved ?? {}), mageHints: drop(game.mageHints ?? {}), mageHintKinds: drop(game.mageHintKinds ?? {}), mageCasts: Object.fromEntries(Object.entries(game.mageCasts ?? {}).filter(([k]) => !isCheckOn(game, k, questionId))), checks };
 }
 
 /**
@@ -2496,9 +2503,11 @@ export interface SpectatorView {
   /** Options locked wrong per question id (shown greyed on every screen) and the wrong lock awaiting a choice. */
   eliminated: Record<string, number[]>;
   mageRemoved: Record<string, number[]>;
-  /** The mage's first-character hint per fill-in question id (mageHint). */
+  /** The mage's public hint per fill-in or sort question id (mageCast), and what kind it is when not the first character. */
   mageHints: Record<string, string>;
   mageHintKinds?: Record<string, MageHintKind>;
+  /** Per checkKey(questionId, teamId): that mage team cast there, so not again (absent from an older server). */
+  mageCasts?: Record<string, true>;
   /** Persuasion checks per checkKey(questionId, teamId), written once their beat ends (dnd design R6). Absent from an older server. */
   checks?: Record<string, CheckRecord>;
   pendingWrong: WrongAnswer | null;
@@ -2557,6 +2566,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     mageRemoved: game.mageRemoved ?? {},
     mageHints: game.mageHints ?? {},
     mageHintKinds: game.mageHintKinds ?? {},
+    mageCasts: game.mageCasts ?? {},
     checks: game.checks ?? {},
     pendingWrong: game.pendingWrong,
     // A timing question's taps stay in the room until the reveal (timing-tap.md).

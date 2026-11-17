@@ -59,6 +59,7 @@ import {
   type ClassId,
   type Difficulty,
   type GameState,
+  hostRejudge,
   type RoomTemplate,
   teamMonsterId,
   allTapped,
@@ -1717,6 +1718,33 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(wrong.game.teams[0].reward).toBe(0);
   });
 
+  // Value: protects=one mage cast per team per question, and a cast that showed nothing still leaves with the question (/review);
+  // fails_when=a 1 or a sort 2–6 is a free reroll, blocks another team, or blocks a later deal of the question.
+  it("a mage casts once per question; the mark is the team's own and leaves with the question", () => {
+    const g = classGame(["mage", "mage"]);
+    const q = currentQ(g, "T0");
+    const cast = mageHint(g, "T0", q, "萬家福", true, 4); // a sort 2–6: nothing shown, the use back
+    expect(cast.mageCasts).toEqual({ [checkKey(q, "T0")]: true });
+    expect(cast.teams[0].abilityUses).toBe(3);
+    expect(() => mageHint(cast, "T0", q, "萬家福", true)).toThrow(/cast_done/);
+    const { game } = answerQuestion(cast, "T0", q, true);
+    expect(game.mageCasts).toEqual({});
+  });
+
+  // Value: protects=an armed thief's 改成答對 pays its sneak by the die rolled then, and moves only the score (owner,
+  // 2026-11-17; hosting.md); fails_when=the die is skipped, a tier pays the wrong multiple, or a 2–6 gives a use back.
+  it("a thief's 改成答對 needs its die, pays the sneak by tier and gives no use back", () => {
+    const g0 = classGame(["thief", undefined]);
+    const q = currentQ(g0, "T0");
+    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, reads: "thief" }] };
+    const base = g.teams[0];
+    expect(() => hostRejudge(g, 0, "T0", q, true)).toThrow(/die_needed/);
+    for (const [die, paid] of [[1, 10], [4, 10], [12, 15], [20, 20]]) {
+      const t = hostRejudge(g, 0, "T0", q, true, die).teams[0];
+      expect(t).toMatchObject({ reward: base.reward + paid, abilityUses: base.abilityUses });
+    }
+  });
+
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
     let g = classGame(["mage", undefined]);
     const q = currentQ(g, "T0");
@@ -1725,8 +1753,9 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(after.eliminated[q]).toEqual([0, 2]);
     expect(getSpectatorView(after).mageRemoved[q]).toEqual([0, 2]);
     expect(after.teams[0]).toMatchObject({ abilityUses: 2, currentSelection: null });
-    // One wrong option left: nothing to remove, and nothing spent.
-    expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
+    // One cast per question; and one wrong option left: nothing to remove, and nothing spent.
+    expect(() => mageEliminate(after, "T0", q, 1, 4, first)).toThrow(/cast_done/);
+    expect(() => mageEliminate({ ...g, eliminated: { [q]: [0, 2] } }, "T0", q, 1, 4, first)).toThrow(/no_option_to_remove/);
     expect(mageEliminate(g, "T0", q, 1, 4, () => 1).eliminated[q]).toHaveLength(2); // an rng of 1 cannot hang it
   });
 
@@ -1750,7 +1779,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const hinted = mageHint(g, "T0", q, "萬家福");
     expect(hinted.teams[0].abilityUses).toBe(2);
     expect(getSpectatorView(hinted).mageHints).toEqual({ [q]: "萬" });
-    expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/hint_shown/);
+    expect(() => mageHint(hinted, "T0", q, "萬家福")).toThrow(/cast_done/);
+    expect(() => mageHint({ ...hinted, mageCasts: {} }, "T0", q, "萬家福")).toThrow(/hint_shown/);
     expect(() => mageHint(g, "T0", q, "萬")).toThrow(/no_hint/);
     expect(() => mageHint(g, "T1", q, "萬家福")).toThrow(/not T1's turn|It is not T1/);
     const typed = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, typedAnswer: "x" } : t)) };

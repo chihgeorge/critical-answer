@@ -1317,6 +1317,21 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(reveal).toMatchObject({ persuaded: true, answer: "", dish: { gift: true } });
     });
 
+    // Value: protects=a chef's natural 20 still wins when the phone drops during the check beat: its answer die holds the
+    // turn like a kill's beat (/review); fails_when=resolveRoll syncs the chef offline and the answer die lands on a moved turn.
+    it("a chef's natural 20 keeps its team on turn through its answer die when the phone drops during the check beat", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const { room, ids, conns, roll } = checkGame(2);
+      const g = room.game!;
+      (room as any).game = { ...g, teams: g.teams.map((t, i) => (i === 0 ? { ...t, classId: "chef" } : t)) };
+      roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      room.onClose(conns[0]);
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "answer" });
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0].score).toBe(1);
+    });
+
     it("ending the game during the beat leaves no roll behind, and a natural 20 wins nothing after the end", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, hostConn, ids, roll } = checkGame();
@@ -3740,7 +3755,8 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(removed).not.toContain(room.game!.optionOrder[q].indexOf(1));
     expect(room.game!.teams[0].abilityUses).toBe(2);
     use(12);
-    expect(err(conns[0])).toBe("no_option_to_remove");
+    expect(err(conns[0])).toBe("cast_done"); // one cast per question
+    expect(room.game!.teams[0].abilityUses).toBe(2);
     room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, currentQuestionId: "r0-t1" } : t)) };
     // Before the check the refusal says nothing about the hidden answer.
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t1" });
@@ -3767,7 +3783,7 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(lastBroadcast(room).view.mageHints).toEqual({ "r0-t2": "萬" });
     expect(room.game!.teams[0].abilityUses).toBe(2);
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-t2" });
-    expect(err(conns[0])).toBe("hint_shown");
+    expect(err(conns[0])).toBe("cast_done");
     expect(room.game!.teams[0].abilityUses).toBe(2);
   });
 
@@ -3847,16 +3863,24 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   });
 
   // Value: protects=the mage's skill die spends at the roll and a small failure gives the use back (class dice);
-  // fails_when=a 2–6 keeps the use spent, or a 1 refunds it.
-  it("the mage's 1 casts nothing and keeps the use spent; a 2–6 removes one option and gives it back", () => {
+  // fails_when=a 2–6 keeps the use spent, or a 1 refunds it, or either lets the mage cast again on the question (a free reroll).
+  it("the mage's 1 casts nothing and keeps the use spent; a 2–6 removes one option and gives it back; neither casts again", () => {
     vi.useFakeTimers();
-    const { room, q, use } = game("mage");
+    const { room, conns, q, use } = game("mage");
     use(1);
     expect(lastBroadcast(room).view.eliminated[q] ?? []).toHaveLength(0);
     expect(room.game!.teams[0].abilityUses).toBe(2);
-    use(4);
-    expect(lastBroadcast(room).view.eliminated[q]).toHaveLength(1);
+    expect(lastBroadcast(room).view.mageCasts).toEqual({ [checkKey(q, room.game!.teams[0].id)]: true });
+    use(12);
+    expect(err(conns[0])).toBe("cast_done");
     expect(room.game!.teams[0].abilityUses).toBe(2);
+    const small = game("mage");
+    small.use(4);
+    expect(lastBroadcast(small.room).view.eliminated[small.q]).toHaveLength(1);
+    expect(small.room.game!.teams[0].abilityUses).toBe(3);
+    small.use(12);
+    expect(err(small.conns[0])).toBe("cast_done");
+    expect(small.room.game!.teams[0].abilityUses).toBe(3);
   });
 
   it("a cleric's wrong boss lock waits for 祈禱 instead of the beat; praying rotates the question and keeps the turn", () => {

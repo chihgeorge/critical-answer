@@ -33,7 +33,7 @@ import {
   prayerRoll,
   rejudgeNeedsDie,
   skillTier,
-  WARRIOR_TARGET,
+  SKILL_SUCCESS,
   armSneak,
   giveItem,
   hostFix,
@@ -151,6 +151,7 @@ import { PROVIDERS } from "../narration/providers";
 import { RECENT_LINES } from "../narration/llm";
 import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
+import { skillLine } from "../class-dice";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
@@ -384,8 +385,6 @@ export const VERDICT_UNDO_LINE = "↩ 主持人收回了剛才的裁決，重新
 export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
 
 /** A chef's share of a reveal's points, left out for every other team. */
-import { skillLine } from "../class-dice";
-
 const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
 
 /** A skill die's sound as it lands: the crit's on a 20, the fumble's on a 1, none between. */
@@ -3523,6 +3522,8 @@ export class DungeonRoom {
     if (!undo || !now || undo.verdict || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
     }
+    // A die still rolling (a 改成答對's) waits: this judgment could start a die over it.
+    if (this.pendingRoll) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "roll_pending" });
     this.game = this.undoneGame(undo, now);
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
@@ -4199,7 +4200,7 @@ export class DungeonRoom {
         if (!target) return reject("stale_question"); // not in the bank
         next = spendAbility(game, teamId, "mage");
         // Checked as a success before anything is spent: a refusal (nothing to remove, no_hint) must not cost the use.
-        mageCast(next, teamId, questionId, target, WARRIOR_TARGET, () => 0);
+        mageCast(next, teamId, questionId, target, SKILL_SUCCESS, () => 0);
       } else next = spendAbility(game, teamId, "warrior");
     } catch (err) {
       return this.sendInvalid(conn, err);
@@ -4315,7 +4316,9 @@ export class DungeonRoom {
       this.broadcastState();
     }
     // A crit or check that killed has started the kill's beat: its team stays on turn until that beat lands.
-    if (holdsTurn(roll) && (this.pendingRoll as PendingRoll | null)?.kind !== "kill") this.syncLockTeamAndShow(roll.teamId);
+    // So does a chef's check 20 that started its answer die.
+    const next = this.pendingRoll as PendingRoll | null;
+    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId)) this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The check's beat is over (dnd design R6): its record, written at the roll, shows now with the hint it earned. A
@@ -4855,12 +4858,13 @@ export class DungeonRoom {
     // A chef's or armed thief's 改成答對 is paid from an answer die rolled now, shown like any roll (owner, 2026-11-17).
     if (correct && j && !j.warrior && j.teamId === teamId && j.questionId === questionId && rejudgeNeedsDie(j)) {
       if (!this.requireHost(conn)) return;
-      // The same holds as any 修正, and no other beat may be on: this die takes the screen's roll slot.
-      if (this.forkBeat || this.pendingLock || this.pendingRoll || this.game!.pendingWrong?.teamId === teamId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+      // The same holds as any 修正, and no other beat may be on: this die takes the screen's roll slot, which any team's
+      // waiting wrong answer (a boss miss's beat) and a reveal also use.
       if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+      if (this.forkBeat || this.pendingLock || this.pendingRoll || this.game!.pendingWrong || this.paused()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       // Refused before any die rolls (a game that ended): the same checks as when it lands.
       try {
-        hostRejudge(this.game!, index, teamId, questionId, true, WARRIOR_TARGET);
+        hostRejudge(this.game!, index, teamId, questionId, true, SKILL_SUCCESS);
       } catch (err) {
         return this.sendInvalid(conn, err);
       }
@@ -4940,7 +4944,8 @@ export class DungeonRoom {
     if (!q || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     // A fill-in's dice are its persuasion check, then a mage's skill die before its hint shows or a cleric's prayer die:
     // none left once those are done or an answer waits for the host. (Its answer die never takes a potion.)
-    const mageDie = team?.classId === "mage" && team.abilityUses > 0 && game.mageHints?.[questionId] === undefined && game.checks?.[checkKey(questionId, teamId)]?.hint === undefined;
+    const mageDie =
+      team?.classId === "mage" && team.abilityUses > 0 && team.typedAnswer === undefined && !game.mageCasts?.[checkKey(questionId, teamId)] && game.mageHints?.[questionId] === undefined && game.checks?.[checkKey(questionId, teamId)]?.hint === undefined;
     if (q.kind === "text" && !forPrayer && !mageDie && (game.checks?.[checkKey(questionId, teamId)] || team?.typedAnswer !== undefined)) return reject("check_done");
     try {
       this.game = drinkPotion(game, teamId);

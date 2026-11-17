@@ -158,6 +158,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   } else if (me.classId === "thief" && !q.checkFirst) {
     // Not before the check: 偷襲 is armed once the question is up.
     body = button("🗝️", "偷襲：這題答對加碼", `答對骰 7 以上 ${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+  } else if (me.classId === "mage" && game.view.mageCasts?.[checkKey(q.id, teamId)]) {
+    // One cast per question, whatever the die showed (rules 「一題一次」).
+    return null;
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The skill die decides how many go (class dice); the bar after counts what went.
     body = button("🔮", "施法：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
@@ -622,7 +625,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </>
       )}
       {/* A mage's skill die may still take a potion once the check is done (class dice), before its hint shows. */}
-      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && me?.classId === "mage" && me.abilityUses > 0 && game.view.mageHints[q.id] === undefined && !check?.hint && <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} />}
+      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint && <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} />}
       {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );

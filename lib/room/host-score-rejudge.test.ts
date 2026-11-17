@@ -431,6 +431,22 @@ describe("改判", () => {
     expect(g.team(B).reward).toBe(13);
   });
 
+  // Value: protects=a 改成答對's die never takes the roll slot from another team's waiting wrong answer (its boss miss's beat
+  // uses the same slot, /review); fails_when=the die starts and the other team's wrong answer is never settled.
+  it("a chef's 改成答對 die waits while any team's wrong answer is still waiting", () => {
+    const g = started(["cleric", "chef"]);
+    g.judge(false); // 甲
+    g.judge(false); // 乙 (chef) wrong: row 1
+    const q = g.team(A).currentQuestionId;
+    send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "猜", eventId: g.state().eventId });
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "team", eventId: g.state().eventId });
+    expect(g.room.game!.pendingWrong).toMatchObject({ teamId: A });
+    send(g.room, g.host, { type: "HOST_REJUDGE", index: 1, teamId: B, questionId: g.ledger()[1].questionId, correct: true });
+    expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "lock_pending" });
+    expect(g.state().pendingRoll ?? null).toBeNull();
+    expect(g.ledger()[1].correct).toBe(false);
+  });
+
   // Value: protects=the warrior's result is its own die alone; no 改判 changes its roll, payout or 1-penalty (owner,
   // 2026-11-17: 「戰士只看骰子」); fails_when=a warrior row can be flipped either way, or a flip re-rolls for it.
   it("a warrior's roll cannot be rejudged either way: its points stay as its die gave them", () => {
