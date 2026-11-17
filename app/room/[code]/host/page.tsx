@@ -183,6 +183,9 @@ export default function HostPage() {
   const room = useRoomSocket(code, {
     onOpen(resume) {
       setConnected(true);
+      // A 🎯 press lost with the old socket gets no answer: release 校正中….
+      calibPressed.current = false;
+      setCalibWaiting(false);
       // Claim on every (re)connect: the server forgets host rights when the socket closes.
       const t = getHostToken(code);
       if (t) room.send({ type: "HOST_CLAIM", token: t, ...(resume ? { resume: true } : {}) });

@@ -2097,7 +2097,7 @@ export class DungeonRoom {
     this.screenSoundReady.delete(id);
     this.screenSoundChanged();
     this.stopScreenTest(id);
-    // The beeping screen went: the test ends now with no taps (the host reads 「沒聽到嗶聲」), not on silence.
+    // The beeping screen went: the test ends now with no taps (the host reads 「沒收到有效的按」), not on silence.
     if (this.calib?.screenId === id) {
       this.calib.taps = [];
       this.closeCalibrate();

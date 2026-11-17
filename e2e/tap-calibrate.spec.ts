@@ -40,10 +40,12 @@ test("🎯 校正喇叭: needs the screen's sound, phones tap along, and 套用 
   const beep = phone.getByTestId("calibrate-tap").getByRole("button", { name: "嗶！" });
   await expect(beep).toBeEnabled();
 
-  // The first beep is 3 s after the press; tap 150 ms after each beat, on an absolute schedule so click time does not drift.
+  // The first beep is 3 s after the press; tap about 300 ms after each beat (mid-window, so the host's lag to the room
+  // does not push a tap out), on an absolute schedule. A bare pointerdown skips click()'s actionability waits, which on
+  // a busy shard could make one tap an outlier.
   for (let k = 0; k < 8; k++) {
     await phone.waitForTimeout(Math.max(0, pressed + 3300 + k * 1000 - Date.now()));
-    await beep.click();
+    await beep.dispatchEvent("pointerdown");
   }
   await expect(phone.getByTestId("calibrate-tap")).toContainText("按了 8 下");
 

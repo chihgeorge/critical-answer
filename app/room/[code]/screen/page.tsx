@@ -1766,9 +1766,10 @@ export default function ScreenPage() {
   const clipEndedSeq = useRef<number | undefined>(undefined);
   useClockPings(clock.ping, beepRun !== null, String(beepRun?.run ?? ""));
   // The beeps go on the AudioContext clock once, 1 s before the first, when the clock burst has settled: a later pong
-  // does not move beeps already queued. Beeps already past are not played. 🎵 off cancels the rest.
+  // does not move beeps already queued. Beeps already past are not played. 🎵 off cancels the rest; a suspended
+  // AudioContext waits, and the beeps still ahead play once it runs again.
   useEffect(() => {
-    if (!beepRun || !bgmOn) return;
+    if (!beepRun || !bgmOn || !audioRunning) return;
     let cancel: (() => void) | null = null;
     const id = setInterval(() => {
       const off = clock.offset();
@@ -1785,7 +1786,7 @@ export default function ScreenPage() {
     };
     // clock.offset is stable (useCallback); player() reads a ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [beepRun, bgmOn]);
+  }, [beepRun, bgmOn, audioRunning]);
   const { reset, rested, unreachable, reconnect, send } = useRoomSocket(code, {
     onOpen() {
       // Before any new report: the room ignores SCREEN_* reports from a socket that has not sent the screen key.
