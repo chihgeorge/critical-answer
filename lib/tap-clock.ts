@@ -108,6 +108,50 @@ export function medianError(errors: number[]): number | null {
 /** The latency the host's 「把延遲改成 X ms」 sets: the current one plus the median error, 0–MAX_TAP_LATENCY_MS. */
 export const suggestedLatency = (current: number, median: number): number => Math.min(MAX_TAP_LATENCY_MS, Math.max(0, Math.round(current + median)));
 
+/* ---------- 🎯 校正喇叭: the automatic speaker-latency test (docs/designs/tap-calibrate.md) ---------- */
+
+/** The big screen beeps this many times, this far apart; the first CALIBRATE_SKIP beats do not count (people find the beat). */
+export const CALIBRATE_BEATS = 8;
+export const CALIBRATE_GAP_MS = 1000;
+export const CALIBRATE_SKIP = 2;
+/** The first beep plays this long after the host's press: the phones and the screen sync their clocks meanwhile. */
+export const CALIBRATE_LEAD_MS = 3000;
+/** The room closes the test this long after the last beep: its taps are still on their way. */
+export const CALIBRATE_TAIL_MS = 2000;
+/** A tap belongs to the beat from this long before it to CALIBRATE_GAP_MS − this after: heard sound is only ever late. */
+export const CALIBRATE_EARLY_MS = 300;
+/** A tap farther than this from the first median is a stray press, not the room's latency. */
+export const CALIBRATE_OUTLIER_MS = 250;
+/** Fewer counted taps than this: 「按的人太少，再試一次」. One phone tapping every counted beat is enough. */
+export const CALIBRATE_MIN_TAPS = CALIBRATE_BEATS - CALIBRATE_SKIP;
+/** A median this far before the beat is not a fast room: it is a delay past the window (800 ms reads as −200) or
+ * nobody on the beat, so the test gives no number rather than a wrong 0. */
+export const CALIBRATE_EARLIEST_MS = -150;
+/** The longest delay the test can tell apart from the next beat. */
+export const CALIBRATE_MAX_MS = CALIBRATE_GAP_MS - CALIBRATE_EARLY_MS;
+
+/** The suggested latency from the test's taps (server ms, `who` a phone), or null with too few or an unclear median:
+ * each tap to its beat (the first beats dropped), the median, per phone and beat the tap nearest it (a late tap that
+ * spilled into the next beat's window loses to that beat's real tap), strays dropped, the median again. */
+export function calibrateLatency(taps: { who: string; at: number }[], startAt: number): { ms: number | null; taps: number; phones: number } {
+  const all: { who: string; k: number; e: number }[] = [];
+  for (const t of taps) {
+    const k = Math.floor((t.at - startAt + CALIBRATE_EARLY_MS) / CALIBRATE_GAP_MS);
+    if (k >= CALIBRATE_SKIP && k < CALIBRATE_BEATS) all.push({ who: t.who, k, e: t.at - (startAt + k * CALIBRATE_GAP_MS) });
+  }
+  const m0 = medianError(all.map((x) => x.e));
+  if (m0 === null) return { ms: null, taps: 0, phones: 0 };
+  const best = new Map<string, { who: string; e: number }>();
+  for (const x of all) {
+    const prev = best.get(`${x.k} ${x.who}`);
+    if (!prev || Math.abs(x.e - m0) < Math.abs(prev.e - m0)) best.set(`${x.k} ${x.who}`, x);
+  }
+  const kept = [...best.values()].filter((x) => Math.abs(x.e - m0) <= CALIBRATE_OUTLIER_MS);
+  const phones = new Set(kept.map((x) => x.who)).size;
+  const median = kept.length < CALIBRATE_MIN_TAPS ? null : medianError(kept.map((x) => x.e))!;
+  return { ms: median === null || median < CALIBRATE_EARLIEST_MS ? null : Math.max(0, median), taps: kept.length, phones };
+}
+
 /* ---------- The reveal's timeline and replay (docs/designs/timing-tap-timeline.md) ---------- */
 
 /** The timeline reaches at least this far on each side of the target, and at most TAP_GRACE_MS (the round's close). */

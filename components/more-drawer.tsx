@@ -38,6 +38,7 @@ export function MoreDrawer({
   questionLabel = () => "",
   error,
   tapLatency,
+  calibrate,
   teams,
   pacing,
   narration,
@@ -84,6 +85,8 @@ export function MoreDrawer({
   error?: string | null;
   /** The speaker latency for timing questions (timing-tap.md 8) while a game plays; undefined hides the field. */
   tapLatency?: number;
+  /** 🎯 校正喇叭 (tap-calibrate.md), in the lobby only: shown under 開局準備. */
+  calibrate?: ReactNode;
 }) {
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
@@ -215,10 +218,11 @@ export function MoreDrawer({
               </div>
             </section>
           )}
-          {lobby && (
+          {(lobby || calibrate) && (
             <>
               <Heading>開局準備</Heading>
-              <section className="flex flex-col gap-4">{lobby}</section>
+              {lobby && <section className="flex flex-col gap-4">{lobby}</section>}
+              {calibrate && <section>{calibrate}</section>}
             </>
           )}
           {pacing && (

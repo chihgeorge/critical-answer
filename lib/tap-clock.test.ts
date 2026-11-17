@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { addSample, bestOffset, clockSample, CLOCK_SAMPLES, CLOCK_STALE_MS } from "./server-clock";
 import {
   acceptTapAt,
+  calibrateLatency,
   anchorOf,
   closeSongMs,
   formatSongTime,
@@ -164,5 +165,52 @@ describe("formatting", () => {
     expect(suggestedLatency(100, 150)).toBe(250);
     expect(suggestedLatency(100, -400)).toBe(0);
     expect(suggestedLatency(900, 400)).toBe(1000);
+  });
+});
+
+describe("calibrateLatency (tap-calibrate.md)", () => {
+  const START = 1_000_000;
+  /** A phone tapping every beat `late` ms after it. */
+  const phone = (who: string, late: number, beats = [0, 1, 2, 3, 4, 5, 6, 7]) => beats.map((k) => ({ who, at: START + k * 1000 + late }));
+
+  it("one phone tapping every beat is enough; the first two beats do not count", () => {
+    expect(calibrateLatency(phone("a", 180), START)).toEqual({ ms: 180, taps: 6, phones: 1 });
+    // The two skipped beats are wildly off and change nothing.
+    expect(calibrateLatency([{ who: "a", at: START + 650 }, { who: "a", at: START + 1000 - 290 }, ...phone("a", 180, [2, 3, 4, 5, 6, 7])], START).ms).toBe(180);
+  });
+
+  it("takes the median over every phone; a tap up to 300 ms early or 700 ms late belongs to the beat", () => {
+    const taps = [...phone("a", 100), ...phone("b", 200), ...phone("c", 300)];
+    expect(calibrateLatency(taps, START)).toEqual({ ms: 200, taps: 18, phones: 3 });
+    expect(calibrateLatency(phone("a", -100), START).ms).toBe(0); // a little early is a fast room: 0
+    expect(calibrateLatency(phone("a", 650), START).ms).toBe(650);
+  });
+
+  it("a delay past the window reads as early and gives no number, never a wrong 0", () => {
+    // 800 ms late lands 200 ms before the next beat.
+    expect(calibrateLatency(phone("a", 800), START)).toEqual({ ms: null, taps: 6, phones: 1 });
+    expect(calibrateLatency(phone("a", -250), START).ms).toBeNull();
+  });
+
+  it("counts one tap per phone per beat and drops strays far from the median", () => {
+    const double = phone("a", 150).flatMap((t) => [t, { ...t, at: t.at + 90 }]);
+    expect(calibrateLatency(double, START)).toEqual({ ms: 150, taps: 6, phones: 1 });
+    const stray = [...phone("a", 150), ...phone("b", 160), { who: "c", at: START + 5000 - 280 }, { who: "c", at: START + 6000 + 690 }];
+    expect(calibrateLatency(stray, START)).toEqual({ ms: 155, taps: 12, phones: 2 });
+  });
+
+  it("a late tap spilling into the next beat's window loses to that beat's real tap; 699 ms counts, 700 is the next beat", () => {
+    const real = phone("a", 620);
+    // A second, slower tap on beat 3 at +720 arrives first in beat 4's window (as −280), before beat 4's own tap.
+    const spill = [...real.slice(0, 4), { who: "a", at: START + 3000 + 720 }, ...real.slice(4)];
+    expect(calibrateLatency(spill, START)).toEqual({ ms: 620, taps: 6, phones: 1 });
+    expect(calibrateLatency(phone("a", 699), START).ms).toBe(699);
+    expect(calibrateLatency(phone("a", 700), START).ms).toBeNull();
+  });
+
+  it("too few taps is null; taps after the last beat do not count", () => {
+    expect(calibrateLatency(phone("a", 200, [2, 3, 4, 5, 6]), START)).toEqual({ ms: null, taps: 5, phones: 1 });
+    expect(calibrateLatency([...phone("a", 200, [2, 3, 4, 5, 6]), { who: "a", at: START + 8000 + 200 }], START).ms).toBeNull();
+    expect(calibrateLatency([], START)).toEqual({ ms: null, taps: 0, phones: 0 });
   });
 });
