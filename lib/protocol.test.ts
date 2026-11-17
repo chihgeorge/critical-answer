@@ -394,6 +394,7 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_ANTI_CHEAT", on: "yes" })).toBeNull();
     expect(parseClientMessage({ type: "HOST_RULE_CATCH", upheld: true })).toEqual({ type: "HOST_RULE_CATCH", upheld: true });
     expect(parseClientMessage({ type: "HOST_RULE_CATCH" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_UNDO_RULING", extra: 1 })).toEqual({ type: "HOST_UNDO_RULING" });
   });
 
   it("TEAM_ROLL_CHECK carries the question id and a non-negative integer eventId only", () => {

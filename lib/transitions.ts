@@ -6,7 +6,7 @@ import type { StateMessage } from "./protocol";
 import type { SpectatorView } from "./game-state";
 import { describeTurn, type Monster } from "./turn-info";
 
-export type Transition = { kind: "open"; team: string } | { kind: "boss"; monster: Monster } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string };
+export type Transition = { kind: "open"; team: string } | { kind: "boss"; monster: Monster } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string } | { kind: "undo" };
 
 /** `open`: this connection saw the lobby or the intro, so the first question is a start seen live.
  * `boss`: whether the boss room has been on screen; null until the first STATE after connecting. */
@@ -30,14 +30,17 @@ export function sprintSeen(seen: boolean | null, view: { sprint?: unknown }): { 
   return { seen: (seen ?? now) || now, play: seen === false && now };
 }
 
-/** What this connection last saw of 抓包與神諭 (docs/designs/anti-ai-cheating.md): the switch's on count, and whether a catch was open. */
-export type CheatSeen = { on: number; open: boolean };
+/** What this connection last saw of 抓包與神諭 (docs/designs/anti-ai-cheating.md): the switch's on count, whether a catch
+ * was open, and how many rulings were taken back. */
+export type CheatSeen = { on: number; open: boolean; undone: number };
 
-/** The switch-on banner and the catch banner, live only like the sprint's: null `seen` (the first STATE after connecting) plays nothing. */
+/** The switch-on banner, the catch banner and the 撤回裁決 notice, live only like the sprint's: null `seen` (the first
+ * STATE after connecting) plays nothing. A taken-back ruling opens its catch again: the notice plays, not the catch. */
 export function antiCheatBanner(seen: CheatSeen | null, view: Pick<SpectatorView, "antiCheat" | "teams">): { seen: CheatSeen; play: Transition | null } {
   const ac = view.antiCheat;
-  const now = { on: ac?.onCount ?? 0, open: !!ac?.openCatch };
+  const now = { on: ac?.onCount ?? 0, open: !!ac?.openCatch, undone: ac?.undone ?? 0 };
   if (!seen) return { seen: now, play: null };
+  if (now.undone > seen.undone) return { seen: now, play: { kind: "undo" } };
   const name = (id: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   if (ac?.openCatch && !seen.open) return { seen: now, play: { kind: "catch", by: name(ac.openCatch.by), team: name(ac.openCatch.teamId) } };
   return { seen: now, play: ac?.on && now.on > seen.on ? { kind: "cheat" } : null };

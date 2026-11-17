@@ -1870,7 +1870,8 @@ export default function ScreenPage() {
             const catchPlays = !!c.play && !t.play && !queuedBoss.current && !sprintShowing.current && !msg.intro;
             if (catchPlays) {
               setTransition(c.play);
-              bgm.current?.playCue(BOSS_ALARM);
+              // 撤回裁決's notice is calm: no alarm.
+              if (c.play!.kind !== "undo") bgm.current?.playCue(BOSS_ALARM);
             }
             // ② A boss wrong answer: the parry. A transition or a phase card starting now cancels it (its retry plays at once).
             const prev = prevState.current;

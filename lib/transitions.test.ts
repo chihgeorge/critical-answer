@@ -117,12 +117,17 @@ describe("antiCheatBanner (anti-ai-cheating.md)", () => {
     expect(antiCheatBanner(null, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } })).play).toBeNull();
   });
   it("plays the switch-on banner when the on count grows, and not on switch-off", () => {
-    expect(antiCheatBanner({ on: 0, open: false }, view({ on: true, onCount: 1 })).play).toEqual({ kind: "cheat" });
-    expect(antiCheatBanner({ on: 1, open: false }, view({ on: false, onCount: 1 })).play).toBeNull();
+    expect(antiCheatBanner({ on: 0, open: false, undone: 0 }, view({ on: true, onCount: 1 })).play).toEqual({ kind: "cheat" });
+    expect(antiCheatBanner({ on: 1, open: false, undone: 0 }, view({ on: false, onCount: 1 })).play).toBeNull();
   });
   it("plays the catch banner once when a catch opens", () => {
-    const opened = antiCheatBanner({ on: 1, open: false }, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } }));
+    const opened = antiCheatBanner({ on: 1, open: false, undone: 0 }, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } }));
     expect(opened.play).toEqual({ kind: "catch", by: "乙", team: "甲" });
     expect(antiCheatBanner(opened.seen, view({ on: true, onCount: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } })).play).toBeNull();
+  });
+  it("plays the 撤回裁決 notice, not the catch banner, when a ruling is taken back and its catch opens again", () => {
+    const back = antiCheatBanner({ on: 1, open: false, undone: 0 }, view({ on: true, onCount: 1, undone: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } }));
+    expect(back.play).toEqual({ kind: "undo" });
+    expect(antiCheatBanner(back.seen, view({ on: true, onCount: 1, undone: 1, openCatch: { by: "b", teamId: "a", questionId: "q" } })).play).toBeNull();
   });
 });
