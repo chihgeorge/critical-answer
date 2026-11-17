@@ -2,7 +2,7 @@
 // team opens a room nobody has seen yet. Pure: the screen page plays the sound and draws the clouds.
 
 import { DEFAULT_SCREEN_AUDIO, parseScreenAudio, type ScreenAudio, type ServerMessage, type StateMessage } from "./protocol";
-import { describeTurn } from "./turn-info";
+import { describeTurn, revealStage } from "./turn-info";
 
 /** One per room, in rotation by room index: atmosphere, not a game signal. */
 export const AMBIENCES = ["drips", "wind", "campfire"] as const;
@@ -22,14 +22,14 @@ export function screenAudioOf(msg: Extract<ServerMessage, { type: "LOBBY" | "STA
   return parseScreenAudio(msg?.screenAudio) ?? DEFAULT_SCREEN_AUDIO;
 }
 
-/** The ambience for the room on stage, worked out like the screen's backdrop (a dish reveal keeps its room), or null:
+/** The ambience for the room on stage, worked out like the screen's backdrop (a reveal keeps its room), or null:
  * the lobby, a finished game, the intro, 擲先攻, a boss scene (the boss layer owns it), or the host's 🌧 off. */
 export function ambienceFor(state: StateMessage | null): Ambience | null {
   if (!state || state.phase !== "playing" || state.intro || state.initiative || !screenAudioOf(state).ambience) return null;
   const turn = describeTurn(state.view, state.question, state.phaseCard?.monster);
-  const dish = state.reveal?.dish;
-  const bossScene = dish ? dish.room === null : turn.bossScene;
-  const room = dish ? dish.room : turn.room;
+  const stage = revealStage(state.reveal, state.view.bossPhase);
+  const bossScene = stage ? stage.bossScene : turn.bossScene;
+  const room = stage ? stage.room : turn.room;
   return bossScene || room === null ? null : AMBIENCES[room % AMBIENCES.length];
 }
 

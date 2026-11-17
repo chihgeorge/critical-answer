@@ -143,6 +143,9 @@ export type AnswerReveal = {
   /** 🚨 成立 (docs/designs/anti-ai-cheating.md): `teamId` was caught asking an AI on this question, reported by `by`.
    * The answer shows, nothing is scored: no `scored`, `choice`, `sorted` or `dish`. */
   caught?: { teamId: string; by: string };
+  /** The monster the answer was given to and its room (`room` null for the boss), so the stage keeps that room through the
+   * reveal instead of the next team's, dish or not. Absent from older servers: the stage then falls back to `dish`. */
+  at?: { monster: PublicQuestion["monster"]; room: number | null };
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
   scored?: { teamId: string; points: number };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
@@ -327,6 +330,8 @@ export type ClientMessage =
   | { type: "HOST_SCREEN_AUDIO"; key: keyof ScreenAudio; on: boolean }
   /** The host rules the open catch: 🚨 成立 (`upheld`) or 🛡️ 冤枉. */
   | { type: "HOST_RULE_CATCH"; upheld: boolean }
+  /** 撤回裁決: the last 成立 / 冤枉 goes back to the open catch, while STATE's undoRuling offers it (anti-ai-cheating.md). */
+  | { type: "HOST_UNDO_RULING" }
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
@@ -510,6 +515,8 @@ export type ServerMessage =
       eventId: number;
       /** The host's last 答錯 on a fill-in, while HOST_UNDO_WRONG may still turn it into 答對 (nothing has moved since). */
       undoWrong?: { teamId: string; questionId: string };
+      /** The catch ruling HOST_UNDO_RULING may still take back (anti-ai-cheating.md): until the next question shows or anything moves. */
+      undoRuling?: { upheld: boolean };
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
        * Absent before any cue, and after a server restart. */
       cue?: SoundCue;
@@ -982,6 +989,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_RULE_CATCH":
       return typeof m.upheld === "boolean" ? { type: "HOST_RULE_CATCH", upheld: m.upheld } : null;
+    case "HOST_UNDO_RULING":
+      return { type: "HOST_UNDO_RULING" };
     case "TEAM_CHOOSE_FORK":
       return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
     case "TEAM_CHOOSE_FORTUNE":

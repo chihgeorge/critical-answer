@@ -374,6 +374,8 @@ function restoredCatch(g: GameState): GameState {
  */
 /** What an open catch refuses with catch_pending, by message (anti-ai-cheating.md): every move on the accused turn. */
 const CATCH_FROZEN = new Set<ClientMessage["type"]>(["HOST_JUDGE", "TEAM_SUBMIT_TEXT", "TEAM_LOCK_OPTION", "TEAM_USE_ABILITY", "TEAM_DRINK_POTION", "TEAM_ORACLE", "TEAM_CATCH", "HOST_NEXT", "HOST_STEP"]);
+/** The owl's line when the host takes a catch ruling back (撤回裁決). */
+export const VERDICT_UNDO_LINE = "↩ 主持人收回了剛才的裁決，重新來判！";
 /** The owl's line when the host switches 抓包與神諭 on. */
 export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
 
@@ -579,8 +581,9 @@ export class DungeonRoom {
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
-   * ends it, a phone going on or offline does not (setOnline). `prev` is the game before that 答錯. Memory only. */
-  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string } | null = null;
+   * ends it, a phone going on or offline does not (setOnline). `prev` is the game before that 答錯. Memory only.
+   * `verdict`: instead the last catch ruling, which 撤回裁決 takes back (rulingUndoOpen); 改判答對 never sees it. */
+  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean } } | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -1553,6 +1556,7 @@ export class DungeonRoom {
       ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
       eventId: this.eventSeq,
       ...this.undoWrong(),
+      ...(this.rulingUndoOpen() ? { undoRuling: { upheld: this.undo!.verdict!.upheld } } : {}),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
       // Only while something waits on the host (play, a held podium, more epilogue pages): not over a finished game's last page.
@@ -1562,7 +1566,7 @@ export class DungeonRoom {
 
   /** The 答錯 改判答對 may undo now: the one being judged, or the last one while nothing has moved since. */
   private undoWrong(): { undoWrong?: { teamId: string; questionId: string } } {
-    const undo = this.undoPending ? (this.undoHeld() ? null : this.undoPending) : this.undoOpen(this.undo) ? this.undo : null;
+    const undo = this.undoPending ? (this.undoHeld() ? null : this.undoPending) : this.undoOpen(this.undo) && !this.undo!.verdict ? this.undo : null;
     return undo ? { undoWrong: { teamId: undo.teamId, questionId: undo.questionId } } : {};
   }
 
@@ -2295,6 +2299,9 @@ export class DungeonRoom {
           break;
         case "HOST_RULE_CATCH":
           this.handleHostRuleCatch(sender, msg.upheld);
+          break;
+        case "HOST_UNDO_RULING":
+          this.handleHostUndoRuling(sender);
           break;
         case "TEAM_ORACLE":
           this.handleTeamOracle(sender, msg.questionId);
@@ -3427,6 +3434,35 @@ export class DungeonRoom {
     return !!undo && this.game === undo.after && !this.undoHeld();
   }
 
+  /** Whether 撤回裁決 may take the last catch ruling back now: nothing has moved since, and after 🚨 成立 its answer is
+   * still on show (下一題 shows the next question and ends it). */
+  private rulingUndoOpen(): boolean {
+    const undo = this.undo;
+    if (!undo?.verdict || this.game !== undo.after) return false;
+    return undo.verdict.upheld ? !!this.reveal?.caught : !this.undoHeld();
+  }
+
+  /** `undo.prev`, keeping what changed since without being a move (keepUndoOpen): phones on or offline, other teams'
+   * tapped options, and for 改判答對 the 抓包與神諭 switch and uses. A ruling's undo takes those from `prev`: the catch
+   * comes back as it was (the switch and an oracle close that undo instead). */
+  private undoneGame(undo: NonNullable<DungeonRoom["undo"]>, now: GameState): GameState {
+    const live = new Map(now.teams.map((t) => [t.id, t]));
+    const carry = !undo.verdict;
+    return {
+      ...undo.prev,
+      teams: undo.prev.teams.map((t) => {
+        const n = live.get(t.id);
+        // A tap is kept only on the question it was made on.
+        const tapped = t.id !== undo.teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
+        // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
+        // A flee clears the team's own oracle, so it comes back with the question unless a new one was asked since.
+        const ac = carry && n?.catchesLeft !== undefined ? { oracleLeft: n.oracleLeft, catchesLeft: n.catchesLeft, oracleQ: (n.oracles ?? 0) > (t.oracles ?? 0) ? n.oracleQ : t.oracleQ, oracles: n.oracles } : {};
+        return !n ? t : { ...t, online: n.online, ...ac, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
+      }),
+      ...(carry && now.antiCheat ? { antiCheat: now.antiCheat } : {}),
+    };
+  }
+
   private undoHeld(): boolean {
     return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
   }
@@ -3435,7 +3471,7 @@ export class DungeonRoom {
    * first 答錯, so the undo goes back to before the wait. A 祈禱 ends the chain: it is a move. Throws what `judge` throws. */
   private withUndo(teamId: string, questionId: string, judge: () => void) {
     const prev = this.game!;
-    const chained = this.undo?.after === prev && this.undo.teamId === teamId && this.undo.questionId === questionId;
+    const chained = this.undo?.after === prev && !this.undo.verdict && this.undo.teamId === teamId && this.undo.questionId === questionId;
     // A wait the chain no longer reaches cannot be undone: answerQuestion refuses 答對 while a wrong answer waits.
     const undoable = this.question(questionId)?.kind === "text" && (chained || !prev.pendingWrong);
     this.undoPending = undoable ? { prev: chained ? this.undo!.prev : prev, teamId, questionId } : null;
@@ -3457,24 +3493,10 @@ export class DungeonRoom {
     if (eventId !== this.eventSeq) return;
     const undo = this.undo;
     const now = this.game;
-    if (!undo || !now || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
+    if (!undo || !now || undo.verdict || !this.undoOpen(undo) || undo.teamId !== teamId || undo.questionId !== questionId) {
       return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
     }
-    // What changed since without being a move (keepUndoOpen) stays: phones on or offline, other teams' tapped options.
-    const live = new Map(now.teams.map((t) => [t.id, t]));
-    this.game = {
-      ...undo.prev,
-      teams: undo.prev.teams.map((t) => {
-        const n = live.get(t.id);
-        // A tap is kept only on the question it was made on.
-        const tapped = t.id !== teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
-        // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
-        // A flee clears the team's own oracle, so it comes back with the question unless a new one was asked since.
-        const ac = n?.catchesLeft !== undefined ? { oracleLeft: n.oracleLeft, catchesLeft: n.catchesLeft, oracleQ: (n.oracles ?? 0) > (t.oracles ?? 0) ? n.oracleQ : t.oracleQ, oracles: n.oracles } : {};
-        return !n ? t : { ...t, online: n.online, ...ac, ...(tapped ? { currentSelection: n.currentSelection } : {}) };
-      }),
-      ...(now.antiCheat ? { antiCheat: now.antiCheat } : {}),
-    };
+    this.game = this.undoneGame(undo, now);
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
     // the 答錯, buzz and all, so the host judges it field by field again.
@@ -3689,6 +3711,8 @@ export class DungeonRoom {
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
     // together in one STATE — no window where a client shows the next question first.
     this.reveal = null;
+    // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
+    const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
     if (caught && justAnswered) {
       // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
@@ -3698,7 +3722,7 @@ export class DungeonRoom {
       const q = this.question(questionId);
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
-      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), caught: { teamId, by: caught.by } };
+      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), ...(at ? { at } : {}), caught: { teamId, by: caught.by } };
     } else if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       this.clipError = null;
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
@@ -3724,6 +3748,7 @@ export class DungeonRoom {
         ...(fieldMarks ? { fields: fieldMarks } : {}),
         ...(timing ? { timing } : {}),
         ...(unseen || recalled ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
+        ...(at ? { at } : {}),
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
@@ -4609,7 +4634,8 @@ export class DungeonRoom {
     const prev = this.game;
     const next = setAntiCheat(prev, on);
     if (next === prev) return;
-    if (prev.antiCheat?.openCatch) {
+    // A ruling's undo would bring the catch back under the switch's new state: it closes (anti-ai-cheating.md).
+    if (prev.antiCheat?.openCatch || this.undo?.verdict) {
       this.game = next;
       this.undo = null;
     } else this.keepUndoOpen(next);
@@ -4624,7 +4650,12 @@ export class DungeonRoom {
     if (!teamId || !this.game) return;
     if (!this.antiCheatWindow(false)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "not_now" });
     try {
-      this.keepUndoOpen(askOracle(this.game, teamId, questionId));
+      const asked = askOracle(this.game, teamId, questionId);
+      // A ruling's undo would bring a catch back over an oracle question, which no catch may name: it closes.
+      if (this.undo?.verdict) {
+        this.game = asked;
+        this.undo = null;
+      } else this.keepUndoOpen(asked);
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
@@ -4657,13 +4688,20 @@ export class DungeonRoom {
     const c = this.game?.phase === "playing" ? this.game.antiCheat?.openCatch : undefined;
     if (!c) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_catch" });
     this.undo = null;
+    const prev = this.game!;
     console.log(JSON.stringify({ event: "catch_ruled", upheld, by: c.by, teamId: c.teamId }));
+    // 撤回裁決 may take the ruling back (rulingUndoOpen).
+    const undoable = (verdict: { upheld: boolean }) => ({ prev, after: this.game!, teamId: c.teamId, questionId: c.questionId, verdict });
     if (upheld) {
       try {
         this.judge(c.teamId, c.questionId, false, "flee", undefined, undefined, undefined, { by: c.by });
       } catch (err) {
-        this.sendInvalid(conn, err);
+        return this.sendInvalid(conn, err);
       }
+      if (!this.reveal?.caught) return;
+      this.undo = undoable({ upheld });
+      // judge sent its STATE before the undo was set: once more, so the host's 撤回裁決 shows at once.
+      this.broadcastState();
       return;
     }
     let ruled: ReturnType<typeof dismissCatch>;
@@ -4674,8 +4712,29 @@ export class DungeonRoom {
     }
     const { game, potion } = ruled;
     this.game = game;
+    this.undo = undoable({ upheld });
     const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
     this.appendLine(this.eventSeq, `🛡️ ${name(c.teamId)}是冤枉的！${name(c.by)}扣 ${CATCH_PAY.falseReport} 分，${name(c.teamId)}${potion ? "拿到一瓶幸運藥水" : `加 ${CATCH_PAY.wronged} 分`}，繼續作答！`);
+    this.broadcastState();
+  }
+
+  /** 撤回裁決 (anti-ai-cheating.md): the last ruling goes back to the open catch, once, while rulingUndoOpen. Both teams'
+   * scores, the potion, the catch counts and, for 🚨 成立, the revealed mark, the new question and the turn all go back
+   * with the game before it; its answer leaves the screen. The big screen shows its notice (antiCheat.undone), the owl
+   * says so, and the ruling card is up again. Memory only, like 改判答對: a restart keeps the ruling. */
+  private handleHostUndoRuling(conn: Conn) {
+    if (!this.requireHost(conn)) return;
+    const undo = this.undo;
+    const now = this.game;
+    if (!undo?.verdict || !now || !this.rulingUndoOpen()) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
+    const game = this.undoneGame(undo, now);
+    this.game = { ...game, antiCheat: { ...game.antiCheat!, undone: (now.antiCheat?.undone ?? 0) + 1 } };
+    this.undo = null;
+    this.reveal = null;
+    // A clip the host played over the caught answer stops: the open catch holds the question again.
+    if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
+    console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
+    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE);
     this.broadcastState();
   }
 
@@ -4720,7 +4779,7 @@ export class DungeonRoom {
     const undo = this.undo;
     const judgments = this.game?.judgments ?? [];
     const j = judgments[index];
-    if (!undo || !j || j.correct || !this.undoOpen(undo)) return false;
+    if (!undo || !j || j.correct || undo.verdict || !this.undoOpen(undo)) return false;
     if (undo.teamId !== teamId || undo.questionId !== questionId || j.teamId !== teamId || j.questionId !== questionId) return false;
     return index >= (undo.prev.judgments?.length ?? 0) && !judgments.some((k, i) => i > index && k.teamId === teamId && k.questionId === questionId);
   }

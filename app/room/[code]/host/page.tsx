@@ -660,6 +660,13 @@ export default function HostPage() {
       <div className="px-1 text-center text-[13px] text-white">成立：這題不算分、{teamName(openCatch.teamId)}扣 {CATCH_PAY.caught} 分換題，{teamName(openCatch.by)} +{CATCH_PAY.bounty}。冤枉：{teamName(openCatch.teamId)}拿藥水（有了就 +{CATCH_PAY.wronged}）繼續答。</div>
     </div>
   );
+  // ↩ 撤回裁決: the ruling card left one button behind, until the next question shows or anything moves (the room decides).
+  const undoRuling = game?.phase === "playing" && !openCatch ? game.undoRuling : undefined;
+  const undoRulingButton = undoRuling && (
+    <PixelButton data-testid="host-undo-ruling" className="mb-3 !min-h-[52px] text-[16px]" style={{ background: "#fff" }} disabled={!ready} onClick={() => send({ type: "HOST_UNDO_RULING" })}>
+      <TwoLine top="↩ 撤回裁決" bottom={undoRuling.upheld ? "剛才判了成立" : "剛才判了冤枉"} />
+    </PixelButton>
+  );
 
   // 下一題 (or 上菜) under an answer reveal or a phase card, with the revealed video's controls.
   const revealPanel = game && revealUp && (
@@ -1239,6 +1246,7 @@ export default function HostPage() {
             )}
             {/* The judge area sits right under the question card, above the team rows, so a phone never scrolls for it. */}
             <div data-testid="host-judge" className="flex flex-col">
+            {undoRulingButton}
             {/* An open catch: only the ruling card, every judge key waits for it (the room refuses them anyway). */}
             {openCatch ? (
               rulingCard

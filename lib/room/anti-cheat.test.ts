@@ -223,6 +223,7 @@ describe("the rulings", () => {
     expect(s.eventId).toBe(before + 1);
     expect(s.reveal).toMatchObject({ questionId: q, caught: { teamId: A, by: B } });
     expect(s.reveal.answer).toBeTruthy();
+    expect(s.reveal.at).toMatchObject({ room: 0 }); // the stage keeps the caught team's room, not the next team's
     expect(s.reveal.scored).toBeUndefined();
     expect(s.view.teams[1].reward).toBe(CATCH_PAY.bounty);
     expect(s.view.currentTurnTeamId).toBe(B);
@@ -366,5 +367,158 @@ describe("review follow-ups", () => {
     expect(await second.restore()).toBe("restored");
     expect(second.game!.antiCheat!.openCatch).toBeUndefined();
     expect(second.game!.teams[1].catchesLeft).toBe(2);
+  });
+});
+
+describe("撤回裁決 (the host takes a ruling back)", () => {
+  const undo = (g: ReturnType<typeof started>) => send(g.room, g.host, { type: "HOST_UNDO_RULING" });
+  const said = (g: ReturnType<typeof started>) => g.all().filter((m) => m.type === "NARRATION").flatMap((m) => m.lines as string[]).join("\n");
+
+  it("takes 成立 back while its answer is up: scores, question, turn and revealed mark go back, the catch is open again", async () => {
+    const g = started();
+    const q = g.qid();
+    // The accused starts above 0, so the −10 is really taken and given back.
+    send(g.room, g.host, { type: "HOST_SET_SCORE", teamId: A, score: 30 });
+    g.catchBy(1);
+    const open = g.room.game!;
+    g.rule(true);
+    expect(g.state().view.teams[0].reward).toBe(30 - CATCH_PAY.caught);
+    expect(g.state().undoRuling).toEqual({ upheld: true });
+    expect(g.state().undoWrong).toBeUndefined();
+    undo(g);
+    const s = g.state();
+    expect(s.undoRuling).toBeUndefined();
+    expect(s.reveal).toBeNull();
+    expect(s.question.id).toBe(q);
+    expect(s.view.currentTurnTeamId).toBe(A);
+    expect(s.view.teams.map((t: { reward: number }) => t.reward)).toEqual(open.teams.map((t) => t.reward));
+    expect(s.view.antiCheat).toMatchObject({ openCatch: { by: B, teamId: A, questionId: q }, undone: 1 });
+    expect(g.room.game!.revealedQuestionIds).not.toContain(q);
+    expect(g.room.game!.teams[1]).toMatchObject({ catchesLeft: 1, catchesFiled: 1 });
+    expect(g.room.game!.teams[1].catchesUpheld).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(said(g)).toContain("主持人收回了剛才的裁決");
+    // The ruling card is back: the host may rule again, here 冤枉.
+    g.rule(false);
+    expect(g.state().view.teams[0].item).toBe("luckyPotion");
+    expect(g.state().undoRuling).toEqual({ upheld: false });
+  });
+
+  it("takes 冤枉 back: the potion and the −10 go back, the countdown stops again", () => {
+    const g = started({ start: { answerSeconds: 30 } });
+    send(g.room, g.host, { type: "HOST_SET_SCORE", teamId: B, score: 30 });
+    const before = g.state().view.teams.map((t: { reward: number }) => t.reward);
+    g.catchBy(1);
+    g.rule(false);
+    expect(g.state().view.teams[1].reward).toBe(before[1] - CATCH_PAY.falseReport);
+    expect(g.state().answerClock.left).toBe(30_000);
+    expect(g.state().undoRuling).toEqual({ upheld: false });
+    undo(g);
+    const s = g.state();
+    expect(s.view.teams.map((t: { reward: number }) => t.reward)).toEqual(before);
+    expect(s.view.teams[0].item).toBeUndefined();
+    expect(s.view.antiCheat.openCatch).toMatchObject({ by: B, teamId: A });
+    expect(s.answerClock).toBeUndefined();
+    expect(g.room.game!.teams[1].catchesDismissed).toBeUndefined();
+  });
+
+  it("only once per ruling: a second press is refused", () => {
+    const g = started();
+    g.catchBy(1);
+    g.rule(false);
+    undo(g);
+    undo(g);
+    expect(g.lastTo(g.host)).toMatchObject({ detail: "no_undo" });
+    expect(g.state().view.antiCheat.undone).toBe(1);
+  });
+
+  it("closes when the next question shows after 成立", () => {
+    const g = started();
+    g.catchBy(1);
+    g.rule(true);
+    send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
+    expect(g.state().reveal).toBeNull();
+    expect(g.state().undoRuling).toBeUndefined();
+    undo(g);
+    expect(g.lastTo(g.host)).toMatchObject({ detail: "no_undo" });
+    expect(g.state().view.currentTurnTeamId).toBe(B);
+  });
+
+  it("closes on any other judging move after 冤枉, and on an oracle; a phone dropping keeps it", () => {
+    const g = started();
+    g.catchBy(1);
+    g.rule(false);
+    g.room.onClose(g.phones[2]);
+    // Another team tapping an option is not a move either.
+    send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: g.qid(), optionIndex: 1 });
+    expect(g.state().undoRuling).toEqual({ upheld: false });
+    g.miss(0);
+    expect(g.state().undoRuling).toBeUndefined();
+
+    const o = started();
+    o.catchBy(1);
+    o.rule(false);
+    send(o.room, o.phones[0], { type: "TEAM_ORACLE", questionId: o.qid() });
+    expect(o.state().view.teams[0].oracleLeft).toBe(0);
+    expect(o.state().undoRuling).toBeUndefined();
+    undo(o);
+    expect(o.lastTo(o.host)).toMatchObject({ detail: "no_undo" });
+
+    const s = started();
+    s.catchBy(1);
+    s.rule(false);
+    send(s.room, s.host, { type: "HOST_ANTI_CHEAT", on: false });
+    expect(s.state().undoRuling).toBeUndefined();
+    undo(s);
+    expect(s.lastTo(s.host)).toMatchObject({ detail: "no_undo" });
+  });
+
+  it("改判答對 never takes a ruling back: right after 冤枉 on a fill-in there is no undoWrong and HOST_UNDO_WRONG is refused", () => {
+    const g = started({ qs: TEXTS });
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    g.catchBy(1, "t1");
+    g.rule(false);
+    expect(g.state().undoWrong).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
+    expect(g.lastTo(g.host)).toMatchObject({ detail: "no_undo" });
+    expect(g.state().undoRuling).toEqual({ upheld: false });
+  });
+
+  it("is never 改判答對: a 答錯 after 冤枉 undoes to after the ruling, not before the catch", () => {
+    const g = started({ qs: TEXTS });
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    g.catchBy(1, "t1");
+    g.rule(false);
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
+    vi.advanceTimersByTime(10_000);
+    expect(g.state().undoRuling).toBeUndefined();
+    const errors = () => msgs((g.host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls).filter((m) => m.type === "ERROR").length;
+    const before = errors();
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
+    expect(errors()).toBe(before);
+    expect(g.room.game!.judgments!.at(-1)!.correct).toBe(true);
+    expect(g.room.game!.antiCheat!.openCatch).toBeUndefined();
+    expect(g.room.game!.teams[0].item).toBe("luckyPotion");
+  });
+
+  it("does not survive a restart: the ruling stands and no undo is offered", async () => {
+    const storage = memoryStorage();
+    const g = started({ storage });
+    g.catchBy(1);
+    g.rule(false);
+    expect(g.state().undoRuling).toEqual({ upheld: false });
+    const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
+    const second = new DungeonRoom(io, () => 0, { bank: bank(MCS), epilogueDelayMs: 0 });
+    expect(await second.restore()).toBe("restored");
+    const host = makeConn("host2");
+    second.onConnect(host);
+    send(second, host, { type: "HOST_CLAIM", token: TOKEN });
+    const s = msgs(host.send.mock.calls).findLast((m) => m.type === "STATE");
+    expect(s.undoRuling).toBeUndefined();
+    expect(s.view.teams[0].item).toBe("luckyPotion");
+    send(second, host, { type: "HOST_UNDO_RULING" });
+    expect(msgs(host.send.mock.calls).at(-1)).toMatchObject({ detail: "no_undo" });
   });
 });

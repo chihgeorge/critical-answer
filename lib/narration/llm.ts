@@ -8,7 +8,7 @@ import { MAX_TITLE, MAX_TITLE_REASON } from "../podium";
 import { ordinal } from "../ordinal";
 import { CLASS_LABELS, WARRIOR_TARGET, type ClassId } from "../game-state";
 import type { NarrationProvider } from "./scripted";
-import { hasMiddleLine, saysLine, validLine, MAX_CALL_LINE, MAX_LINE, MAX_MODEL_LINE, MAX_EPILOGUE_LINE } from "./runner";
+import { hasMiddleLine, saysLine, validLine, callLimit, MAX_LINE, MAX_MODEL_LINE, MAX_EPILOGUE_LINE } from "./runner";
 import { NarrationError } from "./errors";
 
 export const NARRATION_MODEL = "claude-haiku-4-5";
@@ -107,8 +107,8 @@ function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
     const n = i === parts.length - 1 ? "最後一行" : `第${i + 1}行`;
     if (p.kind === "story") return `${n}：${story}`;
     if (p.kind === "title")
-      return `${n}：幫隊伍${q(p.team)}想一個好笑的榮譽稱號，根據他們這場的表現：${describeFacts(p.facts)}。格式是「稱號｜理由」，中間用全形「｜」隔開，稱號最多 ${MAX_TITLE} 個字，理由最多 ${MAX_TITLE_REASON} 個字。不要寫隊名，也不要寫別隊，不要暗示名次或分數。`;
-    return `${n}：宣布第${ordinal(p.place)}名是${q(p.team)}，要寫出隊名，不要提分數，最多 ${MAX_CALL_LINE} 個字。`;
+      return `${n}：幫事件裡「頒獎台第${i + 1}行」的隊伍想一個好笑的榮譽稱號，根據他們這場的表現：${describeFacts(p.facts)}。格式是「稱號｜理由」，中間用全形「｜」隔開，稱號最多 ${MAX_TITLE} 個字，理由最多 ${MAX_TITLE_REASON} 個字。不要寫隊名，也不要寫別隊，不要暗示名次或分數。`;
+    return `${n}：宣布第${ordinal(p.place)}名是事件裡「頒獎台第${i + 1}行」的隊伍，要寫出隊名，不要提分數，最多 ${callLimit(p.team)} 個字。`;
   });
   return `輸出 ${parts.length} 行，用換行隔開，不要編號。前面幾行在頒獎台上一句一句念出來，留點懸念。${rows.join("")}`;
 }
@@ -222,7 +222,10 @@ function describeEvent(e: NarrationEvent): string {
       const unit = feast ? "飽足感" : "分";
       const rows = e.ranking.map((t, i) => `${i + 1}. ${q(t.name)} ${t.score} ${unit}${t.dishes?.length ? `，吃了${t.dishes.map(q).join("、")}` : ""}`);
       const ask = (e.bossStanding ? "首領還沒被打倒，冒險就先結束了：不要說有人打倒首領。" : "") + (feast ? "後記是一頓大餐：說說各隊吃了什麼，冠軍吃得最飽。" : "");
-      return `事件：遊戲結束。排名（高到低）：${rows.join("；")}。冠軍：${e.winners.map(q).join("、")}。${ask}後記裡的名字和分數必須和這裡一致。`;
+      // The podium rows' team names live here, in the user turn, not in epilogueAsk's system prompt: players typed them.
+      const parts = epilogueParts(e);
+      const podium = parts.length > 1 ? `\n頒獎台各行的隊伍：${parts.flatMap((p, i) => (p.kind === "story" ? [] : [`第${i + 1}行${q(p.team)}`])).join("；")}。` : "";
+      return `事件：遊戲結束。排名（高到低）：${rows.join("；")}。冠軍：${e.winners.map(q).join("、")}。${ask}後記裡的名字和分數必須和這裡一致。${podium}`;
     }
   }
 }
