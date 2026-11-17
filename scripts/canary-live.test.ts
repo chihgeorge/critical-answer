@@ -36,23 +36,41 @@ describe("summarize", () => {
   const page = (p: Partial<PageResult> = {}): PageResult => ({ round: 1, name: "host", status: 200, ms: 500, errs: [], ...p });
   const step = (s: Partial<StepResult> = {}): StepResult => ({ round: 1, name: "create-room", ok: true, ms: 900, ...s });
 
+  const answered = (s: Partial<StepResult> = {}) => step({ name: "answer-correctly", ...s });
+  const skipped = (s: Partial<StepResult> = {}) => answered({ name: "answer-correctly-t2", note: "skipped: timing question: the host skipped it", ...s });
+  const card = (s: Partial<StepResult> = {}) => answered({ note: "passed: fortune teller, no question", ...s });
+
   it("prints STEP and PAGE lines, then HEALTHY when every step passed and no page logged an error", () => {
-    const { lines, healthy } = summarize([page()], [step()]);
-    expect(lines).toEqual(["STEP r1 create-room ok ms=900", "PAGE r1 host status=200 ms=500 errs=[]", "CANARY HEALTHY"]);
+    const { lines, healthy } = summarize([page()], [step(), answered()]);
+    expect(lines).toEqual(["STEP r1 create-room ok ms=900", "STEP r1 answer-correctly ok ms=900", "PAGE r1 host status=200 ms=500 errs=[]", "CANARY HEALTHY"]);
     expect(healthy).toBe(true);
   });
-  it("prints a step's note, and a noted (skipped) step is still healthy", () => {
-    const { lines, healthy } = summarize([page()], [step({ name: "answer-correctly-t3", note: "skipped: timing question: the host skipped it" })]);
-    expect(lines[0]).toBe('STEP r1 answer-correctly-t3 ok ms=900 note="skipped: timing question: the host skipped it"');
+  it("prints a step's note, and a skipped step or a card is healthy while the round answered another question", () => {
+    const { lines, healthy } = summarize([page()], [answered({ note: "answered: the screen could not play the song" }), skipped(), card({ name: "answer-correctly-t3" })]);
+    expect(lines[1]).toBe('STEP r1 answer-correctly-t2 ok ms=900 note="skipped: timing question: the host skipped it"');
     expect(healthy).toBe(true);
+    // The boss fell on the canary's answer (a game ending outside the boss room fails the step): that counts.
+    expect(summarize([page()], [card(), answered({ name: "answer-correctly-t2", note: "over: game over" })]).healthy).toBe(true);
+  });
+  it("is BROKEN when a round only skipped questions or met cards, so it verified nothing (#316)", () => {
+    for (const steps of [[skipped({ name: "answer-correctly" })], [card()], [card(), skipped()], [step()], [answered(), card({ round: 2 })]]) {
+      const { lines, healthy } = summarize([page()], steps);
+      expect(healthy).toBe(false);
+      expect(lines.at(-2)).toMatch(/^ROUND r\d FAIL verified nothing/);
+      expect(lines.at(-1)).toBe("CANARY BROKEN");
+    }
+  });
+  it("names no empty round when a step failed: the failed step already says why", () => {
+    const { lines } = summarize([page()], [step({ ok: false, error: "boom" })]);
+    expect(lines.some((l) => l.startsWith("ROUND"))).toBe(false);
   });
   it("is BROKEN on a failed step, a console error, a bad status, a page that never loaded, or no steps at all", () => {
     expect(summarize([page()], [step({ ok: false, error: "boom" })]).lines[0]).toBe('STEP r1 create-room FAIL ms=900 error="boom"');
     for (const [pages, steps] of [
       [[page()], [step({ ok: false })]],
-      [[page({ errs: ["TypeError: x"] })], [step()]],
-      [[page({ status: 500 })], [step()]],
-      [[page({ status: null })], [step()]],
+      [[page({ errs: ["TypeError: x"] })], [answered()]],
+      [[page({ status: 500 })], [answered()]],
+      [[page({ status: null })], [answered()]],
       [[page()], []],
     ] as [PageResult[], StepResult[]][]) {
       const { lines, healthy } = summarize(pages, steps);

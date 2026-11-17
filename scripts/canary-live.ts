@@ -55,7 +55,11 @@ export type PageResult = { round: number; name: string; status: number | null; m
 /** `note`: why an ok step did not do all of its work, e.g. a timing question the host skipped. */
 export type StepResult = { round: number; name: string; ok: boolean; ms: number; error?: string; note?: string };
 
-/** The STEP / PAGE / CANARY report lines (docs/deployment.md), and whether the run is healthy (every step ok, no page errors). */
+/** An answering step that answered for real: not one the host skipped (`skipped:`) or a card (`passed:`). */
+const verified = (s: StepResult) => s.name.startsWith("answer-correctly") && !/^(skipped|passed):/.test(s.note ?? "");
+
+/** The STEP / PAGE / CANARY report lines (docs/deployment.md), and whether the run is healthy: every step ok, no page
+ * errors, and every round answered at least one question for real (a round of skips and cards checked nothing). */
 export function summarize(pages: PageResult[], steps: StepResult[]): { lines: string[]; healthy: boolean } {
   const lines = [
     ...steps.map(
@@ -63,7 +67,12 @@ export function summarize(pages: PageResult[], steps: StepResult[]): { lines: st
     ),
     ...pages.map((p) => `PAGE r${p.round} ${p.name} status=${p.status ?? "none"} ms=${p.ms} errs=${JSON.stringify(p.errs)}`),
   ];
-  const healthy = steps.length > 0 && steps.every((s) => s.ok) && pages.every((p) => p.errs.length === 0 && p.status !== null && p.status < 400);
+  const rounds = [...new Set(steps.map((s) => s.round))];
+  // Only rounds with no failed step: a failure already makes the run BROKEN and says why.
+  const empty = rounds.filter((r) => steps.every((s) => s.round !== r || s.ok) && !steps.some((s) => s.round === r && verified(s)));
+  for (const r of empty) lines.push(`ROUND r${r} FAIL verified nothing: every answering step was skipped or a card`);
+  const healthy =
+    steps.length > 0 && empty.length === 0 && steps.every((s) => s.ok) && pages.every((p) => p.errs.length === 0 && p.status !== null && p.status < 400);
   lines.push(`CANARY ${healthy ? "HEALTHY" : "BROKEN"}`);
   return { lines, healthy };
 }
