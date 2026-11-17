@@ -13,9 +13,10 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  // px-frames: direction D 「石框木牌」 (DESIGN.md). The revert switch: delete that one word for the plain panels and tiles.
   return (
     <html lang="zh-TW" className="h-full">
-      <body className="min-h-full antialiased">{children}</body>
+      <body className="min-h-full antialiased px-frames">{children}</body>
     </html>
   );
 }

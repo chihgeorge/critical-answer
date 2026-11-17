@@ -31,6 +31,15 @@
   --dim-line: #7a6a80; /* its outline and letter chip */
   --wrong: #c94848; /* the ✕ 答錯 label and the wrong tile's bevel */
   --stage: #241a3f;
+  /* Direction D 「石框木牌」 (DESIGN.md): the stone frame, its iron rivets, the wooden option boards. */
+  --stone: #8a86a8;
+  --stone-hi: #b4b0cc;
+  --stone-lo: #5a5670;
+  --iron: #3b3550;
+  --iron-hi: #6f6796;
+  --wood: #b07a4f;
+  --wood-hi: #c89868;
+  --wood-lo: #8a5a3e;
 }
 
 body {
@@ -66,6 +75,42 @@ body {
 }
 .px-panel.lav { --hi: #fff; --lo: var(--lav2); background: var(--lav); }
 .px-panel.turn { --hi: #fffbe0; --lo: var(--turn2); background: var(--turn); }
+/* Direction D: a stone frame with iron rivets round the big screen's question panel and narration box. Every rule
+   under .px-frames is switched by that one class on <body> (app/layout.tsx; /screen?frames=0 drops it for one TV).
+   The frame is all outside the box (ink 0-4, stone 4-8 lit top-left, ink 8-10, a 4px drop): padding, wrapping and
+   the question's fit measure stay as they were. It reaches 6px lower than the plain panel (STONE_REACH on /screen adds the tiles' 3px ring). */
+.px-frames .px-stone {
+  box-shadow:
+    0 0 0 4px var(--k),
+    0 0 0 6px var(--stone),
+    -2px -2px 0 6px var(--stone-hi),
+    2px 2px 0 6px var(--stone-lo),
+    0 0 0 10px var(--k),
+    0 4px 0 10px #0007,
+    inset 0 4px 0 var(--hi),
+    inset 0 -6px 0 var(--lo);
+}
+.px-frames .px-stone::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  pointer-events: none;
+  /* 4px iron rivets on the stone band, each lit on its top-left pixel pair: two on the top and bottom bands, 12px in
+     from the corners (on the stone, where they read; the corner itself is dark), and one mid-left and mid-right. */
+  background:
+    linear-gradient(var(--iron-hi) 0 0) 12px 0 / 2px 2px no-repeat,
+    linear-gradient(var(--iron-hi) 0 0) calc(100% - 14px) 0 / 2px 2px no-repeat,
+    linear-gradient(var(--iron-hi) 0 0) 12px calc(100% - 2px) / 2px 2px no-repeat,
+    linear-gradient(var(--iron-hi) 0 0) calc(100% - 14px) calc(100% - 2px) / 2px 2px no-repeat,
+    linear-gradient(var(--iron-hi) 0 0) 0 calc(50% - 1px) / 2px 2px no-repeat,
+    linear-gradient(var(--iron-hi) 0 0) calc(100% - 2px) calc(50% - 1px) / 2px 2px no-repeat,
+    linear-gradient(var(--iron) 0 0) 12px 0 / 4px 4px no-repeat,
+    linear-gradient(var(--iron) 0 0) calc(100% - 12px) 0 / 4px 4px no-repeat,
+    linear-gradient(var(--iron) 0 0) 12px 100% / 4px 4px no-repeat,
+    linear-gradient(var(--iron) 0 0) calc(100% - 12px) 100% / 4px 4px no-repeat,
+    linear-gradient(var(--iron) 0 0) 0 50% / 4px 4px no-repeat,
+    linear-gradient(var(--iron) 0 0) 100% 50% / 4px 4px no-repeat;
+}
 
 /* ---------- Button ---------- */
 .px-btn {
@@ -365,6 +410,8 @@ body {
   font: 13px "Press Start 2P", monospace;
 }
 .px-opt:focus-visible { outline: 4px solid var(--k); outline-offset: 2px; }
+/* The class picker's chosen class (play page). */
+.px-opt.picked { background: var(--turn); outline: 4px solid var(--turn2); outline-offset: -2px; }
 .px-opt > span { flex: 1 1 0; min-width: 0; overflow-wrap: anywhere; }
 /* A long team name ends in …; it never pushes the option text out of the tile. */
 .px-opt > i { flex: 0 1 auto; min-width: 0; max-width: 50%; overflow: hidden; text-overflow: ellipsis; font-style: normal; font-size: 15px; white-space: nowrap; }
@@ -395,3 +442,41 @@ body {
   box-shadow: inset 0 -5px 0 var(--lav2);
 }
 .px-bar.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -6px 0 var(--ok2); }
+
+/* ---------- Direction D: the option tile as a wooden board (DESIGN.md; off without body.px-frames) ----------
+   The 4px border keeps its width, so nothing moves: it turns transparent and the wood is painted under it (lit top,
+   shaded bottom, an iron nail mid-left and mid-right). The ink outline moves to a 3px ring outside (TV rows are 12px
+   apart, phone rows 8px). Each look only swaps variables: faces, text colours and labels are today's. */
+.px-frames .px-opt {
+  --face: var(--cream);
+  --bevel: var(--cream2);
+  --ring: var(--k);
+  --w-hi: var(--wood-hi);
+  --w: var(--wood);
+  --w-lo: var(--wood-lo);
+}
+.px-frames .px-opt.sel,
+.px-frames .px-opt.bad { --face: var(--danger); --bevel: var(--wrong); }
+.px-frames .px-opt.lock,
+.px-frames .px-opt.picked { --face: var(--turn); --bevel: var(--turn2); }
+.px-frames .px-opt.ok { --face: var(--ok); --bevel: var(--ok2); }
+/* Out of play: grey, weathered wood, still opaque (D12). */
+.px-frames .px-opt.dim { --face: var(--cream2); --bevel: var(--cream2); --ring: var(--dim-line); --w-hi: #a59c94; --w: #908680; --w-lo: #766c66; }
+body.px-frames .px-opt {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--face) 0 0) padding-box,
+    linear-gradient(var(--iron-hi) 0 0) 0 calc(50% - 1px) / 2px 2px no-repeat border-box,
+    linear-gradient(var(--iron-hi) 0 0) calc(100% - 2px) calc(50% - 1px) / 2px 2px no-repeat border-box,
+    linear-gradient(var(--iron) 0 0) 0 50% / 4px 4px no-repeat border-box,
+    linear-gradient(var(--iron) 0 0) 100% 50% / 4px 4px no-repeat border-box,
+    linear-gradient(var(--w-hi) 0 4px, var(--w) 4px calc(100% - 4px), var(--w-lo) calc(100% - 4px)) border-box;
+  box-shadow: 0 0 0 3px var(--ring), inset 0 -5px 0 var(--bevel);
+}
+/* The letter chip is an iron plate. */
+.px-frames .px-opt:not(.dim) > b { background: var(--iron); box-shadow: inset 0 2px 0 var(--iron-hi); }
+/* State and focus outlines sit on the wood band, never out over the next tile's ring. */
+.px-frames .px-opt:focus-visible,
+.px-frames .px-opt.lock,
+.px-frames .px-opt.ok,
+.px-frames .px-opt.picked { outline-offset: -4px; }

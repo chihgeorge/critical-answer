@@ -193,6 +193,9 @@ const TILE_VIDEO_TOP = 190;
 const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px margins
 const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
+/** While the frames are on the question fits this much higher (globals.css .px-stone): its frame and drop reach 6 px lower
+ * than the plain panel's, and a wooden tile's ink ring stands 3 px above the tile. */
+const STONE_REACH = 9;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
@@ -481,7 +484,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
     if (!el) return;
     // Written straight to the DOM: the style prop's constant fontSize never changes, so React leaves this alone.
     const fit = () => {
-      el.style.fontSize = `${fitQuestionSize((px) => ((el.style.fontSize = `${px}px`), el.offsetTop + el.offsetHeight), fitLimit)}px`;
+      const limit = fitLimit - (document.body.classList.contains("px-frames") ? STONE_REACH : 0);
+      el.style.fontSize = `${fitQuestionSize((px) => ((el.style.fontSize = `${px}px`), el.offsetTop + el.offsetHeight), limit)}px`;
     };
     fit();
     if (document.fonts?.status === "loaded") return;
@@ -617,7 +621,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={eaterIdx} />}
       {!served && (
-      <Panel ref={panelRef} className="absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
             <LabelChip>{card ? "還沒結束！" : reveal ? "正解揭曉" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
@@ -865,7 +869,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         {team && <TurnRibbon color={look(idx).hat} maxWidth={360}>{`❓ ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
-      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <LabelChip>❓ 神秘房</LabelChip>
         </div>
@@ -914,7 +918,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
           <AnswerClock key={left} ms={left} variant="big" />
         ) : null}
       </div>
-      <Panel className="absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "16px 24px 12px", fontSize: 26, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "16px 24px 12px", fontSize: 26, lineHeight: 1.3, zIndex: 5 }}>
         <div data-testid="fortune-screen" data-step={fortune.step}>{fortune.step === "card" ? (
           <FortuneCard fortune={fortune} teams={view.teams} heroScale={4} />
         ) : (
@@ -1181,6 +1185,14 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
 export default function ScreenPage() {
   const { code } = useParams<{ code: string }>();
   useWakeLock();
+  // /screen?frames=0: this one TV drops direction D's stone frames and wooden tiles (DESIGN.md) with no deploy, for the
+  // merge freeze. Put back on leaving, so other pages in this tab keep them.
+  useLayoutEffect(() => {
+    const body = document.body;
+    if (new URLSearchParams(location.search).get("frames") !== "0" || !body.classList.contains("px-frames")) return;
+    body.classList.remove("px-frames");
+    return () => body.classList.add("px-frames");
+  }, []);
   const [lobby, setLobby] = useState<LobbyTeams>([]);
   const [game, setGame] = useState<StateMessage | null>(null);
   const [shownVideo, setShownVideo] = useState<ShownVideo | null>(null);

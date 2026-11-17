@@ -447,7 +447,7 @@ export function DialogueBox({
   return (
     <Panel
       tone="lav"
-      className={cx("px-say", className)}
+      className={cx("px-say", !compact && "px-stone" /* the big screen's box: stone frame */, className)}
       style={{
         minHeight: 96,
         padding: compact ? "10px 12px 10px 76px" : "12px 22px 10px 116px",

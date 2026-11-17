@@ -53,8 +53,8 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
               type="button"
               aria-pressed={picked}
               onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
-              className="px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2"
-              style={{ minHeight: id === "chef" ? 64 : 96, ...(id === "chef" ? { gridColumn: "span 2" } : {}), ...(picked ? { background: "var(--turn)", outline: "4px solid var(--turn2)", outlineOffset: -2 } : {}) }}
+              className={`px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2${picked ? " picked" : ""}`}
+              style={{ minHeight: id === "chef" ? 64 : 96, ...(id === "chef" ? { gridColumn: "span 2" } : {}) }}
             >
               <span className="text-[22px]">
                 {CLASS_ICONS[id]} {CLASS_LABELS[id]}
