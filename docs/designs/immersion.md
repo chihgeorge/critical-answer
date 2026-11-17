@@ -1119,7 +1119,7 @@ Accepted: 已送出 + live region; 🔇 marker from `screenSound`; disabled reas
 | R2-14 | Design | 🌑 cooldown, STATE-driven look, host-pacing style | Mechanical | P1, P4 | matches the server dim window; reuses a pattern | optimistic toggle |
 | R2-15 | Design | dim hidden under TransitionOverlay | Mechanical | P1 | 40% + 75% stack hides the question | darker-of-two blend |
 | R2-16 | Design | `GROWL_TINT` = `--k` 35% | Mechanical | P5 | DESIGN.md: red reserved for the boss | `#5a1020` |
-| R2-17 | Design | `DIM_ALPHA` constant + back-row pre-launch check check | Mechanical | P1 | Codex: 40% unvalidated | lower now blind |
+| R2-17 | Design | `DIM_ALPHA` constant + back-row pre-launch check | Mechanical | P1 | Codex: 40% unvalidated | lower now blind |
 | R2-18 | Design | PR1a/PR1b findings (banner reflow, banner copy, rage chip, entrance band y) not reopened | Mechanical | scope | merged and out of PR2 scope; reported to the owner | reopening |
 
 **NOT in scope (design, run 2).** Bottom bar (D2 alternative, at the gate); an echo that the TV played the effect (X6, skipped in CEO); a dim-cleared toast; LOBBY `screenSound`; PR1a banner reflow and copy (H3, S5), a rage chip off the boss screen (J3), the PR1b entrance band position check (S1) — merged work, reported to the owner, not reopened here.
