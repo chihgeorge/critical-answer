@@ -40,7 +40,7 @@ Also: `components/how-to-play.tsx` (`HowToPlay`, the big screen's 4-page how-to-
 
 Text input (`.px-input` in `app/globals.css`): same hard 4px outline as panels/buttons, cream face; used by the bank editor's forms.
 
-Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pixels stay square. `TEAM_LOOKS` gives eight team looks (three hat shapes over eight colors) because a room holds up to 8 teams. A room monster met again wears an accessory (`Sprite`'s `accessory` prop): the hat sits at the sprite's `HEAD_ANCHOR` and is never hue-rotated with the monster; its nameplate adds a title (「戴王冠的…」) in the normal `--ink`, since red is reserved for the boss (docs/designs/monster-catalog.md §3).
+Sprites are drawn in `lib/pixel-art.ts`. Scale them by whole numbers only, so pixels stay square. `TEAM_LOOKS` gives eight team colors because a room holds up to 8 teams. A team with no class wears one of three hat shapes in its color; a team with a class gets its class look (`CLASS_HEROES`, #324): the shared big-head body told apart by headwear plus one big prop, with the team color on the robe and the headwear trim, so two teams of one class still differ by color. A room monster met again wears an accessory (`Sprite`'s `accessory` prop): the hat sits at the sprite's `HEAD_ANCHOR` and is never hue-rotated with the monster; its nameplate adds a title (「戴王冠的…」) in the normal `--ink`, since red is reserved for the boss (docs/designs/monster-catalog.md §3).
 
 ## Rules
 
