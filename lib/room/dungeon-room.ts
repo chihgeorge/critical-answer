@@ -340,7 +340,9 @@ function restoredPendingWrong(g: GameState): GameState["pendingWrong"] {
   const p = g.pendingWrong;
   const team = p ? g.teams.find((t) => t?.id === p.teamId) : undefined;
   if (!p || !team || !(p.optionIndex === null || (Number.isInteger(p.optionIndex) && p.optionIndex >= 0))) return null;
-  return p.questionId === (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId) ? p : null;
+  if (p.questionId !== (team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId)) return null;
+  // A restart inside the prayer die's beat loses the die: the prayer fails (its use stays spent), never stands for free.
+  return p.praying ? { teamId: p.teamId, questionId: p.questionId, optionIndex: p.optionIndex, prayFailed: true } : p;
 }
 
 /** A saved `eliminated` map keeps only lists of option indexes: a damaged entry would make `includes` throw and wedge the room. */

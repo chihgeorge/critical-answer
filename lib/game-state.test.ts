@@ -1584,6 +1584,14 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     const poor = { ...g, teams: g.teams.map((t) => ({ ...t, reward: 4 })) };
     expect(warriorRoll(poor, "T0", q, 1, first).game.teams[0].reward).toBe(0);
     expect(warriorRoll(rich, "T0", q, 6, first).game.teams[0].reward).toBe(25);
+    // Value: protects=in the boss room a warrior's 1 takes the boss's hitReward, not a room's; fails_when=the boss branch reads
+    // rooms[roomIndex] (past the last room) and throws or takes the wrong amount; why_new=only a room question was covered;
+    // seam=none; no_claim=the room's narration of the penalty
+    const b = makeGame({ warrior: true, bossThreshold: 0, teamCount: 1 });
+    const inBoss = { ...b, boss: { ...b.boss, hitReward: 7 }, teams: b.teams.map((t) => ({ ...t, reward: 25 })) };
+    const hit = warriorRoll(inBoss, "T0", b.boss.currentQuestionId, 1, first);
+    expect(hit.outcome).toMatchObject({ type: "incorrect-retry", penalty: 7 });
+    expect(hit.game.teams[0].reward).toBe(18);
   });
 
   it("the final blow still rolls the 4d20 kill bonus", () => {
@@ -1965,7 +1973,8 @@ describe("class dice: every tier per class", () => {
       // Its 重答 is a plain one: the turn moves on.
       expect(currentTurnTeamId(answerQuestion(failed, "T0", q0(g), false, "retry").game)).toBe("T1");
     }
-    expect(prayerRoll(prayed, "T0", 12)).toBe(prayed);
+    expect(prayed.pendingWrong?.praying).toBe(true); // the die is rolling
+    expect(prayerRoll(prayed, "T0", 12)).toEqual({ ...prayed, pendingWrong: { teamId: "T0", questionId: q0(g), optionIndex: 0, prayed: true } }); // it landed
     expect(prayerRoll(prayed, "T0", 20).teams[0].abilityUses).toBe(3);
     expect(() => prayerRoll(recordWrongLock(g, "T0", q0(g), 0), "T0", 12)).toThrow(/no_prayer/);
   });

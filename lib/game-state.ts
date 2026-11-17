@@ -440,6 +440,8 @@ export interface WrongAnswer {
   optionIndex: number | null;
   /** The cleric prayed on this lock: its 重答 / 逃跑 keeps the turn. */
   prayed?: true;
+  /** The prayer die is still rolling (set by pray, gone once it lands): a restart in that beat restores a failed prayer. */
+  praying?: true;
   /** The cleric's prayer die came up 1–6 (class dice): no prayer this turn, and its 重答 / 逃跑 ends the turn. */
   prayFailed?: true;
 }
@@ -1656,7 +1658,7 @@ export function pray(game: GameState, teamId: string): GameState {
   if (!canPray(game, teamId)) throw new InvalidActionError(`${teamId} cannot pray now`);
   return {
     ...game,
-    pendingWrong: { ...game.pendingWrong!, prayed: true },
+    pendingWrong: { ...game.pendingWrong!, prayed: true, praying: true },
     teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })),
   };
 }
@@ -1669,8 +1671,9 @@ export function prayerRoll(game: GameState, teamId: string, value: number): Game
   if (wrong?.teamId !== teamId || !wrong.prayed) throw new InvalidActionError("no_prayer");
   const tier = skillTier(value);
   if (tier <= 1) return { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayFailed: true } };
-  if (tier === 3) return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) };
-  return game;
+  const stood = { ...game, pendingWrong: { teamId: wrong.teamId, questionId: wrong.questionId, optionIndex: wrong.optionIndex, prayed: true as const } };
+  if (tier === 3) return { ...stood, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) };
+  return stood;
 }
 
 /**
