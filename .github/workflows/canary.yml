@@ -6,7 +6,7 @@ name: Canary
 #
 # Vercel deploys main and reports a GitHub deployment (environment Production) when the frontend is live; Workers
 # Builds deploys the Worker and reports only a check run, which starts no workflow here. So the Vercel deployment
-# starts this workflow, and the job waits for the Workers Builds check on the same commit.
+# starts this workflow, and the gate job waits for the Workers Builds check on the same commit.
 # A pull request that changes this file runs it once against production, so the workflow is tried before it merges.
 on:
   deployment_status:
@@ -17,25 +17,18 @@ on:
 permissions:
   contents: read
 
-# One canary at a time, so two runs never share the live site; a newer waiting run replaces an older waiting one.
-# Other deployment events (Preview, pending, the stamp environment) get a group of their own, so they never replace a
-# waiting release run.
-concurrency:
-  group: >-
-    ${{ (github.event_name != 'deployment_status' || (github.event.deployment_status.state == 'success' &&
-    github.event.deployment.environment == 'Production')) && 'canary' || format('canary-skip-{0}', github.run_id) }}
-  cancel-in-progress: false
-
 jobs:
-  canary:
+  # Decides whether to test, without the concurrency group below, so a deployment that is not a release never waits in
+  # line or replaces a waiting release run.
+  gate:
     if: >-
       github.event_name != 'deployment_status' || (
         github.event.deployment_status.state == 'success' &&
         github.event.deployment.environment == 'Production' &&
         github.event.deployment.creator.login == 'vercel[bot]')
     runs-on: ubuntu-26.04
-    # Up to 15 minutes waiting for the Worker, then install and three rounds of about 25 seconds each.
-    timeout-minutes: 30
+    # Up to 15 minutes waiting for the Worker.
+    timeout-minutes: 20
     permissions:
       contents: read
       checks: read
@@ -82,23 +75,30 @@ jobs:
           done
           echo "::error::Workers Builds did not finish within 15 minutes."
           exit 1
-      - if: steps.gate.outputs.release == 'true'
-        uses: actions/checkout@v7
-      - if: steps.gate.outputs.release == 'true'
-        uses: actions/setup-node@v7
+
+  canary:
+    needs: gate
+    if: needs.gate.outputs.release == 'true'
+    runs-on: ubuntu-26.04
+    # Install, then three rounds of about 25 seconds each (each round stops itself after about 150 seconds).
+    timeout-minutes: 20
+    # One canary at a time, so two runs never share the live site; a newer waiting run replaces an older waiting one.
+    concurrency:
+      group: canary
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
-      - if: steps.gate.outputs.release == 'true'
-        run: npm ci
-      - if: steps.gate.outputs.release == 'true'
-        run: npx playwright install --with-deps chromium
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - name: Canary on production
-        if: steps.gate.outputs.release == 'true'
         run: |
           set -o pipefail
           npm run -s canary:live -- --rounds 3 2>&1 | tee canary.log
-      - if: always() && steps.gate.outputs.release == 'true'
+      - if: always()
         uses: actions/upload-artifact@v7
         with:
           name: canary-log
@@ -107,7 +107,7 @@ jobs:
 
   # A separate job so the job that runs repository code never holds a write token.
   report:
-    needs: canary
+    needs: [gate, canary]
     if: failure() && github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -122,7 +122,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ needs.canary.outputs.version }}
+          VERSION: ${{ needs.gate.outputs.version }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           # Indented four spaces: a Markdown code block.
