@@ -376,9 +376,12 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
   it("takes 成立 back while its answer is up: scores, question, turn and revealed mark go back, the catch is open again", async () => {
     const g = started();
     const q = g.qid();
+    // The accused starts above 0, so the −10 is really taken and given back.
+    send(g.room, g.host, { type: "HOST_SET_SCORE", teamId: A, score: 30 });
     g.catchBy(1);
     const open = g.room.game!;
     g.rule(true);
+    expect(g.state().view.teams[0].reward).toBe(30 - CATCH_PAY.caught);
     expect(g.state().undoRuling).toEqual({ upheld: true });
     expect(g.state().undoWrong).toBeUndefined();
     undo(g);
@@ -445,6 +448,8 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
     g.catchBy(1);
     g.rule(false);
     g.room.onClose(g.phones[2]);
+    // Another team tapping an option is not a move either.
+    send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: g.qid(), optionIndex: 1 });
     expect(g.state().undoRuling).toEqual({ upheld: false });
     g.miss(0);
     expect(g.state().undoRuling).toBeUndefined();
@@ -457,6 +462,26 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
     expect(o.state().undoRuling).toBeUndefined();
     undo(o);
     expect(o.lastTo(o.host)).toMatchObject({ detail: "no_undo" });
+
+    const s = started();
+    s.catchBy(1);
+    s.rule(false);
+    send(s.room, s.host, { type: "HOST_ANTI_CHEAT", on: false });
+    expect(s.state().undoRuling).toBeUndefined();
+    undo(s);
+    expect(s.lastTo(s.host)).toMatchObject({ detail: "no_undo" });
+  });
+
+  it("改判答對 never takes a ruling back: right after 冤枉 on a fill-in there is no undoWrong and HOST_UNDO_WRONG is refused", () => {
+    const g = started({ qs: TEXTS });
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    g.catchBy(1, "t1");
+    g.rule(false);
+    expect(g.state().undoWrong).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
+    expect(g.lastTo(g.host)).toMatchObject({ detail: "no_undo" });
+    expect(g.state().undoRuling).toEqual({ upheld: false });
   });
 
   it("is never 改判答對: a 答錯 after 冤枉 undoes to after the ruling, not before the catch", () => {
@@ -468,7 +493,11 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
     vi.advanceTimersByTime(10_000);
     expect(g.state().undoRuling).toBeUndefined();
+    const errors = () => msgs((g.host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls).filter((m) => m.type === "ERROR").length;
+    const before = errors();
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
+    expect(errors()).toBe(before);
+    expect(g.room.game!.judgments!.at(-1)!.correct).toBe(true);
     expect(g.room.game!.antiCheat!.openCatch).toBeUndefined();
     expect(g.room.game!.teams[0].item).toBe("luckyPotion");
   });

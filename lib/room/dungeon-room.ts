@@ -366,10 +366,10 @@ function restoredCatch(g: GameState): GameState {
  */
 /** What an open catch refuses with catch_pending, by message (anti-ai-cheating.md): every move on the accused turn. */
 const CATCH_FROZEN = new Set<ClientMessage["type"]>(["HOST_JUDGE", "TEAM_SUBMIT_TEXT", "TEAM_LOCK_OPTION", "TEAM_USE_ABILITY", "TEAM_DRINK_POTION", "TEAM_ORACLE", "TEAM_CATCH", "HOST_NEXT", "HOST_STEP"]);
-/** The owl's line when the host switches 抓包與神諭 on. */
 /** The owl's line when the host takes a catch ruling back (撤回裁決). */
 export const VERDICT_UNDO_LINE = "↩ 主持人收回了剛才的裁決，重新來判！";
-export const ANTI_CHEAT_ON_LINE ="🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
+/** The owl's line when the host switches 抓包與神諭 on. */
+export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
 
 /** A chef's share of a reveal's points, left out for every other team. */
 const chefOf = (o: { chefBonus?: number }) => (o.chefBonus ? { chefBonus: o.chefBonus } : {});
@@ -4720,6 +4720,8 @@ export class DungeonRoom {
     this.game = { ...game, antiCheat: { ...game.antiCheat!, undone: (now.antiCheat?.undone ?? 0) + 1 } };
     this.undo = null;
     this.reveal = null;
+    // A clip the host played over the caught answer stops: the open catch holds the question again.
+    if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
     console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
     this.appendLine(this.eventSeq, VERDICT_UNDO_LINE);
     this.broadcastState();
