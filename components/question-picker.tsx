@@ -56,6 +56,7 @@ export function QuestionPicker({
                 <span className="min-w-0 flex-1">
                   <span className="block text-[14px]">{x.label}</span>
                   <span className="block text-[12px]" style={blocked ? undefined : { color: "#2f6a2c" }}>答案：{x.answer}</span>
+                  {x.type && <span className="block text-[12px]">題型：{x.type}</span>}
                 </span>
                 {(blocked || mine) && <span className="flex-none text-[13px]" style={{ color: mine ? "#2f6a2c" : "var(--ink)" }}>{mine ? "目前選的" : why(x.block!)}</span>}
               </button>

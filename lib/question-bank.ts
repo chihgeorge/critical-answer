@@ -114,6 +114,14 @@ export const fieldsAnswer = (fields: AnswerField[]): string => fields.map((f) =>
  * only in a buzzer phase (docs/designs/multi-field.md). */
 export const isMusicQuestion = (q: BankQuestion): boolean =>
   q.kind === "text" && ((q.content.kind === "youtube" && q.content.audioOnly === true) || q.content.kind === "audio");
+/** A question's type as a buzzer phase's winner picks it (#321): only this name ever reaches a phone, never the content. */
+export function questionType(q: BankQuestion): string {
+  if (q.kind === "timing") return "卡點";
+  if (q.kind === "multipleChoice") return "選擇";
+  if (q.kind === "sort") return "排序";
+  if (isMusicQuestion(q)) return "聽歌";
+  return isClip(q.content) ? "影片" : q.content.kind === "image" ? "看圖" : "填空";
+}
 /** Content the host plays on the big screen: a YouTube video or an uploaded video/audio file. */
 export const isClip = (c: { kind: MediaContent["kind"] } | undefined): boolean => c?.kind === "youtube" || c?.kind === "video" || c?.kind === "audio";
 

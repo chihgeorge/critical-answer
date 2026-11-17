@@ -361,10 +361,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
         {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
-      {/* The category the last winner picked (boss-music-buzzer.md M5). */}
-      {buzz.category && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
+      {/* The category or type (#321) the last winner or the host picked (boss-music-buzzer.md M5). */}
+      {(buzz.category ?? buzz.qtype) && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
         <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
-          下一題：{buzz.category}
+          下一題：{buzz.category ?? buzz.qtype}
         </div>
       )}
       <div className="flex flex-wrap justify-center gap-2 text-[18px]">
@@ -651,11 +651,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           </span>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
-          {/* The buzz winner picked the next song's category (boss-music-buzzer.md M5). Up here: under the reveal's
+          {/* The winner's category, or the type the winner or the host picked (#321; boss-music-buzzer.md M5). Up here: under the reveal's
               video the boss nameplate and the narrator box cover it. */}
-          {reveal && !card && view.buzz?.category && (
+          {reveal && !card && (view.buzz?.category ?? view.buzz?.qtype) && (
             <span data-testid="screen-next-category" className="px-chip text-[20px] leading-none" style={{ background: "var(--warn)", color: "var(--k)" }}>
-              下一題：{view.buzz.category}
+              下一題：{view.buzz?.category ?? view.buzz?.qtype}
             </span>
           )}
           {/* A curse or blessing waits on the team's next correct answer (event-rooms.md D12). */}

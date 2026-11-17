@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
+import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, questionType, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
@@ -415,6 +415,13 @@ describe("parseBank", () => {
       expect(isMusicQuestion({ kind: "text", id: "a1", content: audio, answer: "x" })).toBe(true);
       expect(isMusicQuestion({ kind: "text", id: "a1", content: video, answer: "x" })).toBe(false);
       expect([video, audio, youtubeContent(), imageContent()].map((c) => isClip(c))).toEqual([true, true, true, false]);
+      // #321: the type a buzzer phase's winner picks.
+      const t = (content: MediaContent) => questionType({ kind: "text", id: "a1", content, answer: "x" });
+      expect([audio, video, imageContent(), { kind: "text", value: "x" } as MediaContent].map(t)).toEqual(["聽歌", "影片", "看圖", "填空"]);
+      expect(questionType({ kind: "timing", id: "a1", content: audio, target: 3 })).toBe("卡點");
+      const text = { kind: "text", value: "x" } as MediaContent;
+      expect(questionType({ kind: "multipleChoice", id: "a1", content: text, options: ["a", "b"], correctIndex: 0 })).toBe("選擇");
+      expect(questionType({ kind: "sort", id: "a1", content: text, items: ["a", "b"] })).toBe("排序");
       expect(hiddenVideo(audio)).toEqual({ kind: "youtube", audioOnly: true });
       expect([...imageKeysOf(parseBank(one({ ...q("a1", video), explanation: audio })))].sort()).toEqual([UUID_A, UUID_B]);
     });

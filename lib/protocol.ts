@@ -442,6 +442,11 @@ export type ClientMessage =
   | { type: "HOST_BUZZ_OPEN"; questionId: string }
   /** The buzz winner picks the category of the next song (boss-music-buzzer.md M5); one of STATE `buzzCategories`. */
   | { type: "TEAM_PICK_CATEGORY"; category: string }
+  /** The buzz winner picks the type of the next question (#321); one of STATE `buzzTypes` with `left`. */
+  | { type: "TEAM_PICK_TYPE"; qtype: string }
+  /** Host: the next buzzer question by type, or the question itself (#321), until buzzing opens. Ends the winner's pick. */
+  | { type: "HOST_BUZZ_PICK"; qtype: string }
+  | { type: "HOST_BUZZ_PICK"; questionId: string }
   /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team taps one fixed reaction; the room rate-limits it. */
   | { type: "REACT"; reaction: Reaction };
 
@@ -577,6 +582,9 @@ export type ServerMessage =
       screenDim?: true;
       /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
       buzzCategories?: string[];
+      /** The buzzer phase's question types while the next question may be picked (#321): names only, `left` false
+       * when none of that type is left (greyed). The winner picks while `view.buzz.picker` is it and not `hostPicked`. */
+      buzzTypes?: { type: string; left: boolean }[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;
       /** The epilogue page on the big screen (from 0) and how many there are, once the epilogue is in. Absent from older servers: one page. */
@@ -716,6 +724,8 @@ export interface HostPick {
   id: string;
   label: string;
   answer: string;
+  /** Its questionType (聽歌, 卡點…, #321). Absent from older servers. */
+  type?: string;
   block?: PickBlock;
 }
 
@@ -1090,6 +1100,16 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_PICK_CATEGORY": {
       const category = str(m.category, MAX_ID);
       return category ? { type: "TEAM_PICK_CATEGORY", category } : null;
+    }
+    case "TEAM_PICK_TYPE": {
+      const qtype = str(m.qtype, MAX_ID);
+      return qtype ? { type: "TEAM_PICK_TYPE", qtype } : null;
+    }
+    case "HOST_BUZZ_PICK": {
+      const qtype = m.qtype === undefined ? null : str(m.qtype, MAX_ID);
+      const questionId = m.questionId === undefined ? null : str(m.questionId, MAX_ID);
+      if (!qtype === !questionId) return null;
+      return qtype ? { type: "HOST_BUZZ_PICK", qtype } : { type: "HOST_BUZZ_PICK", questionId: questionId! };
     }
     case "TEAM_BUZZ":
     case "HOST_BUZZ_OPEN":

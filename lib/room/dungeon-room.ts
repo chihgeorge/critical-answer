@@ -12,6 +12,9 @@ import {
   openBuzz,
   pickableCategories,
   pickCategory,
+  pickableTypes,
+  pickNextQuestion,
+  hostPickBuzzQuestion,
   skipBuzz,
   sendToBoss,
   queueQuestion,
@@ -136,7 +139,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
+import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, questionType, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_EARLY_MS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_SKIP, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
@@ -1513,7 +1516,7 @@ export class DungeonRoom {
       if (!q) return [];
       const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : q.content.kind === "video" ? "（影片題）" : q.content.kind === "audio" ? "（聲音題）" : "（YouTube 題）";
       const block = pickBlock(game, id);
-      return [{ id, label, answer: answerText(q), ...(block ? { block } : {}) }];
+      return [{ id, label, answer: answerText(q), type: questionType(q), ...(block ? { block } : {}) }];
     });
     const targets = [...game.teams.filter((t) => !t.inBoss).map((t) => t.id), "boss"];
     const options = Object.fromEntries(targets.map((t) => [t, pickableQuestionIds(game, t)]));
@@ -1598,6 +1601,7 @@ export class DungeonRoom {
       ...this.screenAudioView(),
       ...(this.clipPlaying() ? { clipPlaying: true as const } : {}),
       ...this.buzzCategories(),
+      ...this.buzzTypes(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
@@ -2488,6 +2492,12 @@ export class DungeonRoom {
           break;
         case "TEAM_PICK_CATEGORY":
           this.handleTeamPickCategory(sender, msg.category);
+          break;
+        case "TEAM_PICK_TYPE":
+          this.handleTeamPickType(sender, msg.qtype);
+          break;
+        case "HOST_BUZZ_PICK":
+          this.handleHostBuzzPick(sender, msg);
           break;
         case "REACT":
           this.handleReact(sender, msg.reaction);
@@ -4168,6 +4178,39 @@ export class DungeonRoom {
     if (!teamId || !this.game) return;
     try {
       this.game = pickCategory(this.game, teamId, category, this.categoryOf(), this.openWithoutPlay());
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    this.broadcastState();
+  }
+
+  /** Each question's type (questionType), for the buzzer phase's type pick (#321). Type names only reach the phones. */
+  private typeOf(): Record<string, string | undefined> {
+    return Object.fromEntries(allQuestions(this.bank).map((q) => [q.id, questionType(q)]));
+  }
+
+  private buzzTypes(): { buzzTypes?: { type: string; left: boolean }[] } {
+    const types = this.game ? pickableTypes(this.game, this.typeOf(), this.openWithoutPlay()) : [];
+    return types.length ? { buzzTypes: types } : {};
+  }
+
+  /** The buzz winner picks the next question's type (#321), until the host's ▶ opens buzzing or the host picks. */
+  private handleTeamPickType(conn: Conn, qtype: string) {
+    const teamId = this.playingTeam(conn);
+    if (!teamId || !this.game) return;
+    try {
+      this.game = pickNextQuestion(this.game, teamId, "qtype", qtype, this.typeOf(), this.openWithoutPlay());
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    this.broadcastState();
+  }
+
+  /** The host sets the next buzzer question's type, or the question itself (#321), overriding the winner's pick. */
+  private handleHostBuzzPick(conn: Conn, msg: { qtype: string } | { questionId: string }) {
+    if (!this.requireHost(conn) || !this.game) return;
+    try {
+      this.game = "qtype" in msg ? pickNextQuestion(this.game, null, "qtype", msg.qtype, this.typeOf(), this.openWithoutPlay()) : hostPickBuzzQuestion(this.game, msg.questionId, this.openWithoutPlay());
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
