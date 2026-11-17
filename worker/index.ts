@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { Server, routePartykitRequest, type Connection, type WSMessage } from "partyserver";
+import { Server, routePartykitRequest, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import { entryGate } from "../lib/gate";
 import { positiveMs } from "../lib/room/positive-ms";
 import { oversized, RateLimiter } from "../lib/room/rate-limit";
@@ -218,9 +218,10 @@ export class Room extends Server<Env> {
     return this.game.onAlarm();
   }
 
-  onConnect(conn: Connection) {
+  onConnect(conn: Connection, ctx: ConnectionContext) {
     this.sockets.add(conn);
-    this.game.onConnect(conn);
+    // Set by Cloudflare's edge, so a client cannot forge it. Kept in memory only, to count wrong join passwords; never logged.
+    this.game.onConnect(conn, ctx.request.headers.get("CF-Connecting-IP") ?? undefined);
   }
 
   onMessage(conn: Connection, message: WSMessage) {
