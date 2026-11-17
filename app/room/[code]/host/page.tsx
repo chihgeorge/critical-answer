@@ -1518,7 +1518,7 @@ export default function HostPage() {
 
             {/* 指定下一題 for the team up next only; every team's is in ⚙ 更多. */}
             {nextUp && (
-              <Panel tone="turn" data-testid="host-next-pick" className="flex items-center gap-2 px-3 py-1">
+              <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
                 <span className="min-w-0 flex-1 truncate text-[14px]">
                   {`下一隊 ${nextUp.name}：`}
                   {picks?.queued[nextUp.id] ? <span data-testid="queued-pick">下一題：{pickLabel(picks.queued[nextUp.id])}</span> : "照順序出題"}
@@ -1551,7 +1551,9 @@ export default function HostPage() {
             </ul>
             {/* A handoff code stays on the page, where the host reads it out (docs/designs/team-handoff.md). */}
             {game.view.teams.map((t) => handoffs[t.id] && (
-              <Panel key={t.id} tone="turn" data-testid="handoff-code" className="flex flex-col gap-1 px-3 py-2 text-[14px]">
+              // Panel takes no data-testid: the wrapper carries it.
+              <div key={t.id} data-testid="handoff-code">
+              <Panel tone="turn" className="flex flex-col gap-1 px-3 py-2 text-[14px]">
                 <span>請{t.name}的新手機打開房間網址，輸入這組配對碼：</span>
                 <span className="px-num pl-[0.5em] text-center text-[28px] tracking-[0.5em]">{handoffs[t.id]}</span>
                 <span className="text-[13px]">{HANDOFF_MS / 60_000} 分鐘內有效，只能用一次。</span>
@@ -1559,6 +1561,7 @@ export default function HostPage() {
                   關閉
                 </PixelButton>
               </Panel>
+              </div>
             ))}
             {game.late && <LateTeams late={game.late} disabled={!ready || !!game.forkBeat} send={send} />}
 
