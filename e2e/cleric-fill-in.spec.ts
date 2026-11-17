@@ -57,7 +57,7 @@ test("cleric: the phone prays after the host's 答錯 and the team answers again
   await team.getByRole("button", { name: /^祈禱/ }).click();
   await expect(box).toHaveValue("");
   await expect(team.getByRole("button", { name: "送出" })).toBeVisible();
-  await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
   // The prayed turn has no second prayer: 答錯 goes back to 答錯・下輪再答 / 答錯・逃跑.
   await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeVisible();
 });
@@ -71,7 +71,7 @@ test("cleric: the host presses 下輪再答 in the wait and no use is spent", as
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await expect(box).toHaveValue("");
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
 });
 
 // Value: protects=a host's double-tap of 2 (答錯) never turns into 祈禱 and spends the team's use (/review);
@@ -92,13 +92,13 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   await host.keyboard.press("2");
   await host.waitForTimeout(300);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
   // Past the delay, the wait's keys work: 3 is 下輪再答. Press until it lands, so the test does not depend on the delay's length.
   await expect(async () => {
     await host.keyboard.press("3");
     await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0, { timeout: 300 });
   }).toPass();
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
 });
 
 // Value (ship adversarial review): protects=a double-click on the host's 答錯 never lands on the wait's 祈禱 / 下輪再答,
@@ -109,7 +109,7 @@ test("cleric: the host's wait buttons start disabled, so a double-click on 答�
   await expect.poll(() => waitFirstDisabled(host)).toEqual([true, true]);
   await expect(host.getByRole("button", { name: "下輪再答", exact: true })).toBeEnabled();
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeEnabled();
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
 });
 
 // Value (ship fix-check): protects=the second wait on the same team and question (after a 下輪再答) holds too, though the
@@ -125,7 +125,7 @@ test("cleric: a second wait on the same question, after 下輪再答, also start
   await recordWaitButtons(host);
   await host.getByRole("button", { name: "答錯", exact: true }).click();
   await expect.poll(() => waitFirstDisabled(host)).toEqual([true, true]);
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
 });
 
 // Value (ship adversarial review): protects=a double-tap of 2 on 祈禱 never judges the prayed attempt (答錯・下輪再答 is 2
@@ -138,7 +138,7 @@ test("cleric: a double-tap of 2 on the host's 祈禱 never judges the new attemp
   await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeVisible();
   await host.keyboard.press("2");
   await host.waitForTimeout(300);
-  await expect(team.getByText("牧師・剩 1 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
   await expect(box).toHaveValue("");
   // Still the prayed attempt (a 下輪再答 would bring the only team back to one 答錯 that waits).
   await expect(host.getByRole("button", { name: "答錯・下輪再答" })).toBeEnabled();
@@ -158,5 +158,5 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   await rollCheck(team);
   await expect(question).not.toHaveText(before!);
   await expect(box).toHaveValue("");
-  await expect(team.getByText("牧師・剩 2 次")).toBeVisible();
+  await expect(team.getByText("牧師・剩 3 次")).toBeVisible();
 });

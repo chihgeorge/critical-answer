@@ -247,6 +247,8 @@ export function MoreDrawer({
                           </span>
                           {was && <span className="text-[13px]">{`已改判（原本${was}）`}</span>}
                           {laterCorrect(judged, j) && <span className="text-[13px]">這題後來答對了</span>}
+                          {/* A warrior's roll is its own die's: 改判 never moves it (owner, 2026-11-17). */}
+                          {j.warrior ? <span className="text-[13px]">戰士擲骰，只看骰子，不能改判</span> : (
                           <PixelButton
                             aria-label={`第 ${ordinals.get(j.questionId)} 題 ${teamName(j.teamId)} ${button}`}
                             onClick={() => fixAllowed(`rejudge:${j.index}`) && send({ type: "HOST_REJUDGE", index: j.index, teamId: j.teamId, questionId: j.questionId, correct: !j.correct })}
@@ -254,6 +256,7 @@ export function MoreDrawer({
                           >
                             {button}
                           </PixelButton>
+                          )}
                         </div>
                       );
                     })}

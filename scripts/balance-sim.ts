@@ -1,6 +1,9 @@
 // Class balance: plays many 4-team games through lib/game-state.ts and prints each class's win share (fair is 25%),
 // average reward, ability uses left and turns. Run: node scripts/balance-sim.ts [games].
-// Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-13）」):
+// Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-13）」 and 「職業技能擲骰」):
+// - Class dice live in lib: the mage's skill die (mageCast) and the cleric's prayer die (prayerRoll) roll here; the warrior's
+//   roll is warriorRoll; the chef and an armed thief read the crit die, or on a fill-in an answer die rolled here. A
+//   letter-count hint cracks WEAK of the unknown fill-ins, a whole answer or order all of them.
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
 //   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room picks 逃跑・同房 or 逃跑・換房 half and half.
@@ -15,7 +18,7 @@
 //   order with SORTFIX; the mage's first item cracks SORTHINT of the unknown ones.
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
 //   tap-clock ranks them, the closest hits, the others get its small bonus.
-// - A potion a team holds (a fortune's) goes on its next check, or the crit die of an answer it knows.
+// - A potion a team holds (a fortune's) goes on its next check, mage or prayer die, or the crit die of an answer it knows.
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, 抓包與神諭 (off unless the host opens it), multi-field songs, late teams, offline phones.
 // Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD GUESSB GUESSOK EVENTS=0 THRESH HP1 HP2 HIT KB MAGE_MIN WAR_MIN
@@ -43,7 +46,8 @@ const TAP = env("TAP", 0.1), TAPSD = env("TAPSD", 300), TAPAT = 30_000;
 const gauss = () => Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R());
 const THRESH = env("THRESH", 15), HP1 = env("HP1", 5), HP2 = env("HP2", 3), HIT = env("HIT", 10), KB = env("KB", 0.5);
 // Lowest room difficulty an ability is used on (always once a team is in the boss room).
-const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 3);
+// With 3 uses a thief sneaks from difficulty 2 (2026-11-09 balance).
+const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 2), WEAK = env("WEAK", 0.1);
 const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
 // Big pools: a team that cannot answer keeps fleeing, and a small pool would deal it the same unknown question again.
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
@@ -54,7 +58,7 @@ function play(classes: C[], maxTurns = 600) {
   const teams = classes.map((c, i) => ({ id: `T${i}`, name: `T${i}`, ...(c ? { classId: c } : {}) }));
   const later = HP2 > 0 ? [{ maxHp: HP2, questionIds: songs, buzzer: true as const }] : [];
   let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, HIT, {}, later);
-  const latent = new Map<string, { known: boolean; hintable: boolean }>();
+  const latent = new Map<string, { known: boolean; hintable: boolean; weak: boolean }>();
   // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
   const songKnown = new Map<string, boolean>();
   const knowsSong = (id: string, q: string) => { const k = `${id}|${q}`; if (!songKnown.has(k)) songKnown.set(k, R() < KB); return songKnown.get(k)!; };
@@ -104,29 +108,32 @@ function play(classes: C[], maxTurns = 600) {
     const d = inBoss ? 5 : team().currentDifficulty;
     const kind = kindOf(q), text = kind === "text", sort = kind === "sort", opts = sort ? 24 : 4; // 4! orders of a sort
     const key = `${id}:${q}`;
-    if (!latent.has(key)) latent.set(key, { known: R() < KNOW[d - 1] * (text ? TEXTK : sort ? SORTK : 1), hintable: R() < (sort ? SORTHINT : HINT) });
+    if (!latent.has(key)) latent.set(key, { known: R() < KNOW[d - 1] * (text ? TEXTK : sort ? SORTK : 1), hintable: R() < (sort ? SORTHINT : HINT), weak: R() < WEAK });
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
-    // A held potion (a fortune's) goes on the next check, or the crit die of an answer the team knows.
+    // A held potion (a fortune's) goes on the next check, mage or prayer die, or the crit die of an answer the team knows.
     const potionRoll = () => { if (!team().item) return d20(); g = G.spendPotion(G.drinkPotion(g, id), id); return Math.max(d20(), d20()); };
+    // A fill-in's answer die: rolled for a chef or an armed thief (never with a potion).
+    const answerDie = () => (team().classId === "chef" || team().sneakArmed ? d20() : undefined);
+    const rightText = () => settle(G.answerQuestion(g, id, q, true, "retry", R, undefined, undefined, undefined, false, answerDie()), true);
     if (text && !g.checks?.[G.checkKey(q, id)]) {
       const v = potionRoll();
       g = G.recordCheck(g, id, q, v, "ab");
-      if (v === 20) { settle(G.answerQuestion(g, id, q, true, "retry", R), true); continue; }
+      if (v === 20) { rightText(); continue; }
     }
     const hinted = () => g.checks?.[G.checkKey(q, id)]?.hint !== undefined || g.mageHints?.[q] !== undefined;
-    const knows = () => L.known || ((text || sort) && L.hintable && hinted());
+    const hintKind = () => g.mageHintKinds?.[q];
+    const knows = () => L.known || hintKind() === "whole" || ((text || sort) && hinted() && (hintKind() === "count" ? L.weak : L.hintable));
     const gone = () => g.eliminated[q] ?? [];
     const abilityOk = (min: number) => inBoss || g.teams.some((x) => x.inBoss) || d >= min;
     const t = team();
     if (t.abilityUses > 0) {
       if (t.classId === "mage" && abilityOk(MAGE_MIN) && !knows()) {
-        if (text && !hinted()) g = G.mageHint(g, id, q, "ab");
-        else if (sort && !hinted()) g = G.mageHint(g, id, q, "first", true);
-        else if (kind === "mc" && gone().length === 0) g = G.mageEliminate(g, id, q, 0, 4, R);
+        const target: GT.MageTarget | null = text && !hinted() ? { kind: "text", answer: "ab" } : sort && !hinted() ? { kind: "sort", items: ["first", "b", "c", "d"] } : kind === "mc" && gone().length === 0 ? { kind: "multipleChoice", correctIndex: 0, optionCount: 4 } : null;
+        if (target) { g = G.spendAbility(g, id, "mage"); g = G.mageCast(g, id, q, target, potionRoll(), R); }
       }
       if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) g = G.armSneak(g, id);
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
@@ -139,7 +146,8 @@ function play(classes: C[], maxTurns = 600) {
     // Option 0 is the right one; a wrong pick is the first wrong option still shown.
     if (knows() || (!text && R() < 1 / (opts - gone().length))) {
       // Roll first: potionRoll spends the potion on g, and the call must see that g.
-      const crit = text ? undefined : knows() ? potionRoll() : d20();
+      if (text) { rightText(); continue; }
+      const crit = knows() ? potionRoll() : d20();
       settle(G.answerQuestion(g, id, q, true, "retry", R, crit), true);
       continue;
     }
@@ -148,7 +156,7 @@ function play(classes: C[], maxTurns = 600) {
     else if (cleric && G.canPrayBeforeJudge(g, id)) g = G.recordTextWrong(g, id, q);
     if (sort && R() < SORTFIX) L.known = true;
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
-    if (cleric && G.canPray(g, id)) g = G.pray(g, id);
+    if (cleric && G.canPray(g, id)) g = G.prayerRoll(G.pray(g, id), id, potionRoll());
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
     g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
   }

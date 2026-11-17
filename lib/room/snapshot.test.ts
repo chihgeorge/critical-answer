@@ -37,10 +37,10 @@ describe("parseSnapshot", () => {
   };
   const omit = (t: Record<string, unknown>, ...keys: string[]) => Object.fromEntries(Object.entries(t).filter(([k]) => !keys.includes(k)));
 
-  it("reads teams from before classes as plain adventurers with 2 uses, who cannot use an ability", () => {
+  it("reads teams from before classes as plain adventurers with 3 uses, who cannot use an ability", () => {
     const game = gameWithTeams((t) => omit(t, "abilityUses", "classId"));
     const s = parseSnapshot({ ...valid(), game });
-    expect(s?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([[undefined, 2], [undefined, 2]]);
+    expect(s?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([[undefined, 3], [undefined, 3]]);
     expect(() => spendAbility(s!.game!, "a", "warrior")).toThrow(/not a warrior/);
   });
 
@@ -92,7 +92,7 @@ describe("parseSnapshot", () => {
 
   it("gives a team with a class but no abilityUses its class's starting uses, and refuses an unknown class", () => {
     const game = gameWithTeams((t, i) => (i === 0 ? { ...omit(t, "abilityUses"), classId: "warrior" } : { ...omit(t, "abilityUses"), classId: "thief" }));
-    expect(parseSnapshot({ ...valid(), game })?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 4], ["thief", 2]]);
+    expect(parseSnapshot({ ...valid(), game })?.game?.teams.map((t) => [t.classId, t.abilityUses])).toEqual([["warrior", 3], ["thief", 3]]);
     expect(parseSnapshot({ ...valid(), game: gameWithTeams((t) => ({ ...t, classId: "bard" })) })).toBeNull();
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "warrior" }] })?.pendingTeams[0].classId).toBe("warrior");
     expect(parseSnapshot({ ...valid(), pendingTeams: [{ id: "x", name: "甲隊", classId: "bard" }] })).toBeNull();

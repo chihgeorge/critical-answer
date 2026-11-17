@@ -29,9 +29,11 @@ export function undoRow(judged: Pick<JudgedEntry, "teamId" | "questionId" | "cor
 
 /** The row's button: 改成答錯（−N）, 改成答對（+N）, or on undoRow the full 改判答對 (fields: a music question judged
  * field by field again). */
-export function rejudgeButton(judged: Pick<JudgedEntry, "teamId" | "questionId" | "correct" | "index">[], j: Pick<JudgedEntry, "teamId" | "questionId" | "correct" | "index" | "points" | "taken">, reward: number, undo: { teamId: string; questionId: string; fields: boolean } | undefined): string {
+export function rejudgeButton(judged: Pick<JudgedEntry, "teamId" | "questionId" | "correct" | "index">[], j: Pick<JudgedEntry, "teamId" | "questionId" | "correct" | "index" | "points" | "taken" | "reads">, reward: number, undo: { teamId: string; questionId: string; fields: boolean } | undefined): string {
   const change = rejudgeChange(j, reward);
   if (j.correct) return `改成答錯（−${-change}）`;
   if (undoRow(judged, j, undo)) return `改成答對（${undo!.fields ? "重新逐欄判定" : "照答對往前走"}）`;
+  // A chef's or armed thief's first 改成答對 is paid from an answer die rolled then (game-state rejudgeNeedsDie).
+  if (j.reads && j.taken === undefined) return "改成答對（擲答對骰）";
   return `改成答對（+${change}）`;
 }

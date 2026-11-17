@@ -6,7 +6,7 @@ import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { gameLog } from "../game-log";
 import { parseClientMessage } from "../protocol";
-import { chefShare, type GameState } from "../game-state";
+import { checkKey, type GameState } from "../game-state";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
 const [A, B] = IDS;
@@ -47,9 +47,30 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
   const lastTo = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).at(-1);
   const setScore = (teamId: string, score: unknown, conn: Conn = host) => send(room, conn, { type: "HOST_SET_SCORE", teamId, score });
   const ledger = () => room.game!.judgments ?? [];
+  /** A 改成答對 that rolls an answer die (a chef's or armed thief's row) waits out its 2 s beat. */
   const rejudge = (index: number, correct: boolean, conn: Conn = host) => {
     const j = ledger()[index];
     send(room, conn, { type: "HOST_REJUDGE", index, teamId: j?.teamId ?? A, questionId: j?.questionId ?? "r1", correct });
+    if ((room as unknown as { pendingRoll: { rejudge?: true } | null }).pendingRoll?.rejudge) vi.advanceTimersByTime(2000);
+  };
+  /** The next d20 the room rolls (its fixedDie). */
+  const setDie = (value: number) => ((room as unknown as { fixedDie: number }).fixedDie = value);
+  /** 甲 (a warrior) rolls for its question, persuasion check passed; the die lands after its 2 s beat. */
+  const warriorRoll = (value: number) => {
+    const q = team(A).currentQuestionId;
+    room.game = { ...room.game!, checks: { ...room.game!.checks, [checkKey(q, A)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
+    setDie(value);
+    send(room, phones[0], { type: "TEAM_USE_ABILITY", questionId: q });
+    vi.advanceTimersByTime(2000);
+    // A hit's reveal closes as judge() closes one.
+    if (state().reveal) {
+      vi.advanceTimersByTime(10_000);
+      send(room, host, { type: "HOST_SERVE", eventId: state().eventId });
+      vi.advanceTimersByTime(30_000);
+      send(room, host, { type: "HOST_NEXT", eventId: state().eventId });
+      vi.advanceTimersByTime(10_000);
+    }
+    return q;
   };
   /** The team on turn answers its question; the host judges it (and closes a correct one's reveal). */
   const judge = (correct: boolean, fleeChoice = "retry") => {
@@ -73,7 +94,7 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
     return (lastTo(host).entries as { kind?: string; text?: string }[]).filter((e) => e.kind === "fix").map((e) => e.text);
   };
   const picks = (conn: Conn & { send: ReturnType<typeof vi.fn> } = host) => msgs(conn.send.mock.calls).findLast((m) => m.type === "HOST_PICKS");
-  return { room, io, host, phones, state, team, lastTo, setScore, rejudge, judge, ledger, setReward, transcript, picks, storage };
+  return { room, io, host, phones, state, team, lastTo, setScore, rejudge, judge, ledger, setReward, transcript, picks, storage, setDie, warriorRoll };
 }
 
 beforeEach(() => {
@@ -156,7 +177,8 @@ describe("the 改判 ledger", () => {
     g.judge(false); // 乙 (chef) wrong
     expect(g.ledger()).toEqual([
       { teamId: A, questionId: expect.any(String), correct: true, points: 10 },
-      { teamId: B, questionId: expect.any(String), correct: false, points: 10 + chefShare(10) },
+      // A chef's 答錯 is the plain N; its 改成答對 reads an answer die rolled then.
+      { teamId: B, questionId: expect.any(String), correct: false, points: 10, reads: "chef" },
     ]);
     expect(g.team(A).reward).toBe(10);
     expect(g.picks().judged).toEqual(g.ledger().map((j, index) => ({ ...j, index })));
@@ -182,8 +204,11 @@ describe("the 改判 ledger", () => {
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "猜", eventId: g.state().eventId });
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "team", eventId: g.state().eventId });
     const uses = g.team(A).abilityUses;
+    g.setDie(12); // the prayer die: a success
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "pray", eventId: g.state().eventId });
     expect(g.team(A).abilityUses).toBe(uses - 1); // the prayer was spent
+    expect(g.ledger()).toEqual([]); // until its die lands
+    vi.advanceTimersByTime(2000);
     expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10 }]);
   });
 
@@ -235,7 +260,7 @@ describe("改判", () => {
   });
 
   it("a wrong judgment flipped to correct gives N; the 0 floor never mints points over any cycle", () => {
-    const g = started();
+    const g = started(["thief", null]);
     g.judge(false); // 甲 wrong: N = 10
     g.setReward(A, 0); // a move: closes 改判答對, so the row is points-only
     g.rejudge(0, true);
@@ -328,6 +353,7 @@ describe("改判", () => {
     const { teamId, questionId } = g.judge(false); // 乙 wrong: undoable
     const before = g.team(B).reward;
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000); // the chef's answer die, as on any 答對
     const mine = g.ledger().filter((j) => j.teamId === teamId && j.questionId === questionId);
     expect(mine).toEqual([{ teamId, questionId, correct: true, points: g.team(B).reward - before }]);
     expect(g.ledger()).toHaveLength(2);
@@ -339,6 +365,7 @@ describe("改判", () => {
     viaUndo.judge(true);
     const { teamId, questionId } = viaUndo.judge(false); // 乙 wrong: undoable
     send(viaUndo.room, viaUndo.host, { type: "HOST_UNDO_WRONG", teamId, questionId, eventId: viaUndo.state().eventId });
+    vi.advanceTimersByTime(2000); // the chef's answer die, as on any 答對
     const g = started();
     g.judge(true);
     g.judge(false);
@@ -348,6 +375,7 @@ describe("改判", () => {
     expect(g.state().undoWrong).toMatchObject({ teamId, questionId });
     expect(g.ledger()[1].correct).toBe(false);
     g.rejudge(1, true);
+    vi.advanceTimersByTime(2000); // the chef's answer die, as on any 答對
     expect(g.team(B).score).toBeGreaterThan(0); // progress moved, as if judged right
     expect(g.team(B)).toEqual(viaUndo.team(B));
     expect(g.team(B).fixes).toBeUndefined();
@@ -377,6 +405,55 @@ describe("改判", () => {
     expect(g.team(B)).toMatchObject({ score: bProgress });
     expect(g.team(B).fixes).toHaveLength(1);
     expect(g.ledger()).toHaveLength(2);
+  });
+
+  // Value: protects=a chef's or armed thief's 改成答對 re-rolls the answer die and pays from it, once (owner, 2026-11-17);
+  // fails_when=it pays the plain N, rolls on every flip, or never shows the die.
+  it("a chef's 改成答對 rolls its answer die now, shown like any roll, and pays from it; flipping back reuses that payment", () => {
+    const g = started();
+    g.judge(true); // 甲
+    g.judge(false); // 乙 (chef) wrong
+    g.setScore(A, 3); // a move: closes 改判答對, so the row is a plain 改判
+    g.setReward(B, 0);
+    g.setDie(12);
+    send(g.room, g.host, { type: "HOST_REJUDGE", index: 1, teamId: B, questionId: g.ledger()[1].questionId, correct: true });
+    expect(g.state().pendingRoll).toMatchObject({ teamId: B, kind: "answer", value: 12, rejudge: true });
+    expect(g.team(B).reward).toBe(0);
+    vi.advanceTimersByTime(2000);
+    expect(g.team(B).reward).toBe(13); // 10 × 1.3
+    expect(g.ledger()[1]).toMatchObject({ correct: true, flipped: true });
+    expect(g.transcript().at(-1)).toBe("乙隊 rejudge #2 答錯→答對 d20=12 0→13");
+    g.rejudge(1, false);
+    expect(g.team(B).reward).toBe(0);
+    g.setDie(1);
+    g.rejudge(1, true);
+    expect(g.state().pendingRoll ?? null).toBeNull(); // no second die
+    expect(g.team(B).reward).toBe(13);
+  });
+
+  // Value: protects=the warrior's result is its own die alone; no 改判 changes its roll, payout or 1-penalty (owner,
+  // 2026-11-17: 「戰士只看骰子」); fails_when=a warrior row can be flipped either way, or a flip re-rolls for it.
+  it("a warrior's roll cannot be rejudged either way: its points stay as its die gave them", () => {
+    const g = started(["warrior", null]);
+    g.warriorRoll(12); // a hit: 80% of 10
+    expect(g.team(A).reward).toBe(8);
+    expect(g.ledger()[0]).toMatchObject({ teamId: A, correct: true, points: 8, warrior: true });
+    g.rejudge(0, false);
+    expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "warrior_roll" });
+    expect(g.team(A).reward).toBe(8);
+    expect(g.ledger()[0].correct).toBe(true);
+    // Its 1 takes the whole reward, and a 改成答對 gives none of it back.
+    g.judge(false); // 乙
+    g.setReward(A, 30);
+    g.warriorRoll(1);
+    expect(g.team(A).reward).toBe(20);
+    const miss = g.ledger().length - 1;
+    expect(g.ledger()[miss]).toMatchObject({ teamId: A, correct: false, warrior: true });
+    g.rejudge(miss, true);
+    expect(g.lastTo(g.host)).toMatchObject({ error: "invalid_action", detail: "warrior_roll" });
+    expect(g.state().pendingRoll ?? null).toBeNull();
+    expect(g.team(A).reward).toBe(20);
+    expect(g.state().undoWrong).toBeUndefined(); // a die, not the host's 答錯: nothing to undo
   });
 
   it("an older 答錯 of the same team and question stays points-only while the newer one is undoable", () => {

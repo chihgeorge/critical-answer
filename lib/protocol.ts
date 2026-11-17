@@ -452,15 +452,18 @@ export const REACT_ROOM_MAX = MAX_TEAMS - 1;
  * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
  * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). A crit or check rolled with a 🧪
- * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's. */
+ * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
+ * Class dice: a mage's skill die, a cleric's prayer die, and a fill-in's answer die (a chef's, or a thief's with 偷襲
+ * armed) after a correct answer; `rejudge`: that answer die is the host's 改成答對, paid when it lands. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
-  kind?: "warrior" | "crit" | "check" | "kill";
+  kind?: "warrior" | "crit" | "check" | "kill" | "mage" | "cleric" | "answer";
   bonus?: number;
   dc?: number;
   values?: number[];
+  rejudge?: true;
 }
 
 export type ServerErrorCode =

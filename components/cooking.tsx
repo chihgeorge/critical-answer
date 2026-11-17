@@ -9,6 +9,7 @@ import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, EAT_AT_MS, EAT_BITE_MS, EAT_MS, FI
 import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import type { ClassId } from "@/lib/game-state";
+import { signed } from "@/lib/event-text";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
 import { dishScale, emptyPlateScale } from "@/lib/pixel-art";
@@ -230,7 +231,7 @@ function DishCard({ dish, title }: { dish: Dish; title: string }) {
           <span className="px-num">+{dish.points}</span> 飽足感
           {dish.chefBonus ? (
             <span style={{ color: "#a8470f" }}>
-              （🍳 廚師 <span className="px-num">+{dish.chefBonus}</span>）
+              （🍳 廚師 <span className="px-num">{signed(dish.chefBonus)}</span>）
             </span>
           ) : null}
         </div>

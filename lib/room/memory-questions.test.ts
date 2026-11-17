@@ -99,7 +99,9 @@ describe("記憶題 with a clip", () => {
 
   // Value: protects=no answer, ability or hint during the phase; fails_when=a stale phone locks, or a mage learns an option.
   it("refuses phone answers and abilities while memorizing, and takes them after", () => {
+    vi.useFakeTimers();
     const g = started(bank(memVideo("m1")));
+    (g.room as unknown as { fixedDie: number }).fixedDie = 12; // the mage's skill die: a success
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: 1 });
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "memorizing" });
     send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1" });
@@ -109,9 +111,11 @@ describe("記憶題 with a clip", () => {
     expect(g.room.game!.eliminated.m1 ?? []).toEqual([]);
     send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "m1" });
     send(g.room, g.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
+    vi.advanceTimersByTime(2000);
     expect(g.room.game!.eliminated.m1?.length).toBe(1);
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: 1 });
     expect(g.room.game!.teams.find((t) => t.id === A)?.currentSelection).toBe(1);
+    vi.useRealTimers();
   });
 
   // Value: protects=the media ends once per question; fails_when=another clip's end re-opens a done memory question (replay).
