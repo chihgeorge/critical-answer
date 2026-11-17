@@ -75,6 +75,7 @@ Each turn picks its next move from what the pages show, so every question type g
 - Skipped by the host: a timing question cannot be tapped on purpose, so the host presses 沒人答對，換下一題; a buzzer song that has not opened 10 seconds after 播放 (with no 播放 button, 10 seconds after the phones show 等音樂開始…) is skipped the same way. The step prints `ok` with `note="skipped: ..."` and does not count as broken.
 - Mystery room and fortune teller cards have no question and print `note="passed: ..."`. When the boss falls and the game ends, the remaining turns and 結束冒險 are skipped.
 - A wrong answer on the host page, or a question not done within 60 seconds, makes the step `FAIL`.
+- When every turn of a round was skipped or a card, the round verified no question: it prints `ROUND r<round> FAIL verified nothing: ...` and the run is `CANARY BROKEN`. When the default bank has timing or buzzer songs, one turn may be skipped, so add `--turns 2` or more.
 
 It carries no key, so it only plays the site's default bank: a host needs the owner key to pick another bank, so there is no bank option. The live check meets sort, memory, music and buzzer questions only when the event bank is the default bank. A boss buzzer phase is never the first phase, and `--boss` only reaches the first phase, so try buzzer, timing and field questions locally. A round gets about 150 seconds (plus the extra turns); past that it skips the remaining steps but still ends the game.
 
