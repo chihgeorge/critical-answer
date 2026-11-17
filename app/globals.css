@@ -78,7 +78,7 @@ body {
 /* Direction D: a stone frame with iron rivets round the big screen's question panel and narration box. Every rule
    under .px-frames is switched by that one class on <body> (app/layout.tsx; /screen?frames=0 drops it for one TV).
    The frame is all outside the box (ink 0-4, stone 4-8 lit top-left, ink 8-10, a 4px drop): padding, wrapping and
-   the question's fit measure stay as they were. It reaches 6px lower than the plain panel (STONE_REACH on /screen). */
+   the question's fit measure stay as they were. It reaches 6px lower than the plain panel (STONE_REACH on /screen adds the tiles' 3px ring). */
 .px-frames .px-stone {
   box-shadow:
     0 0 0 4px var(--k),

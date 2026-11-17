@@ -179,9 +179,9 @@ const TILE_VIDEO_TOP = 190;
 const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px margins
 const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
-/** How much lower a panel's stone frame and its drop reach than the plain panel's (globals.css .px-stone): the question
- * fits that much higher while the frames are on. */
-const STONE_REACH = 6;
+/** While the frames are on the question fits this much higher (globals.css .px-stone): its frame and drop reach 6 px lower
+ * than the plain panel's, and a wooden tile's ink ring stands 3 px above the tile. */
+const STONE_REACH = 9;
 /** A tile's box. `narrow`: a video question's tiles give the 356 px player (YouTube's minimum, D11) the middle of the wall. */
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };

@@ -356,6 +356,10 @@ test("big screen: a long question shrinks to end above the option tiles", async 
   // Retried: the panel fits again once the pixel font has loaded.
   await expect(async () => {
     const panelBox = (await panel.boundingBox())!;
-    for (const i of [0, 1]) expect(panelBox.y + panelBox.height).toBeLessThanOrEqual((await screen.getByTestId(`wall-option-${i}`).boundingBox())!.y);
+    for (const i of [0, 1]) {
+      const tileTop = (await screen.getByTestId(`wall-option-${i}`).boundingBox())!.y;
+      // boundingBox leaves out box-shadow: the stone frame and its drop reach 14 px below the panel, the tile's ink ring 3 px above it.
+      expect(panelBox.y + panelBox.height + 14).toBeLessThanOrEqual(tileTop - 3);
+    }
   }).toPass();
 });
