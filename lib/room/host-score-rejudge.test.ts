@@ -431,6 +431,27 @@ describe("改判", () => {
     expect(g.team(B).reward).toBe(13);
   });
 
+  // Value: protects=the room pays a chef's 改成答對 20 with the crit's half only on a multipleChoice or sort question, as
+  // live (#342); fails_when=applyRejudge drops the question kind, or a fill-in gets the crit.
+  it("a chef's 改成答對 20 adds the crit's half on a multipleChoice question, not on a fill-in", () => {
+    for (const [kind, paid] of [["text", 20], ["multipleChoice", 30]] as const) {
+      const g = started();
+      g.judge(true); // 甲
+      g.judge(false); // 乙 (chef) wrong
+      g.setScore(A, 3); // closes 改判答對
+      g.setReward(B, 0);
+      g.setDie(20);
+      send(g.room, g.host, { type: "HOST_REJUDGE", index: 1, teamId: B, questionId: g.ledger()[1].questionId, correct: true });
+      // Only while the die lands: the bank here has fill-ins only.
+      const room = g.room as unknown as { question: (id: string) => { kind: string } | undefined };
+      const question = room.question;
+      room.question = (id) => ({ ...question.call(g.room, id)!, ...(kind === "text" ? {} : { kind, options: ["甲", "乙", "丙", "丁"], correctIndex: 0 }) });
+      vi.advanceTimersByTime(2000);
+      room.question = question;
+      expect(g.team(B).reward).toBe(paid);
+    }
+  });
+
   // Value: protects=a 改成答對's die never takes the roll slot from another team's waiting wrong answer (its boss miss's beat
   // uses the same slot, /review); fails_when=the die starts and the other team's wrong answer is never settled.
   it("a chef's 改成答對 die waits while any team's wrong answer is still waiting", () => {

@@ -68,7 +68,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
       ? `${tier}：${mageEffect(castOn, value)}`
       : kind === "cleric"
         ? `${tier}：${clericEffect(value)}`
-        : `${tier}：${(crit || (rejudge && critable)) && reader === "chef" && value === 20 ? "多拿一半，" : ""}${read ?? "答對！"}`
+        : `${tier}：${crit && reader === "chef" && value === 20 ? "多拿一半，" : ""}${read ?? "答對！"}`
     : check
     ? value === 20
       ? "20！說服成功，免答"

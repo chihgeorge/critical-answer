@@ -1913,9 +1913,15 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   if (needsDie && die === undefined) throw new InvalidActionError("die_needed");
   const tier = die === undefined ? 2 : skillTier(die);
   // The chef's tier multiplier, or the thief's sneak by tier. Only the score moves: a thief's 2–6 gives no use back here.
-  // A thief's 20 already pays ×2 = sneak ×1.5 plus the crit's half, as live.
-  const chefBase = crit && die === 20 ? j.points + Math.round(j.points * 0.5) : j.points;
-  const paid = !needsDie ? (j.taken ?? j.points) : j.reads === "chef" ? Math.round(chefBase * CHEF_MULTIPLIERS[tier]) : Math.round(j.points * [1, 1, SNEAK_REWARD_MULTIPLIER, 2][tier]);
+  // As live: a thief's 20 is a crit on any question (sneak ×1.5 plus the crit's half), a chef's only on a crit die.
+  const half = Math.round(j.points * 0.5);
+  const paid = !needsDie
+    ? (j.taken ?? j.points)
+    : j.reads === "chef"
+      ? Math.round((crit && die === 20 ? j.points + half : j.points) * CHEF_MULTIPLIERS[tier])
+      : tier === 3
+        ? Math.round(j.points * SNEAK_REWARD_MULTIPLIER) + half
+        : Math.round(j.points * [1, 1, SNEAK_REWARD_MULTIPLIER][tier]);
   const from = getTeam(game, teamId).reward;
   const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;

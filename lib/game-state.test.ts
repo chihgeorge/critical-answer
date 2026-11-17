@@ -1765,8 +1765,6 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(game.mageCasts).toEqual({});
   });
 
-  // Value: protects=an armed thief's 改成答對 pays its sneak by the die rolled then, and moves only the score (owner,
-  // 2026-11-17; hosting.md); fails_when=the die is skipped, a tier pays the wrong multiple, or a 2–6 gives a use back.
   // Value: protects=a chef's 改成答對 on a multipleChoice or sort question pays like a live correct answer, crit included
   // (#342: a 20 = 3N); fails_when=the crit half is skipped, or a fill-in (no crit die) gets it.
   it("a chef's 改成答對 on a crit question adds the crit's half on a 20, as live", () => {
@@ -1780,6 +1778,8 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(paid(20, true)).toBe(live);
   });
 
+  // Value: protects=an armed thief's 改成答對 pays its sneak by the die rolled then, and moves only the score (owner,
+  // 2026-11-17; hosting.md); fails_when=the die is skipped, a tier pays the wrong multiple, or a 2–6 gives a use back.
   it("a thief's 改成答對 needs its die, pays the sneak by tier and gives no use back", () => {
     const g0 = classGame(["thief", undefined]);
     const q = currentQ(g0, "T0");
@@ -1790,6 +1790,9 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
       const t = hostRejudge(g, 0, "T0", q, true, die).teams[0];
       expect(t).toMatchObject({ reward: base.reward + paid, abilityUses: base.abilityUses });
     }
+    // A 20 pays as live, sneak ×1.5 plus the crit's half, each rounded: 8 + 3 on an odd 5.
+    const odd: GameState = { ...g, judgments: [{ ...g.judgments![0], points: 5 }] };
+    expect(hostRejudge(odd, 0, "T0", q, true, 20).teams[0].reward).toBe(base.reward + 11);
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
