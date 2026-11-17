@@ -82,7 +82,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
           </span>
         </div>
         <div className={`relative mx-auto w-[24px] ${turn ? "px-turn" : ""}`} style={{ opacity: t.online ? 1 : 0.5 }}>
-          <Sprite kind="hero" variant={i} scale={1} />
+          <Sprite kind="hero" variant={i} cls={t.classId} scale={1} />
         </div>
         {!t.online && <Sprite kind="zz" scale={1} className="absolute" style={{ right: -4, top: 16 }} />}
         </div>
