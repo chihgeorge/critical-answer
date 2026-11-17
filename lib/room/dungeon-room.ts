@@ -129,7 +129,7 @@ import { epiloguePages, revealBeats, revealCalls } from "../podium";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
-import { catalogMonster, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
+import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
 import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { acceptTapAt, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
@@ -151,10 +151,27 @@ const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
 /** 5 wrong claims in the room burn every live handoff code (team-handoff.md D4). */
 const HANDOFF_MAX_WRONG = 5;
-/** Wrong join passwords the whole room takes per window; past it every password JOIN waits for the next window, so a
- * script needs hours for a 4-digit password. Room-wide, since a script picks a fresh connection id for free. */
+/** Wrong join passwords one connection source (IP) takes per window; past it that source's password JOINs wait for the
+ * next window. Per source, not per connection id, since a script picks a fresh id for free; and not room-wide, so one
+ * guesser cannot keep every new team out. */
 const JOIN_PASSWORD_MAX_WRONG = 10;
+/** The room-wide backstop: many sources still need over 8 hours to try every 4-digit password. It can still be filled
+ * on purpose to keep new teams out for a window, as the old room-wide lock could. */
+const JOIN_PASSWORD_ROOM_MAX_WRONG = 20;
+
+/** The source a wrong-password count belongs to: an IPv4 address, or an IPv6 address's /64 (one device or home gets a
+ * whole /64, so rotating addresses inside it is free). */
+export function passwordSource(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return `${groups.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":")}::/64`;
+}
 const JOIN_PASSWORD_WINDOW_MS = 60_000;
+/** passwordWrong's key for the room-wide total (a source's key always starts with "ip:"). */
+const ROOM_GUESSES = "room";
 
 /** The pauses the room times itself (manual-pacing.md), in the order HOST_STEP looks for a live one. */
 const STEP_SLOTS = ["initiative", "forkBeat", "fortuneBeat", "lock", "phaseCard", "fork", "fortune"] as const;
@@ -412,9 +429,14 @@ export class DungeonRoom {
   private screenSoundSent: ScreenSound | null = null;
   /** Sockets the room closed or replaced: whatever they still send is ignored. */
   private gone = new WeakSet<Conn>();
-  /** Wrong join passwords since passwordWindowAt (JOIN_PASSWORD_MAX_WRONG). Memory only. */
-  private passwordWrong = 0;
-  private passwordWindowAt = 0;
+  /** Each socket's connection source: its IP (CF-Connecting-IP) hashed with sourceSalt, never the raw address. Memory
+   * only, gone with the socket. */
+  private connSource = new WeakMap<Conn, string>();
+  private sourceSalt = crypto.randomUUID();
+  /** Wrong join passwords per source in its current window, and the room's total under ROOM_GUESSES. Memory only, never
+   * logged. An entry is made only for a counted wrong guess, so the room cap bounds it; it goes at the first password
+   * JOIN after its window has passed. */
+  private passwordWrong = new Map<string, { wrong: number; at: number }>();
 
   /** Counts the start and every accepted judgment; each gets exactly one NARRATION. */
   private eventSeq = 0;
@@ -1947,8 +1969,10 @@ export class DungeonRoom {
     this.alarmAt = null;
   }
 
-  onConnect(conn: Conn) {
+  /** `source`: the client's IP (CF-Connecting-IP), used only to count wrong join passwords per source. */
+  onConnect(conn: Conn, source?: string) {
     this.gone.delete(conn);
+    if (source) this.connSource.set(conn, fnv1a(`${this.sourceSalt}:${passwordSource(source)}`).toString(36));
     if (this.expiring) {
       this.gone.add(conn);
       conn.close();
@@ -2134,7 +2158,7 @@ export class DungeonRoom {
           if (!this.requireHost(sender)) break;
           this.joinPassword = msg.password.trim();
           // A new password makes earlier guesses worthless: the host can lift a guessing lock this way.
-          this.passwordWrong = 0;
+          this.passwordWrong.clear();
           // Every host page shows the room's real password only once the room has it.
           for (const conn of this.hostConns.values()) this.sendTo(conn, { type: "HOST_OK", joinPassword: this.joinPassword, screenKey: this.screenKey });
           break;
@@ -2438,17 +2462,22 @@ export class DungeonRoom {
     }
     if (this.joinPassword) {
       const t = this.now();
-      if (t - this.passwordWindowAt >= JOIN_PASSWORD_WINDOW_MS) {
-        this.passwordWindowAt = t;
-        this.passwordWrong = 0;
-      }
-      if (this.passwordWrong >= JOIN_PASSWORD_MAX_WRONG) {
+      for (const [key, g] of this.passwordWrong) if (t - g.at >= JOIN_PASSWORD_WINDOW_MS) this.passwordWrong.delete(key);
+      // No header (local dev, tests) is one shared source: the old room-wide lock.
+      const source = `ip:${this.connSource.get(conn) ?? ""}`;
+      const wrong = (key: string) => this.passwordWrong.get(key)?.wrong ?? 0;
+      if (wrong(ROOM_GUESSES) >= JOIN_PASSWORD_ROOM_MAX_WRONG || wrong(source) >= JOIN_PASSWORD_MAX_WRONG) {
         this.sendTo(conn, { type: "ERROR", error: "bad_password", detail: "too_many_attempts" });
         return;
       }
       if (!tokensEqual(this.joinPassword, password.trim())) {
         // An empty password is a phone that has not asked its team for one yet, not a guess.
-        if (password.trim()) this.passwordWrong++;
+        if (password.trim()) {
+          for (const key of [source, ROOM_GUESSES]) {
+            const g = this.passwordWrong.get(key);
+            this.passwordWrong.set(key, g ? { ...g, wrong: g.wrong + 1 } : { wrong: 1, at: t });
+          }
+        }
         this.sendTo(conn, { type: "ERROR", error: "bad_password" });
         return;
       }
