@@ -155,8 +155,20 @@ const HANDOFF_MAX_WRONG = 5;
  * next window. Per source, not per connection id, since a script picks a fresh id for free; and not room-wide, so one
  * guesser cannot keep every new team out. */
 const JOIN_PASSWORD_MAX_WRONG = 10;
-/** The room-wide backstop: many sources (or one rotating IPv6 addresses) still need hours for a 4-digit password. */
-const JOIN_PASSWORD_ROOM_MAX_WRONG = 30;
+/** The room-wide backstop: many sources still need over 8 hours to try every 4-digit password. It can still be filled
+ * on purpose to keep new teams out for a window, as the old room-wide lock could. */
+const JOIN_PASSWORD_ROOM_MAX_WRONG = 20;
+
+/** The source a wrong-password count belongs to: an IPv4 address, or an IPv6 address's /64 (one device or home gets a
+ * whole /64, so rotating addresses inside it is free). */
+export function passwordSource(ip: string): string {
+  if (!ip.includes(":")) return ip;
+  const [head, tail] = ip.split("::");
+  const h = head ? head.split(":") : [];
+  const t = tail ? tail.split(":") : [];
+  const groups = [...h, ...Array<string>(Math.max(0, 8 - h.length - t.length)).fill("0"), ...t];
+  return `${groups.slice(0, 4).map((g) => parseInt(g || "0", 16).toString(16)).join(":")}::/64`;
+}
 const JOIN_PASSWORD_WINDOW_MS = 60_000;
 /** passwordWrong's key for the room-wide total (a source's key always starts with "ip:"). */
 const ROOM_GUESSES = "room";
@@ -1960,7 +1972,7 @@ export class DungeonRoom {
   /** `source`: the client's IP (CF-Connecting-IP), used only to count wrong join passwords per source. */
   onConnect(conn: Conn, source?: string) {
     this.gone.delete(conn);
-    if (source) this.connSource.set(conn, fnv1a(`${this.sourceSalt}:${source}`).toString(36));
+    if (source) this.connSource.set(conn, fnv1a(`${this.sourceSalt}:${passwordSource(source)}`).toString(36));
     if (this.expiring) {
       this.gone.add(conn);
       conn.close();
@@ -2461,7 +2473,10 @@ export class DungeonRoom {
       if (!tokensEqual(this.joinPassword, password.trim())) {
         // An empty password is a phone that has not asked its team for one yet, not a guess.
         if (password.trim()) {
-          for (const key of [source, ROOM_GUESSES]) this.passwordWrong.set(key, { wrong: wrong(key) + 1, at: this.passwordWrong.get(key)?.at ?? t });
+          for (const key of [source, ROOM_GUESSES]) {
+            const g = this.passwordWrong.get(key);
+            this.passwordWrong.set(key, g ? { ...g, wrong: g.wrong + 1 } : { wrong: 1, at: t });
+          }
         }
         this.sendTo(conn, { type: "ERROR", error: "bad_password" });
         return;
