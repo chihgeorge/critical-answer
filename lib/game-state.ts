@@ -1543,7 +1543,12 @@ export function mageCast(game: GameState, teamId: string, questionId: string, ta
   if (game.mageCasts?.[checkKey(questionId, teamId)]) throw new InvalidActionError("cast_done");
   const tier = skillTier(value);
   // Marked whatever the tier, so a 1 or a refunded 2–6 is not a free reroll.
-  const cast = { ...game, mageCasts: { ...game.mageCasts, [checkKey(questionId, teamId)]: true as const } };
+  // A 20 shows the whole answer to the room, so the question counts as revealed and is never dealt again (#343).
+  const cast = {
+    ...game,
+    mageCasts: { ...game.mageCasts, [checkKey(questionId, teamId)]: true as const },
+    ...(tier === 3 ? { revealedQuestionIds: withRevealed(game.revealedQuestionIds, questionId) } : {}),
+  };
   const refunded = tier === 1 ? { ...cast, teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses + 1 })) } : cast;
   if (target.kind === "multipleChoice") {
     const old = game.eliminated[questionId] ?? [];
