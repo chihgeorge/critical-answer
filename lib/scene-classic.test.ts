@@ -56,6 +56,7 @@ describe("the torch-lit scene", () => {
 
   it("the boss room is the darkest", () => {
     const wall = (t: SceneTheme) => luma(scene(t, 160, 90, true, {}), 160, ...WALL);
+    // gstack-timing-ok: compares wall brightness (luma), not elapsed time
     expect(wall("crimson")).toBeLessThan(Math.min(wall("stone"), wall("moss"), wall("deep")));
   });
 
