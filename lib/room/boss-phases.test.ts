@@ -115,6 +115,23 @@ describe("boss phases in the room", () => {
     expect(msgs(g.host.send.mock.calls).findLast((m) => m.type === "HOST_PICKS")).toMatchObject({ bossPhaseIndex: 1, options: { boss: ["p2-a", "p2-b"] } });
   });
 
+  // Value: protects=the phase card is not followed by the hit's held handoff (it named phase 1's turn); fails_when=
+  // closeReveal appends the held line after openPhaseCard; why_new=the phase-card branch of the held handoff was untested;
+  // seam=none; no_claim=the card's own narration.
+  it("the hit's held handoff is dropped when 下一題 opens the phase card", async () => {
+    const g = bossGame(phasedBank(), { teams: 2 });
+    g.judge(true);
+    const hitId = g.state().eventId;
+    await new Promise((r) => setTimeout(r, 20));
+    expect((g.room as unknown as { heldHandoff: unknown }).heldHandoff).toMatchObject({ eventId: hitId });
+    g.next();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(g.state().phaseCard).toBeTruthy();
+    const hitNarrs = msgs(g.io.broadcast.mock.calls).filter((m) => m.type === "NARRATION" && m.eventId === hitId);
+    expect(hitNarrs.length).toBeGreaterThan(0);
+    expect(hitNarrs.every((m) => m.rev === 0)).toBe(true);
+  });
+
   it("a stale 下一題 does not close the card", () => {
     const g = bossGame();
     g.judge(true);

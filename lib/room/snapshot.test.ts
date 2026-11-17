@@ -82,6 +82,18 @@ describe("parseSnapshot", () => {
     }
   });
 
+  // Value: protects=a damaged saved handoff is dropped without losing the game; fails_when=the heldHandoff guard is
+  // removed and a restart appends a non-string line; why_new=the held handoff is new state in the save; seam=none
+  it("keeps a saved held handoff and drops a damaged one, keeping the rest of the save", () => {
+    const h = { eventId: 3, line: "輪到乙隊" };
+    expect(parseSnapshot({ ...valid(), heldHandoff: h })?.heldHandoff).toEqual(h);
+    for (const bad of [{ eventId: 1.5, line: "x" }, { eventId: 3 }, { eventId: 3, line: 7 }, "x"]) {
+      const s = parseSnapshot({ ...valid(), heldHandoff: bad });
+      expect(s).not.toBeNull();
+      expect(s?.heldHandoff).toBeUndefined();
+    }
+  });
+
   // Value: protects=a v5 save from before boss phases is discarded, not restored to throw in boss play; fails_when=the
   // boss.phases check is removed; why_new=the restore backfill and its test were removed; seam=none
   it("discards a game saved before boss phases", () => {

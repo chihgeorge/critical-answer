@@ -91,11 +91,8 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.locator(".px-say")).toContainText("甲隊");
   await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
 
-  // The narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
-  // addressed, and the last line has no ▼.
-  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
-  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
+  // The line naming the next team waits for 下一題: the screen still shows 甲隊's room.
+  await expect(screen.locator(".px-say")).not.toContainText("乙隊");
 
   // The bundled bank cooks every monster (docs/designs/monster-cuisine.md): the dish waits for the host's 🍲 上菜, then the
   // screen cooks the monster and serves it (cooking R4/R5), and scores are 飽足感.
@@ -109,6 +106,11 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(host.getByRole("button", { name: "下一題", exact: true })).toBeEnabled({ timeout: NEXT_WAIT_MS }); // once the dish is cooked and eaten (cooking I2, eat-dish.md)
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
+  // Now the narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
+  // addressed, and the last line has no ▼.
+  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
+  await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
   await expect(screen.getByText("輪到：乙隊")).toBeVisible();

@@ -714,6 +714,7 @@ describe("restoring after a restart", () => {
     const { host } = startedGame(first.room);
     judgeCorrect(first.room, host, T1); // a judgment with a next team: lines has result + atmosphere + transition
     await new Promise((r) => setTimeout(r, 30)); // the runner writes lastNarration asynchronously
+    serveNext(first.room, host, (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId); // 下一題 adds the transition
     const savedLines = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.lines;
     expect(savedLines.length).toBeGreaterThanOrEqual(2); // not the old single `line`/`then` shape
 
@@ -725,6 +726,48 @@ describe("restoring after a restart", () => {
     expect(replayed.lines).toEqual(savedLines);
     expect(replayed).not.toHaveProperty("line");
     expect(replayed).not.toHaveProperty("then");
+  });
+
+  // Value: protects=a restart during a reveal still says the line naming the next team (the reveal itself is not saved,
+  // so the restored stage shows that team at once); fails_when=the held line lives only in memory and is lost.
+  it("a restart during a reveal adds the held handoff to the restored narration", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const saved = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration;
+    expect(saved.lines.join("")).not.toContain("乙隊"); // the reveal holds the stage: no handoff yet
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const late = makeConn("late");
+    second.room.onConnect(late);
+    const n = lastOf(late, "NARRATION");
+    expect(n).toMatchObject({ eventId: saved.eventId, rev: saved.rev + 1 });
+    expect(n.lines.slice(0, -1)).toEqual(saved.lines);
+    expect(n.lines.at(-1)).toContain("乙隊");
+  });
+
+  // Value: protects=a restart right after 送王房 during a reveal names the boss, not the room monster the team left;
+  // fails_when=the rewritten held handoff is not saved (broadcastState saved the old one first; outside-voice finding).
+  it("a restart after 送王房 during a reveal adds a handoff naming the boss", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const room = (storage.data.get(SNAPSHOT_KEY) as any).heldHandoff;
+    first.room.onMessage(JSON.stringify({ type: "HOST_SEND_TO_BOSS", teamId: T2 }), host);
+    const boss = (storage.data.get(SNAPSHOT_KEY) as any).heldHandoff;
+    expect(boss.line).toContain("乙隊");
+    expect(boss.line).not.toBe(room.line);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    const late = makeConn("late");
+    second.room.onConnect(late);
+    expect(lastOf(late, "NARRATION").lines.at(-1)).toBe(boss.line);
   });
 
   // Value: protects=the big screen's reading progress and the edit revision survive a restart (host-narration-edit.md D14);
@@ -739,8 +782,9 @@ describe("restoring after a restart", () => {
     judgeCorrect(first.room, host, T1);
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
+    serveNext(first.room, host, eventId); // 下一題 adds the transition (rev 1)
     first.room.onClose(host);
-    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 0, done: 2 });
+    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 2 });
     expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, done: 2 });
   });
 
@@ -751,18 +795,19 @@ describe("restoring after a restart", () => {
     judgeCorrect(first.room, host, T1);
     await new Promise((r) => setTimeout(r, 30));
     const eventId = (storage.data.get(SNAPSHOT_KEY) as any).lastNarration.eventId;
-    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 0, index: 1, line: "改過的第二句" });
-    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 1, done: 1 });
-    expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 1, done: 1 });
+    serveNext(first.room, host, eventId); // 下一題 adds the transition (rev 1)
+    send(first.room, host, { type: "HOST_EDIT_NARRATION", eventId, rev: 1, index: 1, line: "改過的第二句" });
+    send(first.room, screenOf(first.room), { type: "SCREEN_NARRATION_PROGRESS", eventId, rev: 2, done: 1 });
+    expect((storage.data.get(SNAPSHOT_KEY) as any).lastNarration).toMatchObject({ eventId, rev: 2, done: 1 });
 
     const second = makeRoom(storage);
     await second.room.restore();
     const host2 = makeConn("host2");
     second.room.onConnect(host2);
     send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
-    expect(lastOf(host2, "NARRATION")).toMatchObject({ eventId, rev: 1 });
+    expect(lastOf(host2, "NARRATION")).toMatchObject({ eventId, rev: 2 });
     expect(lastOf(host2, "HOST_NARRATION_PROGRESS")).toEqual({ type: "HOST_NARRATION_PROGRESS", eventId, done: 1 });
-    send(second.room, host2, { type: "HOST_EDIT_NARRATION", eventId, rev: 1, index: 0, line: "太晚了" });
+    send(second.room, host2, { type: "HOST_EDIT_NARRATION", eventId, rev: 2, index: 0, line: "太晚了" });
     expect(lastOf(host2, "ERROR")).toMatchObject({ detail: "line_read" });
 
     const old = structuredClone(storage.data.get(SNAPSHOT_KEY) as any);
