@@ -69,6 +69,18 @@ function buzzerGame(q?: (id: string) => object, storage: RoomStorage = memorySto
 }
 
 describe("buzzer boss phase in the room", () => {
+  it("does not announce a team when phase 1 hands off to a buzzer phase", async () => {
+    const g = buzzerGame();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    send(g.room, g.host, { type: "HOST_GET_TRANSCRIPT" });
+    const entries = msgs((g.host as unknown as { send: ReturnType<typeof vi.fn> }).send.mock.calls)
+      .findLast((m) => m.type === "TRANSCRIPT").entries;
+    const hit = entries.find((e: { event: { type: string } }) => e.event.type === "boss-hit");
+    const card = entries.find((e: { event: { type: string } }) => e.event.type === "boss-phase");
+    expect(hit.event.next).toBeUndefined();
+    expect(card.event.next).toBeUndefined();
+  });
+
   it("the phase card pulls every team into the boss room; STATE carries the buzz and no one is on turn", () => {
     const g = buzzerGame();
     expect(g.room.game!.teams.every((t) => t.inBoss)).toBe(true);

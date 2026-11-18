@@ -2973,7 +2973,7 @@ export class DungeonRoom {
     const phase = this.bank.boss.phases[game.boss.phaseIndex];
     this.broadcastState();
     const event: NarrationEvent = { type: "boss-phase", monster: catalogMonster(this.bossId()).name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
-    const next = this.nextTurn();
+    const next = isBuzzPhase(game) ? null : this.nextTurn();
     void this.narrate(eventId, next ? { ...event, next } : event);
   }
 
@@ -3870,7 +3870,8 @@ export class DungeonRoom {
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
     const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : catalogMonster(ateFrom).dish;
-    const narrated = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    // A phase card, not the next team, follows this answer. In a buzzer phase there is no team on turn.
+    const narrated = toNarrationEvent(prev, outcome, monster, game.boss.phasePending ? undefined : this.nextTurn() ?? undefined, phaseName);
     const told = caught && narrated.type === "flee" ? { ...narrated, caught: prev.teams.find((t) => t.id === caught.by)?.name ?? "" } : narrated;
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感. The
     // narrator may size up the edible part meanwhile (foodie narration).
