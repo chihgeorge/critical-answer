@@ -441,9 +441,9 @@ export class DungeonRoom {
   private hostToken = "";
   // shortcut: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
-  /** The buzz winner whose last phone closed in this instance (memory only: after a restart every team reads offline
-   * until it reconnects, and that must not end its pick). */
-  private pickerLeft: string | null = null;
+  /** Teams whose last phone closed in this instance (memory only: after a restart every team reads offline until it
+   * reconnects, and that must not end a buzz winner's pick; endPickIfPickerGone). */
+  private leftTeams = new Set<string>();
   /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
   private lastPicks: string | null = null;
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
@@ -2140,8 +2140,6 @@ export class DungeonRoom {
     // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it. And a persuasion
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
-    // A buzz winner's phone left: its category pick will not come (endPickIfPickerGone).
-    if (this.game.buzz?.picker === teamId) this.pickerLeft = teamId;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -3588,6 +3586,8 @@ export class DungeonRoom {
   private setOnline(teamId: string, online: boolean) {
     const prev = this.game!;
     const holding = prev.buzz?.teamId === teamId;
+    if (online) this.leftTeams.delete(teamId);
+    else this.leftTeams.add(teamId);
     this.keepUndoOpen(setTeamOnline(prev, teamId, online));
     // A team that sent its typed answer keeps the buzz while its phone sleeps (#368): the music stays stopped.
     if (holding && this.game!.buzz?.teamId === teamId) return;
@@ -4230,7 +4230,7 @@ export class DungeonRoom {
   private endPickIfPickerGone() {
     const game = this.game;
     const picker = game?.buzz?.picker;
-    if (!game || !picker || picker !== this.pickerLeft || !this.pickHold() || game.teams.find((t) => t.id === picker)?.online !== false) return;
+    if (!game || !picker || !this.leftTeams.has(picker) || !this.pickHold() || game.teams.find((t) => t.id === picker)?.online !== false) return;
     try {
       this.game = hostPickBuzzQuestion(game, game.buzz!.questionId, false);
     } catch {
