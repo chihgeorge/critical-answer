@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.97.0.1] - 2026-11-19
+
+### Changed
+- 沒設難度的首領題改算難度 3：打中一下 15 分（原本算難度 5、25 分），說服檢定 DC 12。
+
 ## [0.97.0.0] - 2026-11-19
 
 ### Added

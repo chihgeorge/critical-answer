@@ -131,17 +131,19 @@ describe("boss phases", () => {
       ["主題曲之謎", "聽前奏", 2, ["c1", "c2"]],
     ]);
     expect(allQuestions(b).map((x) => x.id)).toEqual(["a1", "a2", "b1", "c1", "c2"]);
-    expect(findQuestion(b, "c2")).toMatchObject({ boss: true, difficulty: 5 });
+    expect(findQuestion(b, "c2")).toMatchObject({ boss: true, difficulty: 3 });
   });
 
-  it("a boss question may carry its own difficulty: kept, listed below 5, never on a pool question", () => {
-    const b = parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [q("b1"), { ...q("b2"), difficulty: 2 }, { ...q("b3"), difficulty: 5 }, { ...q("b4"), difficulty: 2 }] }] } });
+  it("a boss question may carry its own difficulty: kept, listed when not the default 3, never on a pool question", () => {
+    const b = parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [q("b1"), { ...q("b2"), difficulty: 2 }, { ...q("b3"), difficulty: 3 }, { ...q("b4"), difficulty: 5 }] }] } });
     expect(findQuestion(b, "b2")).toMatchObject({ boss: true, difficulty: 2 });
-    expect(findQuestion(b, "b1")).toMatchObject({ difficulty: 5 });
-    // An explicit 5 is the default: stored as no difficulty, so the bank keeps its older format.
+    expect(findQuestion(b, "b1")).toMatchObject({ difficulty: 3 });
+    // An explicit 3 is the default: stored as no difficulty.
     expect(b.boss.phases[0].questions.find((x) => x.id === "b3")).not.toHaveProperty("difficulty");
+    // A 5 is no longer the default, so it is stored and survives a save (banks saved before 2026-11-18 dropped it).
+    expect(b.boss.phases[0].questions.find((x) => x.id === "b4")).toHaveProperty("difficulty", 5);
     expect(bossPhaseStates(b)[0].questionIds).toEqual(["b1", "b2", "b3", "b4"]);
-    expect(bossDifficulties(b)).toEqual({ b2: 2, b4: 2 });
+    expect(bossDifficulties(b)).toEqual({ b2: 2, b4: 5 });
     expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [{ ...q("b1"), difficulty: 6 }] }] } })).toThrow(/difficulty 6/);
     const pooled = { pools: { 1: [{ ...q("x1"), difficulty: 1 }] }, rooms: [{ monster: "slime-soft", difficulty: 1 }], boss: valid().boss };
     expect(() => parseBank(pooled)).toThrow(/only a boss question/);

@@ -1,6 +1,7 @@
 import { test, expect, type APIRequestContext, type Dialog, type Page } from "@playwright/test";
 import { E2E_OWNER_KEY } from "../playwright.config";
 import { asTextBank } from "../lib/text-bank";
+import type { Difficulty } from "../lib/game-state";
 import { SERVE_HOLD_MS } from "../lib/protocol";
 
 const WORKER = "http://localhost:1996";
@@ -213,12 +214,15 @@ export function closeLeftoverContexts() {
  * multipleChoice turn is judged by the phone's lock, not the host, and the bundled bank is all
  * multipleChoice. The whole bank is put back after each test, like restoreRoom0AfterEach.
  * `answer`, when given, replaces every answer (a spec that needs to know it, like the mage's hint). */
-export function textOnlyBank(answer?: string) {
+/** `bossDifficulty` marks every boss question with it (an unmarked one is 3, DC 12). */
+export function textOnlyBank(answer?: string, bossDifficulty?: Difficulty) {
   let original: unknown;
   test.beforeEach(async ({ request }) => {
     const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
     original = bank;
-    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: asTextBank(bank, answer), version } });
+    const text = asTextBank(bank, answer);
+    if (bossDifficulty) text.boss.phases = text.boss.phases.map((p) => ({ ...p, questions: p.questions.map((q) => ({ ...q, difficulty: bossDifficulty })) }));
+    const saved = await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: text, version } });
     expect(saved.ok()).toBe(true);
   });
   test.afterEach(async ({ request }) => {

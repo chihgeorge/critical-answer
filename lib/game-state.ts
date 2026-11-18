@@ -106,10 +106,10 @@ export function warriorShare(value: number): number {
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
 export const CHECK_BONUS: Record<ClassId | "none", number> = { mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 };
-/** The DC per difficulty 1–5 (dnd design Decision 11); a boss question uses its own difficulty's, 5 unless the bank says. */
+/** The DC per difficulty 1–5 (dnd design Decision 11); a boss question uses its own difficulty's, 3 unless the bank says. */
 export const CHECK_DC = [8, 10, 12, 14, 16] as const;
-/** A boss question the bank gives no difficulty. */
-export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 5;
+/** A boss question the bank gives no difficulty: 3, a 15-point hit (owner, 2026-11-18). */
+export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 3;
 
 /** What hitting the boss pays per question difficulty 1–5 (issue #371). */
 export const BOSS_HIT_REWARDS = [5, 10, 15, 20, 25] as const;
@@ -760,7 +760,7 @@ export function createGame(
   /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left; in a boss
    * phase, last within their difficulty (the owner chose difficulty over freshness). */
   played: string[] = [],
-  /** Boss questions below the default difficulty (bossDifficulties in lib/question-bank.ts): each phase deals easiest first. */
+  /** Boss questions not at the default difficulty (bossDifficulties in lib/question-bank.ts): each phase deals easiest first. */
   bossDifficulties: Record<string, Difficulty> = {},
 ): GameState {
   if (teamSeeds.length === 0) {
