@@ -41,17 +41,17 @@ test.describe("a fill-in answer with a first character", () => {
   });
 
   // Value: protects=a mage on a fill-in question shows the answer's first character on the phone, the host page and the
-  // TV, and spends one use (AC1), once its check failed; fails_when=the button is missing after a failed check, or a
-  // screen lacks the hint; no_claim=hint_shown refusals (unit tests). The boss's DC 16 beats the fixed die's 10 + 4.
-  test("mage: after a failed check, a fill-in cast shows the first character on the phone, the host page and the TV", async ({ browser }) => {
+  // TV, and spends one use (AC1); in the boss room the cast needs no check (#364); fails_when=the button is missing in
+  // the boss room, or a screen lacks the hint; no_claim=hint_shown refusals (unit tests).
+  test("mage: in the boss room, a fill-in cast needs no check and shows the first character on the phone, the host page and the TV", async ({ browser }) => {
     const { host, screen, team } = await mageRoom(browser);
     await host.getByRole("button", { name: "⚙ 更多" }).click();
     await host.getByRole("button", { name: "送王房" }).click();
     await host.getByRole("button", { name: "確定送？" }).click();
     await host.getByRole("button", { name: "關閉" }).click();
-    await expect(screen.getByTestId("screen-check-dc")).toContainText("說服擲骰檢定 16");
-    await rollCheck(team);
-    await expect(team.getByTestId("check-result")).toHaveText("🗣️ 沒過，直接答吧");
+    await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible();
+    await expect(team.getByTestId("roll-check")).toHaveCount(0);
+    await expect(screen.getByTestId("screen-check-dc")).toHaveCount(0);
     await team.getByRole("button", { name: /施法：看答案提示/ }).click();
     await expect(team.getByTestId("mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(host.getByTestId("host-mage-hint")).toHaveText("🔮 第一個字：萬");
