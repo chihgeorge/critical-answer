@@ -201,6 +201,8 @@ export interface PodiumReveal {
   beats: Beat[] | null;
   /** How far past the first beat the room's clock was when this STATE was sent; negative before it. */
   elapsedMs: number;
+  /** Host-controlled beat: -1 before awards, beats.length after the last place. */
+  step?: number;
 }
 
 /** What scores are called: 飽足感 when the bank cooks its monsters (STATE `cuisine`), else 獎勵分. */
@@ -306,6 +308,7 @@ export type ClientMessage =
    * eventId the reveal arrived with, so a late HOST_NEXT (second host device, a send buffered
    * across a reconnect) can't close a newer reveal the room hasn't seen yet. */
   | { type: "HOST_NEXT"; eventId: number }
+  | { type: "HOST_SKIP_TURN"; eventId: number; teamId: string }
   /** Director: cook the revealed monster (docs/designs/monster-cuisine.md, cooking R5). Same `eventId` guard as HOST_NEXT;
    * a second press does nothing. A dish reveal takes this before HOST_NEXT. */
   | { type: "HOST_SERVE"; eventId: number }
@@ -992,6 +995,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "HOST_EXTEND_ROOM":
       return { type: "HOST_EXTEND_ROOM" };
+    case "HOST_SKIP_TURN": {
+      const teamId = str(m.teamId, MAX_ID);
+      return teamId !== null && teamId.length > 0 && isCount(m.eventId) ? { type: "HOST_SKIP_TURN", eventId: m.eventId, teamId } : null;
+    }
     case "HOST_NEXT":
     case "HOST_SERVE":
     case "HOST_FORTUNE_RANDOM":

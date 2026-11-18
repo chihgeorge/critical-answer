@@ -29,7 +29,7 @@ test.beforeEach(async ({ request }) => {
       ...bank.boss,
       phases: [
         { name: "", rule: "", maxHp: 1, questions: [text("buzz-p1")] },
-        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 3, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), music("buzz-c")] },
+        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 3, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), music("buzz-c"), text("buzz-d")] },
       ],
     },
   };
@@ -105,6 +105,9 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
 
   await expect(screen.getByText("題目 buzz-b")).toBeVisible();
   await host.getByRole("button", { name: "沒人答對，換下一題" }).click();
+  // Leaving a buzzer question shows its answer and retires it (#366); 下一題 brings the next one.
+  await expect(screen.getByTestId("answer-reveal")).toContainText("答案 buzz-b");
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText("題目 buzz-c")).toBeVisible();
 
   // A music question with fields (multi-field.md, #369): one box each, judged field by field; part right is out, and

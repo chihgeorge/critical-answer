@@ -102,6 +102,7 @@ export interface RoomSnapshot {
   pacing?: "manual";
   /** A finished game's podium waits for the host's ▶ 下一步. Missing means it does not. */
   revealHeld?: true;
+  podiumStep?: number;
   /** The host's sound switches for the big screens (immersion.md PR3). Missing (or damaged) means all on. */
   screenAudio?: ScreenAudio;
   /** The custom bank the host picked (multi-bank.md), its name as it was then. Missing means the default bank. */
@@ -210,6 +211,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,
       revealHeld: raw.revealHeld === true ? true : undefined,
+      ...(Number.isInteger(raw.podiumStep) && (raw.podiumStep as number) >= -1 ? { podiumStep: raw.podiumStep as number } : {}),
       // A damaged one is dropped: the narration only misses its handoff.
       heldHandoff: isObject(raw.heldHandoff) && Number.isInteger(raw.heldHandoff.eventId) && isString(raw.heldHandoff.line) ? { eventId: raw.heldHandoff.eventId as number, line: raw.heldHandoff.line } : undefined,
       screenAudio: parseScreenAudio(raw.screenAudio) ?? undefined,

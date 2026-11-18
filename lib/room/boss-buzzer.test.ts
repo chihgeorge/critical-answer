@@ -135,7 +135,9 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastError(g.host)).toMatchObject({ detail: "stale_question" });
     send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "b-a" });
     expect(g.state()).toMatchObject({ question: { id: "b-b" } });
-    expect(g.room.game!.revealedQuestionIds).not.toContain("b-a");
+    expect(g.room.game!.revealedQuestionIds).toContain("b-a");
+    expect(g.state().reveal).toMatchObject({ questionId: "b-a", answer: expect.any(String) });
+    send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
     // A 答對 for the old question, pressed as the skip landed, is refused.
     const hp = g.room.game!.boss.hp;
     g.buzz(0);

@@ -116,14 +116,21 @@ async function wrongBossLock(browser: Browser, request: APIRequestContext) {
   return { ...room, question, before };
 }
 
+/** A boss question left behind shows its answer on the screen first (#366); the host's 下一題 deals the next. */
+async function nextAfterReveal(screen: Page, host: Page) {
+  await expect(screen.getByTestId("answer-reveal")).toBeVisible();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
+}
+
 // Value: protects=a cleric's wrong boss lock offers 祈禱 / 不用 on the phone, and 祈禱 spends a use for a new boss question in
 // the same turn; fails_when=the boss miss skips the prayer wait, or 祈禱 keeps the old question or ends the turn;
 // why_new=the boss-room prayer had only room unit tests (retro 2026-10-30); seam=none; no_claim=a second miss in the kept turn (unit test)
 test("cleric in the boss room: a wrong lock waits for 祈禱, which spends a use and deals a new boss question", async ({ browser, request }) => {
-  const { screen, team, question, before } = await wrongBossLock(browser, request);
+  const { screen, host, team, question, before } = await wrongBossLock(browser, request);
   await expect(screen.getByText(/牧師祈禱中/)).toBeVisible();
   await expect(team.getByRole("button", { name: /不用/ })).toBeVisible();
   await team.getByRole("button", { name: /祈禱/ }).click();
+  await nextAfterReveal(screen, host);
   await expect(question).not.toHaveText(before);
   await expect(question).toHaveText(/^王題 [ABC]$/);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
@@ -135,10 +142,11 @@ test("cleric in the boss room: a wrong lock waits for 祈禱, which spends a use
 // Value: protects=不用 in the boss room resolves the miss as usual (a new boss question for the next team) and spends nothing;
 // fails_when=不用 spends a use or leaves the wait up; why_new=as above; seam=none; no_claim=turn order with more teams (unit test)
 test("cleric in the boss room: 不用 spends nothing and the boss moves on to a new question", async ({ browser, request }) => {
-  const { screen, team, question, before } = await wrongBossLock(browser, request);
+  const { screen, host, team, question, before } = await wrongBossLock(browser, request);
   await team.getByRole("button", { name: /不用/ }).click();
   await expect(team.getByRole("button", { name: /祈禱/ })).toHaveCount(0);
   await expect(screen.getByText(/牧師祈禱中/)).toHaveCount(0);
+  await nextAfterReveal(screen, host);
   // The only team is also the next one: its new turn faces the boss's next question.
   await expect(question).not.toHaveText(before);
   await expect(team.getByRole("button", { name: "鎖定答案" })).toBeVisible();
