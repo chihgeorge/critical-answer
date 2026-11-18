@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { awardTitles } from "./podium";
 import {
+  addLateTeam,
   createGame,
   serveFeast,
   BOSS_HIT_REWARDS,
@@ -809,6 +810,11 @@ describe("question deck (T2)", () => {
     let game = createGame(seeds(3), ...deck(1, 1, 2), boss, cfg, 1, first);
     game = answerQuestion(game, "T0", "room0-q1", false, "flee", first).game;
     expect(game.teams.filter((t) => !t.inBoss).every((t) => t.currentQuestionId !== "room0-q1")).toBe(true);
+  });
+
+  it("refuses a late team when every room question has been revealed (#366)", () => {
+    const game = createGame(seeds(2), ...deck(1, 1, 2), boss, cfg, 1, first);
+    expect(() => addLateTeam({ ...game, revealedQuestionIds: game.pools.flat() }, { id: "late", name: "Late" }, first)).toThrow("late_closed");
   });
 
 });

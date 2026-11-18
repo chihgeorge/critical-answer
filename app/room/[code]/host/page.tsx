@@ -1176,7 +1176,7 @@ export default function HostPage() {
             )}
             {turn && (turn.team || buzz) && (
             <>
-            {!buzz && turn.team && !revealUp && !lock && !roll && !wrong && !atFortune && !game.forkBeat && !game.view.antiCheat?.openCatch && (
+            {!buzz && turn.team && turn.team.typedAnswer === undefined && !revealUp && !lock && !roll && !wrong && !atFortune && !game.forkBeat && !game.view.antiCheat?.openCatch && (
               <PixelButton disabled={!ready} onClick={() => send({ type: "HOST_SKIP_TURN", teamId: turn.team!.id, eventId: game.eventId })}>
                 {turn.team.online ? "跳過這隊的回合" : "這隊暫離中・跳過這隊的回合"}
               </PixelButton>

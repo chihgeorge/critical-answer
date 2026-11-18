@@ -2875,10 +2875,10 @@ export class DungeonRoom {
   private handleSkipTurn(conn: Conn, teamId: string, eventId: number) {
     if (!this.requireHost(conn)) return;
     const game = this.game;
-    if (!game || game.phase !== "playing" || isBuzzPhase(game) || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || game.antiCheat?.openCatch || game.fortune || eventId !== this.eventSeq || currentTurnTeamId(game) !== teamId) return;
+    if (!game || game.phase !== "playing" || isBuzzPhase(game) || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || game.antiCheat?.openCatch || game.fortune || game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined || eventId !== this.eventSeq || currentTurnTeamId(game) !== teamId) return;
     // A door can wait for the team's next turn; no answer or ability is consumed.
     this.unpace("fork");
-    this.game = advanceTurn({ ...game, prayerTurn: undefined, teams: game.teams.map((t) => t.id === teamId ? { ...t, typedAnswer: undefined, typedFields: undefined, ...(t.fork?.phase === "choosing" ? { fork: { ...t.fork, phase: "waiting" as const } } : {}) } : t) });
+    this.game = advanceTurn({ ...game, prayerTurn: undefined, teams: game.teams.map((t) => t.id === teamId && t.fork?.phase === "choosing" ? { ...t, fork: { ...t.fork, phase: "waiting" as const } } : t) });
     this.undo = null;
     ++this.eventSeq;
     this.broadcastState();
@@ -3664,7 +3664,8 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
+    // A finished game is logged and narrated: an undo would reopen it under a ranking already told.
+    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -4289,11 +4290,18 @@ export class DungeonRoom {
       return this.sendInvalid(conn, err);
     }
     if (this.game.phase === "finished") {
+      // The last phase ran out: finish as 結束冒險 does, keeping the skipped question's answer up.
       this.clearAnswerTimers();
-      this.revealHold = ++this.stepSeq;
-      this.epilogueRequested = true;
       this.logGame(this.game);
-      void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => this.epilogueFailed(err, this.eventSeq));
+      this.revealFrom = this.now() + this.epilogueDelayMs;
+      this.revealHold = ++this.stepSeq;
+      const eventId = this.eventSeq;
+      this.staleBeforeSeq = eventId;
+      this.cue = null;
+      this.broadcastState();
+      this.dropUnsaidLine();
+      this.epilogueRequested = true;
+      return void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => this.epilogueFailed(err, eventId));
     }
     this.broadcastState();
   }

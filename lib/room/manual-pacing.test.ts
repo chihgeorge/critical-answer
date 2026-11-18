@@ -510,6 +510,14 @@ describe("host-controlled turns and awards (#366)", () => {
     expect(state(s.room).reveal).toBeTruthy();
   });
 
+  it("a skip cannot throw away a typed answer waiting for the host's judgment", () => {
+    const s = setup({ manual: false });
+    s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => (t.id === T1 ? { ...t, typedAnswer: "台北市" } : t)) };
+    const game = s.room.game;
+    send(s.room, s.host, { type: "HOST_SKIP_TURN", teamId: T1, eventId: state(s.room).eventId });
+    expect(s.room.game).toBe(game);
+  });
+
   it.each(["flee", "switch"])("%s reveals and retires the abandoned question until the host continues", (fleeChoice) => {
     const s = setup({ manual: false });
     const questionId = s.room.game!.teams[0].currentQuestionId;

@@ -835,6 +835,8 @@ export function addLateTeam(game: GameState, seed: { id: string; name: string; c
   if (game.teams.some((t) => t.id === seed.id)) throw new InvalidActionError("already_in_game");
   const room = game.rooms[0];
   const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, room.baseDifficulty, rng);
+  // Every room question has been shown: nothing is left to deal a newcomer (#366).
+  if (!dealt.questionId) throw new InvalidActionError("late_closed");
   const team: Team = {
     id: seed.id,
     name: seed.name,
@@ -2325,7 +2327,10 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
     ...(entersBoss ? { inBoss: true, bossAt: { round: game.round ?? 1, turns: (t.turns ?? 0) + 1 } } : {}),
   }));
   const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
-  return { game: advanceTurn(splitShared(moved, rng)), result };
+  // No unseen room question is left for the next room: the team goes on to the boss, as in answerQuestion (#366).
+  const placed = dealt.questionId ? moved : sendToBoss(moved, teamId, rng);
+  if (!dealt.questionId) result.entersBoss = true;
+  return { game: advanceTurn(splitShared(placed, rng)), result };
 }
 
 /** The chest's feast (openEvent) served `dish`, drawn by the room from the catalog: it goes on the team's menu too (issue #371). */

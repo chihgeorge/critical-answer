@@ -144,6 +144,15 @@ describe("openEvent", () => {
     expect(currentTurnTeamId(after)).toBe("t1");
   });
 
+  it("with every room question revealed, opening an event walks the team on to the boss, never to an empty question (#366)", () => {
+    const g = inEvent("feast");
+    const shown = { ...g, revealedQuestionIds: g.pools.flat() };
+    const { game: after, result } = openEvent(shown, "t0", first);
+    expect(result.entersBoss).toBe(true);
+    expect(team(after).inBoss).toBe(true);
+    expect(currentTurnTeamId(after)).toBe("t1");
+  });
+
   it("a chef gets nothing extra from an event: its die reads only answers (class dice)", () => {
     const { result } = openEvent(inEvent("great", game(["chef", undefined])), "t0", first);
     expect(result).toMatchObject({ satiety: 25 });
