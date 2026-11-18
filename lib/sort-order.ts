@@ -32,3 +32,18 @@ export function sortSlots(code: number, shownToBank?: number[]): boolean[] {
   if (!order) return Array<boolean>(SORT_ITEMS).fill(false);
   return order.map((shown, k) => (shownToBank?.[shown] ?? shown) === k);
 }
+
+/** Start letter-labelled items at ABCD, without changing their public indices or saved attempts. */
+export function initialSortOrder(items: string[], pick?: number | null): number[] {
+  const saved = pick == null ? undefined : sortOrderOf(pick);
+  if (saved) return saved;
+  const letters = ["A", "B", "C", "D"];
+  return items.length === SORT_ITEMS && letters.every((letter) => items.includes(letter))
+    ? letters.map((letter) => items.indexOf(letter))
+    : items.map((_, i) => i);
+}
+
+/** The submitted order, using public items only. */
+export function sortAnswer(items: string[], code: number): string {
+  return (sortOrderOf(code) ?? []).map((i) => items[i]).join(" → ");
+}
