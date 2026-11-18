@@ -23,7 +23,8 @@ async function mageRoom(browser: Browser) {
 
 test.describe("a fill-in answer with a first character", () => {
   // Every answer is known, so the hint is too (#106).
-  textOnlyBank("〈萬家福〉");
+  // Boss questions at difficulty 5 (DC 16), so the fixed die's 10 + 4 fails the check.
+  textOnlyBank("〈萬家福〉", 5);
 
   // Value: protects=check first, question after: the mage's 看答案第一個字 is not offered before the persuasion check, and
   // not after a check that already gave the character, so no use is spent; fails_when=the button shows during the check

@@ -621,7 +621,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     expect(room.game!.phase).toBe("playing");
     vi.advanceTimersByTime(1);
     expect(room.game!.phase).toBe("finished");
-    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before + 25 + 44); // an unrated boss question hits for 25
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before + 15 + 44); // an unrated boss question hits for 15
   });
 
   it("refuses another judgment during the beat", () => {
@@ -678,7 +678,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     judge();
     expect(lastBroadcast(room).pendingRoll ?? null).toBeNull();
     expect(room.game!.boss.hp).toBe(2);
-    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(25); // an unrated boss question
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(15); // an unrated boss question
   });
 });
 
@@ -713,7 +713,7 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[1] });
     expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
-  it("pays the bank's boss.hitReward on a boss hit, not the default 10", () => {
+  it("pays a boss hit by the question's difficulty, not the bank's old boss.hitReward (issue #371)", () => {
     const bank = parseBank({
       rooms: [{ monster: "slime-soft", baseDifficulty: 1, reward: 10, questions: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "？" }, answer: "x" }] }],
       boss: { monster: "dragon", maxHp: 3, hitReward: 25, questions: [{ kind: "text", id: "boss-q1", content: { kind: "text", value: "？" }, answer: "x" }] },
@@ -726,7 +726,7 @@ describe("HOST_SEND_TO_BOSS (scoring-and-score-pools.md S13)", () => {
     send(room, hostConn, { type: "HOST_START" });
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: ids[0] });
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-q1", correct: true });
-    expect(room.game!.teams[0].reward).toBe(25);
+    expect(room.game!.teams[0].reward).toBe(15); // an unrated boss question is difficulty 3, whatever hitReward says
   });
 });
 
@@ -1149,8 +1149,8 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [20, 20, 20, 20], value: 80 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(room.game!.phase).toBe("playing");
       vi.advanceTimersByTime(4000);
-      // An unrated boss question's 25 + half of it 13 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
-      expect(room.game!.teams[0].reward).toBe(118);
+      // An unrated boss question's 15 + half of it 8 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
+      expect(room.game!.teams[0].reward).toBe(103);
       expect(room.game!.phase).toBe("finished");
       // The kill's dice roll with their own cue, then the kill keeps its boss-kill cue.
       expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 2 });
@@ -1170,7 +1170,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill" });
       vi.advanceTimersByTime(4000);
       expect(room.game!.phase).toBe("finished");
-      expect(room.game!.teams[0]).toMatchObject({ reward: 118, online: false });
+      expect(room.game!.teams[0]).toMatchObject({ reward: 103, online: false });
     });
   });
 
