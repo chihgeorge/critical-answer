@@ -3,7 +3,7 @@
 每條規則一節，寫「不要做什麼」和「為什麼」。規則分三類：
 
 - **A. 自動擋**：`scripts/rules-guard.mts`（PreToolUse hook，設定在 `.claude/settings.json`）讀這一節的 `block` 程式碼區塊。Claude 要做的事符合其中一行，就直接擋下，並把規則標題和「為什麼」回給 Claude。
-- **B. AI 檢查**：每次回答結束前，`.claude/settings.json` 的 Stop prompt hook 由小模型判斷有沒有違規。違規就擋回去重寫一次；第二次（`stop_hook_active` 為 true）一定放行，不會卡死。
+- **B. 回覆檢查**：每次回答結束前，`.claude/settings.json` 的 Stop hook 跑 `scripts/stop-lint.mts`，用固定規則檢查最後一則回覆，不用模型。違規就擋回去重寫一次；第二次（`stop_hook_active` 為 true）一定放行，不會卡死；腳本出錯也一律放行。
 - **C. 只當說明**：不自動檢查，靠 Claude 自己遵守，觀察一陣子再決定要不要升級。這個檔放在 `.claude/rules/`，Claude Code 每個 session 都會自動載入。
 
 ## A 節的寫法
@@ -76,7 +76,7 @@ VERSION、CHANGELOG.md、package.json 的版號只由 release PR 改；一般 PR
 
 ## B. 回覆檢查
 
-這三條由一個 Stop hook 檢查（`scripts/stop-lint.mts`，設定在 `.claude/settings.json`），只看 Claude 最後一則回覆（`last_assistant_message`），用固定規則判斷，不用模型：程式碼、連結、路徑和引號裡的字不算；英文字母遠多於中文、或出現簡體字算違反 B1；文字裡有問句算違反 B2。同一次停下只擋一回，第二次一定放行。
+一個 Stop hook（`scripts/stop-lint.mts`，設定在 `.claude/settings.json`）只看 Claude 最後一則回覆（`last_assistant_message`），用固定規則判斷，不用模型：程式碼、連結、路徑和引號裡的字不算；英文單字超過中文字數兩倍、或出現簡體字算違反 B1；文字裡有問句（問號接空白、句尾或收尾符號，或「嗎？」「呢？」）算違反 B2，所以文字裡問兩件事也會被擋。hook 看不到工具呼叫，AskUserQuestion 本身的語言和 B3 的一題一問不會自動檢查。同一次停下只擋一回，第二次一定放行。
 
 ### B1. 回覆一律用繁體中文（台灣用語）
 所有給站長看的文字：聊天、進度回報、AskUserQuestion 的問題和選項、給子代理或其他 session 的訊息，都用繁中。只有程式碼、指令、識別字維持英文。長對話、壓縮後、skill 範本是英文都一樣。（已提醒 5 次。）

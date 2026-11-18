@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 export type StopInput = { stop_hook_active?: boolean; last_assistant_message?: string };
 
 /** Characters that only Simplified Chinese uses (each has a different Traditional form). */
-const SIMPLIFIED = /[这们说时会对发为么还没进过让门问题关见车东开无实现]/g;
+const SIMPLIFIED = /[这们说时会对发为么还没进过让门问题关见车东开无实现复经测试码处应级]/g;
 
 /** The reply's own prose: code, inline code, links, URLs, paths and quoted text removed. */
 export function prose(text: string): string {
@@ -14,8 +14,9 @@ export function prose(text: string): string {
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/`[^`\n]*`/g, " ")
     .replace(/\]\([^)]*\)/g, "]")
-    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/https?:\/\/[^\s？，。）」]+/g, " ")
     .replace(/(^|\s)[~.]?\/[\w./@-]+/g, " ")
+    .replace(/[\w.@-]+\/[\w./@-]+/g, " ")
     .replace(/「[^」]*」|『[^』]*』|“[^”]*”|"[^"\n]*"/g, " ");
 }
 
@@ -23,10 +24,12 @@ export function prose(text: string): string {
 export function lintReply(text: string): string | null {
   const p = prose(text);
   const cjk = (p.match(/[一-鿿]/g) ?? []).length;
-  const latin = (p.match(/[A-Za-z]/g) ?? []).length;
-  if (latin > 40 && latin > cjk * 2) return "B1：回覆主要是英文，請改用繁體中文（台灣用語）重寫給站長的文字。";
+  // English words, not letters, against twice the CJK count: identifiers like CI, tsc, eslint in a Chinese report pass.
+  const words = (p.match(/[A-Za-z][\w'-]*/g) ?? []).length;
+  if (words > 8 && words > cjk * 2) return "B1：回覆主要是英文，請改用繁體中文（台灣用語）重寫給站長的文字。";
   if (new Set(p.match(SIMPLIFIED) ?? []).size >= 3) return "B1：回覆用了簡體字，請改用繁體中文（台灣用語）。";
-  if (/[？?](\s|$)/.test(p)) return "B2：回覆文字裡有問句；要站長回答或決定的事請用 AskUserQuestion 問，一次只問一件。";
+  // A question mark before space, end, or closing markup; 嗎？/呢？ anywhere. A mid-sentence self-answered 「為什麼？因為」 passes.
+  if (/[？?](?=[\s*_）)」』]|$)|[嗎呢]？/.test(p)) return "B2：回覆文字裡有問句；要站長回答或決定的事請用 AskUserQuestion 問，一次只問一件。";
   return null;
 }
 
