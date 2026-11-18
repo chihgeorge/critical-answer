@@ -217,9 +217,6 @@ describe("the boss room (#289)", () => {
   function bossCatch(storage: RoomStorage) {
     const g = started({ storage });
     g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => ({ ...t, inBoss: true })) };
-    // The boss question is a fill-in: its persuasion check comes first.
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "b1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     g.catchBy(1, "b1");
     expect(g.state().view.antiCheat.openCatch).toMatchObject({ by: B, teamId: A, questionId: "b1" });
     return g;
