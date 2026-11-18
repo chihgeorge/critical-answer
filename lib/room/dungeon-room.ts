@@ -3104,7 +3104,7 @@ export class DungeonRoom {
     const n = this.lastNarration;
     if (n?.eventId === eventId) {
       // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
-      if (n.lines.length >= NARRATION_MAX_LINES) return;
+      if (n.lines.length >= NARRATION_MAX_LINES) return void console.log(JSON.stringify({ event: "narration_line_dropped", eventId, lines: n.lines.length }));
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
       this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
     } else if (!n || n.eventId < eventId) {

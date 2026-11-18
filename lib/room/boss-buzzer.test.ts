@@ -126,7 +126,7 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(0);
     g.judge(IDS[0], true);
     expect(g.state()).toMatchObject({ cue: "boss-hit", reveal: { questionId: "b-a" }, view: { bossHp: 1 } });
-    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(50); // a phase-1 hit and this one, 25 each (unrated)
+    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(30); // a phase-1 hit and this one, 15 each (unrated)
   });
 
   it("沒人答對，換下一題 moves to a new question, refuses a stale id, and drops a 答對 pressed for the old question", () => {
@@ -406,10 +406,10 @@ describe("buzzer boss phase in the room", () => {
     g.answer(1, [false, false, false]);
     g.answer(2, [true, false, false]);
     g.answer(0, [false, false, false]);
-    // Team 0's round-1 answer had the most right fields: 2 hearts, ⅔ of an unrated question's 25-point hit (→ 17); nobody else scores.
+    // Team 0's round-1 answer had the most right fields: 2 hearts, ⅔ of an unrated question's 15-point hit (→ 10); nobody else scores.
     const s = g.state();
     expect(s.view.bossHp).toBe(3);
-    expect(g.rewards().map((r, i) => r - before[i])).toEqual([17, 0, 0]);
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([10, 0, 0]);
     expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a／作 b-a", scored: { teamId: IDS[0] }, fields: { teamId: IDS[0], marks: [{ right: true }, { right: true }, { right: false }] } });
     expect(s.view.buzz).toMatchObject({ picker: IDS[0] });
   });
@@ -431,7 +431,7 @@ describe("buzzer boss phase in the room", () => {
     g.answer(1, [true, true, false]);
     g.answer(2, [true, true, true]);
     expect(g.state()).toMatchObject({ view: { bossHp: 2 }, reveal: { scored: { teamId: IDS[2] } } });
-    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 0, 25]);
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 0, 15]);
   });
 
   it("the best part-right team went offline: the best one still online scores (#369)", () => {
@@ -464,7 +464,7 @@ describe("buzzer boss phase in the room", () => {
     g.answer(2, [false, false]);
     for (const i of [0, 2, 1]) g.answer(i, [false, false]);
     expect(g.state()).toMatchObject({ view: { bossHp: 4 }, reveal: { fields: { teamId: IDS[1] } } });
-    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 13, 0]);
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 8, 0]);
   });
 
   it("two rounds with no field right anywhere reopen the song, as an all-wrong buzz does (#369)", () => {
@@ -504,8 +504,8 @@ describe("buzzer boss phase in the room", () => {
       vi.useRealTimers();
     }
     expect(g.state().reveal.fields).toMatchObject({ teamId: IDS[1], marks: [{ right: true }, { right: false }] });
-    // Half the 25-point hit (→ 13), plus the whole kill bonus (rng 0 → four 1s).
-    expect(g.rewards()[1] - before[1]).toBe(13 + 4);
+    // Half the 15-point hit (→ 8), plus the whole kill bonus (rng 0 → four 1s).
+    expect(g.rewards()[1] - before[1]).toBe(8 + 4);
   });
 
   it("HOST_JUDGE with fields on a question without them is refused", () => {

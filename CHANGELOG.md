@@ -2,6 +2,20 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.98.0.0] - 2026-11-19
+
+### Added
+- Have the narrator say a warrior's roll rules: a 7–19 hit pays 八成, a 20 doubles, and a 1 says how many points it took away (scripted lines and the AI narrator's facts).
+
+### Fixed
+- Stop the big screen's dialogue box from typing the served answer's result line again after 下一題; it goes on with the rest of the narration and the line naming the next team.
+- Log a narration line dropped because the narration already holds the most lines a save allows.
+
+## [0.97.0.1] - 2026-11-19
+
+### Changed
+- 沒設難度的首領題改算難度 3：打中一下 15 分（原本算難度 5、25 分），說服檢定 DC 12。
+
 ## [0.97.0.0] - 2026-11-19
 
 ### Added

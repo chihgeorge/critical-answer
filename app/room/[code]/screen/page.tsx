@@ -24,7 +24,7 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, type NarrationState } from "@/lib/narration/client";
+import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, voiceNarration, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
@@ -344,6 +344,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.chefBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
+  // #351: 上菜's dish line already told the served answer's result, so after 下一題 the box starts on the narration's
+  // second line (the middle line, then the handoff) instead of typing the result line again.
+  const [servedId, setServedId] = useState<number | null>(null);
+  if (reveal?.served && servedId !== eventId) setServedId(eventId);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
   /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
@@ -880,7 +884,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? 1 : 0 } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -2075,8 +2079,8 @@ export default function ScreenPage() {
               lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
             }
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
-            const added = !revealUp.current && progress.current?.eventId === msg.eventId;
-            const voice = speakIt && (msg.eventId !== servedEvent.current || added);
+            const added = handoffAdded(revealUp.current, progress.current?.eventId, msg.eventId);
+            const voice = voiceNarration(speakIt, msg.eventId, servedEvent.current, added);
             // A finished game keeps its last reveal for good: the kill shot's line is read then, not held for a 下一題.
             const holding = revealUp.current && lastPhase.current === "playing";
             if (voice && (holding || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
