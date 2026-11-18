@@ -2209,7 +2209,7 @@ export function forkRule(game: GameState, outcome: AnswerOutcome): "placed" | "r
 }
 
 /** The labelled doors of the fork `team` stands at (#286), or undefined for the unlabelled ⚔️ / ❓ fork. */
-export function forkDoors(game: GameState, team: Team): [ForkDoorSpec, ForkDoorSpec] | undefined {
+export function forkDoors(game: GameState, team: Team): ForkDoorSpec[] | undefined {
   return game.rooms[team.roomIndex]?.fork?.doors;
 }
 
@@ -2262,7 +2262,7 @@ export type ForkDoorSpec = { kind: "monster" | "mystery" | "hard" } | { kind: "c
  * labelled, left then right, shown on every screen from the start, and a timeout opens the left one; absent: the
  * unlabelled ⚔️ / ❓ fork with the sides drawn by the room. */
 export interface RoomFork {
-  doors?: [ForkDoorSpec, ForkDoorSpec];
+  doors?: ForkDoorSpec[]; // exactly two (roomForkProblem); an array, since Worker RPC types drop tuples
 }
 /** Unlabelled doors: a team picks a side, and only the opened door shows what it was. Labelled doors (#286): shown. */
 export type ForkSide = "left" | "right";

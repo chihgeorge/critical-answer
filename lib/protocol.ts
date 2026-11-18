@@ -623,7 +623,7 @@ export type ServerMessage =
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
       forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; category?: string; timeout?: true };
       /** A labelled fork's doors (#286), left then right, while its team chooses and during its door opening. Absent: unlabelled. */
-      forkDoors?: [ForkDoorSpec, ForkDoorSpec];
+      forkDoors?: ForkDoorSpec[];
       /** The waiting teams' door votes (#285), teamId → side, while a team chooses. Advice only; FORK_VOTES updates it. */
       forkVotes?: Record<string, ForkSide>;
       /** 占卜師 (docs/designs/fortune-teller.md), from the crystal ball to the host's 下一題 after the effect card. `step`:

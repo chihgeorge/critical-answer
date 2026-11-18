@@ -3,7 +3,7 @@
 // Client-safe: types and pure helpers only, never the parsed bank (CLAUDE.md, check:bundle).
 import { BANK_NOT_FOUND } from "./bank-api";
 import { timingFieldError } from "./bank-editor-question";
-import { DIFFICULTIES, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_PROMPT, MIN_FIELDS, MIN_OPTIONS, isMusicQuestion, memoryProblem, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
+import { DIFFICULTIES, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_PROMPT, MIN_FIELDS, MIN_OPTIONS, isMusicQuestion, memoryProblem, poolCategories, roomForkProblem, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
 import type { Difficulty } from "./game-state";
 
 /** A page of the editor (docs/designs/scoring-and-score-pools.md D2=B: one pool per tab). */
@@ -106,6 +106,8 @@ export function bankProblems(bank: Bank): BankProblem[] {
   const out: BankProblem[] = [];
   for (const [i, r] of bank.rooms.entries()) {
     if (bank.pools[r.difficulty].length === 0) out.push({ tab: r.difficulty, message: `第 ${i + 1} 房是難度 ${r.difficulty}，但難度 ${r.difficulty} 題庫沒有題目` });
+    const forkErr = roomForkProblem(r.fork, i, bank.rooms.length, r.difficulty, poolCategories(bank.pools[r.difficulty]));
+    if (forkErr) out.push({ tab: "rooms", message: forkErr });
   }
   const label = (q: BankQuestion, where: string) => `${where}「${questionName(q)}」`;
   for (const d of DIFFICULTIES) {

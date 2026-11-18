@@ -4317,7 +4317,7 @@ export class DungeonRoom {
   }
 
   /** A labelled fork's doors (#286), for every screen while its team chooses and during its door opening. */
-  private forkDoorsView(): { forkDoors?: [ForkDoorSpec, ForkDoorSpec] } {
+  private forkDoorsView(): { forkDoors?: ForkDoorSpec[] } {
     if (this.game?.phase !== "playing") return {};
     const team = this.forkBeat ? this.forkBeat.before.teams.find((t) => t.id === this.forkBeat!.teamId) : this.game.teams.find((t) => t.fork?.phase === "choosing");
     const doors = team && forkDoors(this.forkBeat?.before ?? this.game, team);
