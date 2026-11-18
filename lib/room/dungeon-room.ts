@@ -5347,6 +5347,8 @@ export class DungeonRoom {
       return this.sendInvalid(conn, err);
     }
     const team = this.game.teams.find((t) => t.id === teamId)!;
+    // Once moved, the score stays as set: a later fix back to the judged total must not hide the dish again.
+    if (this.reveal?.scored?.teamId === teamId && team.reward !== this.dishReward) this.dishReward = NaN;
     const last = team.fixes!.at(-1)!;
     this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} ${label} ${last.from}→${last.to}` });
     this.broadcastState();

@@ -981,6 +981,16 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     expect(lastBroadcast(room).view.teams[0].reward).toBe(3);
   });
 
+  it("a HOST_SET_SCORE back to the judged total before 上菜 still shows the set score", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const judged = room.game!.teams[0].reward;
+    send(room, hostConn, { type: "HOST_SET_SCORE", teamId: ids[0], score: judged + 2 });
+    send(room, hostConn, { type: "HOST_SET_SCORE", teamId: ids[0], score: judged });
+    expect(room.game!.teams[0].reward).toBe(judged);
+    expect(lastBroadcast(room).view.teams[0].reward).toBe(judged);
+  });
+
   it("rejects a judgment while a reveal is up, so a second host device can't skip past it (D7)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
