@@ -74,9 +74,9 @@ VERSION、CHANGELOG.md、package.json 的版號只由 release PR 改；一般 PR
 
 ---
 
-## B. AI 檢查
+## B. 回覆檢查
 
-這三條各是一個 Stop prompt hook（`.claude/settings.json`），只看 Claude 最後一則回覆（`last_assistant_message`）。
+這三條由一個 Stop hook 檢查（`scripts/stop-lint.mts`，設定在 `.claude/settings.json`），只看 Claude 最後一則回覆（`last_assistant_message`），用固定規則判斷，不用模型：程式碼、連結、路徑和引號裡的字不算；英文字母遠多於中文、或出現簡體字算違反 B1；文字裡有問句算違反 B2。同一次停下只擋一回，第二次一定放行。
 
 ### B1. 回覆一律用繁體中文（台灣用語）
 所有給站長看的文字：聊天、進度回報、AskUserQuestion 的問題和選項、給子代理或其他 session 的訊息，都用繁中。只有程式碼、指令、識別字維持英文。長對話、壓縮後、skill 範本是英文都一樣。（已提醒 5 次。）
