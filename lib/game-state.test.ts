@@ -2653,6 +2653,14 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(buzzIn(setTeamOnline(g, "T1", true), "T1", "b-a", true).buzz?.teamId).toBe("T1");
   });
 
+  it("a buzzing team that drops after sending its typed answer keeps the buzz for the host's judgment (#368)", () => {
+    const sent = submitText(buzzIn(buzzer(), "T1", "b-a", true), "T1", "b-a", "我猜的");
+    const g = setTeamOnline(sent, "T1", false);
+    expect(g.buzz?.teamId).toBe("T1");
+    expect(g.teams[1].typedAnswer).toBe("我猜的");
+    expect(() => buzzIn(g, "T0", "b-a", true)).toThrow();
+  });
+
   it("the host's skip moves the question on unrevealed, but not while a team holds the buzz", () => {
     const g = buzzer();
     expect(() => skipBuzz(buzzIn(g, "T0", "b-a", true))).toThrow("buzz_taken");
@@ -2680,16 +2688,15 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     expect(dropped.boss.currentQuestionId).toBe("b-a");
   });
 
-  it("only the team that buzzed may type its answer; the judgment or a drop clears it (boss-music-buzzer.md M2)", () => {
+  it("only the team that buzzed may type its answer; the judgment clears it (boss-music-buzzer.md M2)", () => {
     const g = buzzIn(buzzer(), "T0", "b-a", true);
     expect(() => submitText(buzzer(), "T0", "b-a", "x")).toThrow("no_buzz");
     expect(() => submitText(g, "T1", "b-a", "x")).toThrow("no_buzz");
     const typed = submitText(g, "T0", "b-a", "麻辣鮮師");
     expect(getSpectatorView(typed).teams[0].typedAnswer).toBe("麻辣鮮師");
     expect(judge(typed, "T0", false).game.teams[0].typedAnswer).toBeUndefined();
-    const back = setTeamOnline(setTeamOnline(typed, "T0", false), "T0", true);
-    expect(back.teams[0].typedAnswer).toBeUndefined();
-    expect(submitText(buzzIn(back, "T0", "b-a", true), "T0", "b-a", "y").teams[0].typedAnswer).toBe("y");
+    // A drop after sending keeps the answer and the buzz (#368: the big screen already shows it).
+    expect(setTeamOnline(setTeamOnline(typed, "T0", false), "T0", true).teams[0].typedAnswer).toBe("麻辣鮮師");
   });
 
   describe("category pick (boss-music-buzzer.md M5)", () => {
