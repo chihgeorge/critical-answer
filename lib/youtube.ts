@@ -63,6 +63,9 @@ export function playerSteps(prev: MediaWant | null, next: MediaWant, ended: bool
 /** A timing reveal's replay seeks once per key (timing-tap-timeline.md): a re-render with the same key does nothing. */
 export const shouldSeek = (doneKey: string | null, key: string): boolean => doneKey !== key;
 
+/** A question clip has a fixed end; its answer reveal stays available until the host advances. */
+export const clipEndForStage = (end: number | undefined, revealing: boolean): number | undefined => revealing ? undefined : end;
+
 /** A clip error the big screen reported: the video, and the host's last press on it then (0 if none). */
 export interface ClipErrorSeen {
   questionId: string;

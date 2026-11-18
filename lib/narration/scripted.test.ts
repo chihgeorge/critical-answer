@@ -23,6 +23,10 @@ function lcg(seed: number) {
 }
 
 describe("scripted lines", () => {
+  it("does not urge an immediate retry or claim fleeing makes the question easier", () => {
+    expect(VARIANTS.retry.join(" ")).not.toContain("再試一次");
+    expect(VARIANTS.flee.join(" ")).not.toContain("簡單些");
+  });
   it("has at least 4 variants for every event type", () => {
     for (const e of samples) {
       expect(VARIANTS[e.type].length).toBeGreaterThanOrEqual(4);

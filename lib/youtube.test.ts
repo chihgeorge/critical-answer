@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+
+it("keeps a question clip's end but lets the host end its answer reveal", () => {
+  expect(clipEndForStage(42, false)).toBe(42);
+  expect(clipEndForStage(42, true)).toBeUndefined();
+});
 
 describe("shouldSeek (timing-tap-timeline.md)", () => {
   it("seeks once per replay key: a re-render with the same key does nothing", () => {

@@ -88,6 +88,12 @@ describe("request", () => {
 });
 
 describe("prompt", () => {
+  it("warns the model against gore and false turn or flee claims", () => {
+    const { system } = buildPrompt(event, []);
+    expect(system).toContain("不要描寫血");
+    expect(system).toContain("不要說題目變簡單");
+    expect(system).toContain("下輪再答");
+  });
   // Value: protects=the AI line names a 20 or a 1 (dnd design E3); fails_when=describeRoll is dropped from the prompt
   it("tells the model about a natural 20 (大成功) or 1 (手滑 but still a hit), and says nothing on other rolls", () => {
     expect(buildPrompt({ ...event, roll: { kind: "crit", value: 20 } } as NarrationEvent, []).user).toContain("大成功");
@@ -221,7 +227,7 @@ describe("prompt", () => {
     const { system } = buildPrompt(event, []);
     expect(system).toMatch(/貓頭鷹/);
     expect(system).toMatch(/不要.*喵/);
-    expect(system).toMatch(/最多 2\d 個字/);
+    expect(system).toMatch(/最多 34 個字/);
   });
 
   it("tells the model to say boss health as hearts left, never as a fraction or percentage", () => {
@@ -265,7 +271,7 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     const { system } = buildPrompt(ordinary, []);
     expect(system).toMatch(/兩行/);
     expect(system).not.toMatch(/三行|氣氛/);
-    expect(system).toMatch(/第一行[^。]*最多 22 個字/);
+    expect(system).toMatch(new RegExp(`第一行[^。]*最多 ${MAX_MODEL_LINE} 個字`));
     expect(system).toMatch(/第二行：轉向下一隊/);
   });
 
@@ -324,28 +330,36 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(g as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
   });
 
-  it("holds every model line to 22 characters: cut at a sentence break when that fits, else marked for the scripted line", async () => {
-    const at22 = "字".repeat(MAX_MODEL_LINE);
-    const f = async () => ok(reply(`紅隊一劍命中！史萊姆搖搖晃晃地一路退到了石牆角邊。\n${at22}\n${"字".repeat(MAX_MODEL_LINE + 1)}`));
-    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe(`紅隊一劍命中！\n${at22}\n<invalid/>`);
+  it("holds every model line to its limit: cut at a sentence break when that fits, else mark for the scripted line", async () => {
+    const atLimit = "字".repeat(MAX_MODEL_LINE);
+    const f = async () => ok(reply(`紅隊一劍命中！史萊姆搖搖晃晃地一路退到了石牆角邊，石壁也跟著顫動了好一陣子。\n${atLimit}\n${"字".repeat(MAX_MODEL_LINE + 1)}`));
+    await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe(`紅隊一劍命中！\n${atLimit}\n<invalid/>`);
+  });
+
+  it("accepts a complete short line that needs more than the old 22-character cap", async () => {
+    const line = "史萊姆退後一步，紅隊的答案讓大家都鬆了一口氣。";
+    expect(line.length).toBeGreaterThan(22);
+    expect(line.length).toBeLessThanOrEqual(MAX_MODEL_LINE);
+    const f = async () => ok(reply(line));
+    await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe(line);
   });
 
   it("marks a line whose cut would drop the team it named, so the result or the handoff never loses its team", async () => {
     // withNext: 紅隊 acts, 藍隊 is next.
-    const f = async () => ok(reply("史萊姆瞪大眼睛愣在原地。紅隊答對了，拿下三分！\n史萊姆在前方咆哮，口水直流。藍隊，輪到你們了！"));
+    const f = async () => ok(reply("史萊姆瞪大眼睛愣在原地，四周的火把也跟著搖晃了好一陣子。紅隊答對了，拿下三分！\n史萊姆在前方咆哮，口水直流，整座大廳都跟著搖晃了好一陣子，火把也一同閃爍。藍隊，輪到你們了！"));
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).rejects.toMatchObject({ reason: "invalid_output" });
-    const g = async () => ok(reply("紅隊答對了！\n史萊姆在前方咆哮，口水直流。藍隊，輪到你們了！"));
+    const g = async () => ok(reply("紅隊答對了！\n史萊姆在前方咆哮，口水直流，整座大廳都跟著搖晃了好一陣子，火把也一同閃爍。藍隊，輪到你們了！"));
     await expect(make(g as unknown as typeof fetch).narrate(withNext)).resolves.toBe("紅隊答對了！\n<invalid/>");
     // The audience line keeps the reacting team too.
     const loud: NarrationEvent = { ...withNext, crowd: { mood: "boo", team: "綠隊" } };
-    const h = async () => ok(reply("紅隊答對了！\n台下一片騷動。後排角落那群一直不停在噓的綠隊！\n藍隊，輪到你們了！"));
+    const h = async () => ok(reply("紅隊答對了！\n台下一片騷動，大家回頭看著後排角落那群一直不停在噓的觀眾，原來是綠隊！\n藍隊，輪到你們了！"));
     await expect(make(h as unknown as typeof fetch).narrate(loud)).resolves.toBe("紅隊答對了！\n<invalid/>\n藍隊，輪到你們了！");
   });
 
   it("lets the host's line in line 2 run to MAX_LINE, but not the lines around it", async () => {
     const host: NarrationEvent = { ...withNext, hostLine: "珍珠能吃嗎" };
     const line2 = "說到這裡，" + "字".repeat(20) + "珍珠能吃嗎";
-    const f = async () => ok(reply(`紅隊答對了！\n${line2}\n${"字".repeat(30)}`));
+    const f = async () => ok(reply(`紅隊答對了！\n${line2}\n${"字".repeat(MAX_MODEL_LINE + 1)}`));
     await expect(make(f as unknown as typeof fetch).narrate(host)).resolves.toBe(`紅隊答對了！\n${line2}\n<invalid/>`);
   });
 });
@@ -541,7 +555,7 @@ describe("prompt: 美食節目／生物學家口吻", () => {
     expect(system).toContain("最後一句如果已經在講吃，這次就都不要講吃");
     expect(system).toContain("不要自己取菜名");
     // The length rules are untouched.
-    expect(system).toMatch(/第一行[^。]*最多 22 個字/);
+    expect(system).toMatch(/第一行[^。]*最多 34 個字/);
     expect(system).toContain("不超過 20 個字");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆" }, []).system).toContain("大約三成的句子");
   });
@@ -571,7 +585,7 @@ describe("prompt: 觀眾反應", () => {
     const { system, user } = buildPrompt(loud, []);
     expect(system).toContain(CROWD_RULE);
     expect(system).toContain("不要說反應會影響分數或輪到誰，不要暗示反應是在針對答對或答錯，也不要提題目或答案");
-    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 22 個字。第三行：轉向下一隊/);
+    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 34 個字。第三行：轉向下一隊/);
     expect(system).not.toContain("藍莓請忽略");
     expect(system).toContain("不超過 20 個字");
     expect(user).toContain("觀眾反應：等待中的隊伍「藍莓請忽略」這回合在台下噓聲連連。");

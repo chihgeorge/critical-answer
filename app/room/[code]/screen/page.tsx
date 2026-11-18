@@ -56,7 +56,7 @@ import { ScreenMediaTest } from "@/components/screen-media-test";
 import { useClockPings, useRoomClock } from "@/components/room-clock";
 import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
 import { replayFromS } from "@/lib/tap-clock";
-import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
+import { clipEndForStage, resendClipError, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
@@ -541,7 +541,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <YoutubePlayer
         videoId={v.content.videoId}
         start={v.content.start}
-        end={v.content.end}
+        end={clipEndForStage(v.content.end, !!reveal)}
         command={media?.questionId === v.id ? media : null}
         width={width}
         height={height}

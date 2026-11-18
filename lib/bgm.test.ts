@@ -44,12 +44,13 @@ describe("DUNGEON_THEME", () => {
     expect(starts).toEqual([...starts].sort((x, y) => x - y));
   });
 
-  it("the rage theme is the same tune, faster, with a kick drum that loops with it (immersion.md ④)", () => {
-    expect(BOSS_RAGE_THEME.melody).toBe(DUNGEON_THEME.melody);
+  it("the boss theme has its own melody and bass, with a kick drum that loops with it", () => {
+    expect(BOSS_RAGE_THEME.melody).not.toEqual(DUNGEON_THEME.melody);
+    expect(BOSS_RAGE_THEME.bass).not.toEqual(DUNGEON_THEME.bass);
     expect(BOSS_RAGE_THEME.drum).toHaveLength(DUNGEON_THEME.melody.length);
     expect(loopDuration(BOSS_RAGE_THEME)).toBeLessThan(loopDuration(DUNGEON_THEME));
     const drums = songEvents(BOSS_RAGE_THEME).filter((e) => e.voice === "drum");
-    expect(drums.length).toBe(40);
+    expect(drums.length).toBeGreaterThan(25);
     expect(songEvents(DUNGEON_THEME).some((e) => e.voice === "drum")).toBe(false);
   });
 

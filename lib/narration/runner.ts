@@ -9,8 +9,8 @@ import { MAX_TITLE, MAX_TITLE_REASON, parseTitle } from "../podium";
 
 /** One narration segment. 40 was too tight for the tone the model writes; 50 fits the dialogue box in two lines. */
 export const MAX_LINE = 50;
-/** An AI result, atmosphere or handoff line: the prompt asks for 22 characters, and llm.ts holds the model to it. */
-export const MAX_MODEL_LINE = 22;
+/** An AI result, atmosphere or handoff line: enough room for a team and a complete short sentence. */
+export const MAX_MODEL_LINE = 34;
 /** 2 s timed out 3 of 21 lines in a real game (answers took up to 1.9 s once every line has two parts). */
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;
