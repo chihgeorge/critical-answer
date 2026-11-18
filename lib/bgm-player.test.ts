@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createBgmPlayer, layerGains, type Layer, type MixState } from "./bgm-player";
+import { createBgmPlayer, holdBgmForBuzz, layerGains, type Layer, type MixState } from "./bgm-player";
+
+it("releases a buzz hold for the answer reveal, including after the host replays its video", () => {
+  expect(holdBgmForBuzz(false, "team-1")).toBe(true);
+  expect(holdBgmForBuzz(true, "team-1")).toBe(false);
+  expect(holdBgmForBuzz(true, "team-1", true, true)).toBe(false);
+  expect(holdBgmForBuzz(false, undefined, true, true)).toBe(true);
+});
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "./bgm";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, EAT_DONE, HEARTBEAT, SFX, SPRINT_FANFARE, type SfxNote } from "./sfx";
 
@@ -172,6 +179,18 @@ describe("layerGains: the 聲音分層表", () => {
 });
 
 describe("createBgmPlayer", () => {
+  it("restores music when a replayed reveal clip ends after a buzz", async () => {
+    const { bgm, ctx } = await started();
+    const music = layerNode(ctx, "music").gain;
+    bgm.hold(holdBgmForBuzz(false, "team-1"));
+    bgm.mute(true);
+    bgm.hold(holdBgmForBuzz(true, "team-1"));
+    expect(music.target).toBe(0);
+    bgm.mute(false);
+    expect(music.target).toBe(0.05);
+    bgm.stop();
+  });
+
   it("mute(), hold() and duck() drive the music layer from the table, without closing anything", async () => {
     const { bgm, ctx } = await started();
     const music = layerNode(ctx, "music").gain;

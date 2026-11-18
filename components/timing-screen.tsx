@@ -48,11 +48,11 @@ export function TapClockReporter({ questionId, seq, timeRef, ping, offset, sendR
 }
 
 /** Beside the music card while the round runs: the rule, never who tapped. */
-export function TimingRoundPanel({ label, open }: { label?: string; open: boolean }) {
+export function TimingRoundPanel({ title, label, open }: { title?: string; label?: string; open: boolean }) {
   return (
     <div data-testid="screen-timing">
       <Panel tone="lav" className="flex flex-col items-center gap-1 px-4 py-3 text-center">
-        <div className="text-[24px]">♪ 卡點題</div>
+        <div className="text-[24px]">{title || "卡點題"}</div>
         <div className="text-[28px] leading-tight [overflow-wrap:anywhere]">{open ? (label ? `按在「${label}」那一下！` : "按在關鍵那一拍！") : "等主持人按 ▶"}</div>
         <div className="text-[16px]">每隊只能按一次，最準的命中</div>
       </Panel>

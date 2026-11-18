@@ -117,7 +117,7 @@ describe("A5 personal info in committed files", () => {
     expect(hit({ tool_name: "NotebookEdit", tool_input: { notebook_path: "docs/a.ipynb", new_source: HOME } })).toBe("A5");
   });
   it("asks git whether a file is ignored", () => {
-    expect(write("node_modules/x.md", HOME, { ignored: gitIgnored })).toBeNull();
+    expect(write("local-banks/x.md", HOME, { ignored: gitIgnored })).toBeNull();
   });
 });
 

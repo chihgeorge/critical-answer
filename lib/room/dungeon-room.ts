@@ -541,8 +541,8 @@ export class DungeonRoom {
    * which its clip's video time 0 played (null while paused or buffering), for which question and ⟲ seq, and when it
    * last reported. In memory only, like `media`: after a restart the host's next ▶ brings it back (hosting.md). */
   private tapClock: { questionId: string; seq: number; screen: string; anchor: number | null; at: number } | null = null;
-  /** When the host's last ⟲ (a play from the clip's start) for this question and seq began. In memory only. */
-  private tapSeqStart: { questionId: string; seq: number; at: number } | null = null;
+  /** When the host's last ⟲ or timeline seek for this question and seq began, and the video time it played from. In memory only. */
+  private tapSeqStart: { questionId: string; seq: number; at: number; from: number } | null = null;
   /** Closes the timing round at its song time, or wakes when the clock goes stale. */
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
   /** The `tapLive` the last broadcast STATE carried: an anchor update broadcasts only when it flips. */
@@ -2439,7 +2439,7 @@ export class DungeonRoom {
           this.handleHostReveal(sender, msg.teamId, msg.questionId);
           break;
         case "HOST_MEDIA":
-          this.handleHostMedia(sender, msg.questionId, msg.action);
+          this.handleHostMedia(sender, msg.questionId, msg.action, msg.at);
           break;
         case "HOST_MEMORY_DONE":
           this.handleHostMemoryDone(sender, msg.questionId);
@@ -2981,7 +2981,7 @@ export class DungeonRoom {
     const phase = this.bank.boss.phases[game.boss.phaseIndex];
     this.broadcastState();
     const event: NarrationEvent = { type: "boss-phase", monster: catalogMonster(this.bossId()).name, phase: game.boss.phaseIndex + 1, name: phase.name, rule: phase.rule };
-    const next = this.nextTurn();
+    const next = isBuzzPhase(game) ? null : this.nextTurn();
     void this.narrate(eventId, next ? { ...event, next } : event);
   }
 
@@ -3897,7 +3897,8 @@ export class DungeonRoom {
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
     const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : catalogMonster(ateFrom).dish;
-    const narrated = toNarrationEvent(prev, outcome, monster, this.nextTurn() ?? undefined, phaseName);
+    // A phase card, not the next team, follows this answer. In a buzzer phase there is no team on turn.
+    const narrated = toNarrationEvent(prev, outcome, monster, game.boss.phasePending ? undefined : this.nextTurn() ?? undefined, phaseName);
     const told = caught && narrated.type === "flee" ? { ...narrated, caught: prev.teams.find((t) => t.id === caught.by)?.name ?? "" } : narrated;
     // The dish is named only once it is served on the big screen (cooking I1, I4); the line just counts 飽足感. The
     // narrator may size up the edible part meanwhile (foodie narration).
@@ -4097,30 +4098,36 @@ export class DungeonRoom {
 
   /** ▶ ⏸ ⟲ from the host page. Ignored unless it names the video on screen: a second host device may still show
    * an older question. */
-  private handleHostMedia(conn: Conn, questionId: string, action: MediaAction) {
+  private handleHostMedia(conn: Conn, questionId: string, action: MediaAction, at?: number) {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
+    // A seek stays inside a question's clip until the reveal: before it, the footage around the clip may give the answer away.
+    const clip = this.question(questionId)?.content;
+    if (action === "seek" && at !== undefined && !this.reveal && clip?.kind === "youtube") at = Math.min(Math.max(at, clip.start ?? 0), clip.end ?? at);
     // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
     // Never played (skipped before ▶): the plain ▶ starts at the clip start anyway, and either way the replay is used up.
     if (action !== "pause" && this.tapReplay === questionId) {
-      if (this.media?.questionId === questionId) action = "restart";
+      // A seek picks its own point, and uses the replay up too.
+      if (action !== "seek" && this.media?.questionId === questionId) action = "restart";
       this.tapReplay = null;
     }
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
-    this.media = { questionId, state: action === "pause" ? "paused" : "playing", seq: action === "restart" ? seq + 1 : seq, press: (same?.press ?? 0) + 1 };
-    // ⟲ plays from the clip's start: when it began, for handleTapClock's stale-anchor check.
-    if (action === "restart") this.tapSeqStart = { questionId, seq: this.media.seq, at: this.now() };
+    this.media = { questionId, state: action === "pause" ? "paused" : action === "seek" ? same?.state ?? "paused" : "playing", seq: action === "restart" || action === "seek" ? seq + 1 : seq, press: (same?.press ?? 0) + 1, ...(action === "seek" && at !== undefined ? { seek: at } : action !== "restart" && same?.seek !== undefined ? { seek: same.seek } : {}) };
+    // ⟲ plays from the clip's start, a seek from its point: when that began, for handleTapClock's stale-anchor check.
+    if (action === "restart" || action === "seek") {
+      this.tapSeqStart = { questionId, seq: this.media.seq, at: this.now(), from: action === "seek" ? at ?? 0 : clip?.kind === "youtube" ? clip.start ?? 0 : 0 };
+    }
     // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).
     this.buzzPaused = false;
     // The screen tries the video again on a ▶ (youtube-player.tsx), and reports again if it still fails.
-    if (action !== "pause") this.clipError = null;
+    if (action === "play" || action === "restart") this.clipError = null;
     // The first ▶ on a buzzer phase's video opens buzzing (boss-buzzer.md D5).
     // A reveal's video is the answered question's, even when the same question comes round again (red-team review).
     const timing = this.question(questionId)?.kind === "timing";
-    if (action !== "pause" && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId, timing));
+    if ((action === "play" || action === "restart") && this.game && !this.reveal) this.keepUndoOpen(openBuzz(this.game, questionId, timing));
     // ⟲ on a timing question: the song's clock changed, so the taps go and the anchor waits for the new play (timing-tap.md).
-    if (action === "restart" && timing && this.game && !this.reveal) {
+    if ((action === "restart" || action === "seek") && timing && this.game && !this.reveal) {
       this.keepUndoOpen(restartTaps(this.game));
       this.tapClock = null;
     }
@@ -5257,7 +5264,7 @@ export class DungeonRoom {
     // the time since that play began (adversarial review).
     const s = this.tapSeqStart;
     const q = this.question(id);
-    if (anchor !== null && s?.questionId === id && s.seq === seq && q?.kind === "timing" && this.now() - anchor > (q.content.start ?? 0) * 1000 + (this.now() - s.at) + TAP_SEEK_SLACK_MS) return;
+    if (anchor !== null && s?.questionId === id && s.seq === seq && q?.kind === "timing" && this.now() - anchor > s.from * 1000 + (this.now() - s.at) + TAP_SEEK_SLACK_MS) return;
     this.tapClock = { questionId, seq, screen: sender.id, anchor, at: this.now() };
     this.tapChanged();
   }

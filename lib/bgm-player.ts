@@ -60,6 +60,11 @@ export function layerGains({ bgmOn, videoPlaying, held, speaking }: MixState): R
   };
 }
 
+/** Buzz silence ends at judgment; a reveal may keep the winner in its view while the host replays the clip. */
+export function holdBgmForBuzz(revealing: boolean, teamId?: string, clipError = false, buzzOpen = false): boolean {
+  return !revealing && (!!teamId || (clipError && buzzOpen));
+}
+
 const LAYERS: Layer[] = ["music", "boss", "host", "ambient"];
 
 /** One sounding ambience: its own gain under the ambient layer, and how to silence it for good. */
