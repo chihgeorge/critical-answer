@@ -1332,8 +1332,10 @@ export function answerQuestion(
   // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
   // check (never twice), the blessing adds half the base like a crit 20.
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
-  // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
-  const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
+  // A question the team asked the oracle about halves the same way (anti-ai-cheating.md), a boss hit too. A kill the
+  // oracle could not see coming (finishingBlow) halves its 4d20 as well, unlike a curse.
+  const oracle = correct && oracleActive(game, teamId);
+  const halved = correct && (check?.value === 1 || boon === "curse" || oracle);
   const critMark = warriorDie === 20 || thiefTier === 3 ? 20 : critValue;
   const rollMark: { roll?: RollMark } =
     correct && (critMark === 20 || critMark === 1)
@@ -1417,12 +1419,12 @@ export function answerQuestion(
       const bossKilled = newHp === 0 && lastPhase;
       // The 4d20 is not raised by a crit (R4).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
-      const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
+      const killBonus = kill ? Math.round(sneakPay(kill.reduce((a, b) => a + b, 0)) * (oracle ? 0.5 : 1)) : undefined;
       const hitReward = bossHitReward(game);
       const hit = sneakPay(baseOf(hitReward)) + critBonus(hitReward);
       const gain = withChef(fields ? Math.round((hit * fields.right) / fields.total) : hit, killBonus ?? 0);
       const { reward } = gain;
-      const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
+      const teams = patchTeam(dropOracle(game.teams, boss.currentQuestionId), teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
       const revealedNow = withRevealed(game.revealedQuestionIds, boss.currentQuestionId);
       const phasePending = bossKilled ? undefined : newHp === 0 ? "cleared" : usedUp(revealedNow) ? "exhausted" : undefined;
@@ -1483,7 +1485,9 @@ export function answerQuestion(
       // unless it stayed on the same question (a one-question boss bank, a wrong buzz, a warrior's miss or a prayed retry), where picks still apply.
       const moved = rotatedBossQuestionId !== boss.currentQuestionId;
       // A new question or the phase's end is the end of this buzz question for the stunned teams (R5).
-      const settled = buzzing && (moved || phasePending) ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
+      const stunsOver = buzzing && (moved || phasePending) ? unstun(game.teams, (t) => !!t.inBoss) : game.teams;
+      // Left even when the same question comes round again (a last phase out of fresh ones): its oracle is spent.
+      const settled = leaves ? dropOracle(stunsOver, questionId) : stunsOver;
       nextGame = {
         ...game,
         revealedQuestionIds: revealed,
@@ -2463,10 +2467,29 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
 
 /* ---------- 抓包與神諭 (docs/designs/anti-ai-cheating.md) ---------- */
 
-/** Whether `teamId` asked the oracle about the room question it faces now: that answer halves and cannot be caught. */
+/** Whether the oracle was asked about the question `teamId` faces now: that answer halves and cannot be caught. A room
+ * question is the team's own, so only its own oracle counts; the boss question is shared, so any boss team's oracle on it
+ * counts for whoever answers it (a skipped turn or a warrior's miss leaves it up for the next team). Never in a buzzer
+ * phase, where nobody may ask it. */
 export function oracleActive(game: GameState, teamId: string): boolean {
   const t = game.teams.find((x) => x.id === teamId);
-  return !!t && !t.inBoss && t.oracleQ !== undefined && t.oracleQ === t.currentQuestionId;
+  if (!t) return false;
+  if (!t.inBoss) return t.oracleQ !== undefined && t.oracleQ === t.currentQuestionId;
+  return !isBuzzPhase(game) && game.teams.some((x) => x.inBoss && x.oracleQ === game.boss.currentQuestionId);
+}
+
+/** 尾刀 for the oracle (owner decision on #289): the final boss phase with one heart left. A correct answer then always
+ * finishes the boss, so the oracle is closed; a crit, a sneak or a music question's fields may still finish it from more
+ * hearts, which the room cannot know before the answer (that kill's 4d20 is halved instead, see answerQuestion). */
+export function finishingBlow(game: GameState): boolean {
+  const boss = game.boss;
+  return game.phase === "playing" && !boss.phasePending && boss.phaseIndex >= boss.phases.length - 1 && boss.hp <= 1;
+}
+
+/** A boss question is retired (answered right, or left on a wrong answer): any oracle asked on it is spent, for every team,
+ * so a last phase that deals a revealed question again never brings it back. */
+function dropOracle(teams: Team[], questionId: string): Team[] {
+  return teams.map((t) => (t.oracleQ === questionId ? { ...t, oracleQ: undefined } : t));
 }
 
 /** The host's switch. On: every team the switch never met gets its uses (a re-on refills nothing). Off: an open catch is
@@ -2486,28 +2509,33 @@ export function setAntiCheat(game: GameState, on: boolean): GameState {
   };
 }
 
-/** What both actions refuse alike: the switch off, a buzzer phase, a catch waiting, a team not answering a room question
- * now. The room checks its own beats and screens first (one window predicate). */
+/** What both actions refuse alike: the switch off, a buzzer phase, a catch waiting, a team not answering its question
+ * (room or boss) now, a boss phase waiting for its card. The room checks its own beats and screens first (one window
+ * predicate). */
 function assertAntiCheatTurn(game: GameState, teamId: string, questionId: string) {
   assertPlaying(game);
   if (!game.antiCheat?.on) throw new InvalidActionError("anti_cheat_off");
   assertNotBuzz(game);
   if (game.antiCheat.openCatch) throw new InvalidActionError("catch_pending");
   const team = getTeam(game, teamId);
-  if (team.inBoss) throw new InvalidActionError("boss_room");
+  if (team.inBoss && game.boss.phasePending) throw new InvalidActionError("phase_pending");
   if (game.fortune && !game.fortune.effect) throw new InvalidActionError("fortune");
   if (game.pendingWrong) throw new InvalidActionError("answer_pending");
   if (atFork(team)) throw new InvalidActionError("fork");
-  if (questionId !== team.currentQuestionId) throw new InvalidActionError("stale_question");
+  if (questionId !== currentQuestionIdOf(game, teamId)) throw new InvalidActionError("stale_question");
 }
 
-/** 🔮 公開問神諭: the team on turn asks the oracle about its room question, once a game, before its answer is in. */
+/** 🔮 公開問神諭: the team on turn asks the oracle about its question (room or boss), once a game, before its answer is in;
+ * never on the boss's 尾刀 (finishingBlow). */
 export function askOracle(game: GameState, teamId: string, questionId: string): GameState {
   assertAntiCheatTurn(game, teamId, questionId);
   if (currentTurnTeamId(game) !== teamId) throw new InvalidActionError("not_your_turn");
   const team = getTeam(game, teamId);
   if (team.typedAnswer !== undefined) throw new InvalidActionError("answer_submitted");
   if ((team.oracleLeft ?? 0) <= 0) throw new InvalidActionError("oracle_used");
+  if (team.inBoss && finishingBlow(game)) throw new InvalidActionError("finishing_blow");
+  // Another boss team already asked about this shared question: it counts for this team too.
+  if (oracleActive(game, teamId)) throw new InvalidActionError("oracle_question");
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ oracleLeft: (t.oracleLeft ?? 0) - 1, oracleQ: questionId, oracles: (t.oracles ?? 0) + 1 })) };
 }
 
@@ -2553,15 +2581,28 @@ function openCatchOf(game: GameState) {
  * reporter gains CATCH_PAY.bounty, flat (no chef share). */
 export function upholdCatch(game: GameState, rng: () => number = Math.random): { game: GameState; outcome: AnswerOutcome } {
   const c = openCatchOf(game);
-  // Revealed first, so the flee's deal does not hand the same question back while another is left.
-  const marked = { ...game, revealedQuestionIds: withRevealed(game.revealedQuestionIds, c.questionId) };
+  // Revealed first, so the flee's deal does not hand the same question back while another is left. Paid first too: in
+  // the boss room the flee may use up the last phase and finish the game, which ranks the teams as they stand.
+  const marked = {
+    ...game,
+    revealedQuestionIds: withRevealed(game.revealedQuestionIds, c.questionId),
+    teams: game.teams.map((t) =>
+      t.id === c.teamId
+        ? { ...t, wrongAnswers: (t.wrongAnswers ?? 0) + 1, reward: Math.max(0, t.reward - CATCH_PAY.caught) }
+        : t.id === c.by
+          ? { ...t, reward: t.reward + CATCH_PAY.bounty, catchesUpheld: (t.catchesUpheld ?? 0) + 1 }
+          : t,
+    ),
+  };
   // Judged while the catch still holds the turn, so an offline accused is still the team on turn.
   const { game: fled, outcome } = answerQuestion(marked, c.teamId, c.questionId, false, "flee", rng);
+  // A finished game called the catch off (finishGame's cancelCatch): it was upheld, so the refund is taken back.
+  const refunded = fled.phase === "finished";
   const teams = fled.teams.map((t) =>
     t.id === c.teamId
-      ? { ...t, flees: (t.flees ?? 1) - 1 || undefined, wrongAnswers: (t.wrongAnswers ?? 0) + 1, reward: Math.max(0, t.reward - CATCH_PAY.caught) }
-      : t.id === c.by
-        ? { ...t, reward: t.reward + CATCH_PAY.bounty, catchesUpheld: (t.catchesUpheld ?? 0) + 1 }
+      ? { ...t, flees: (t.flees ?? 1) - 1 || undefined }
+      : refunded && t.id === c.by
+        ? { ...t, catchesLeft: (t.catchesLeft ?? 1) - 1, catchesCancelled: (t.catchesCancelled ?? 1) - 1 || undefined }
         : t,
   );
   return { game: { ...fled, teams, antiCheat: { ...fled.antiCheat!, openCatch: undefined } }, outcome };
@@ -2665,8 +2706,8 @@ export interface SpectatorView {
   /** ⚔️ 最後衝刺 once it fired (GameState.sprint): the screen and phones name the blessed teams. */
   sprint?: { teamIds: string[] };
   /** 抓包與神諭 once the host ever switched it on (anti-ai-cheating.md). `caught`: the team on turn was already caught
-   * on this question this turn, so no second catch. */
-  antiCheat?: { on: boolean; onCount: number; openCatch?: { by: string; teamId: string; questionId: string }; caught?: true; undone?: number };
+   * on this question this turn, so no second catch. `finishingBlow`: the boss team on turn faces the 尾刀, no oracle. */
+  antiCheat?: { on: boolean; onCount: number; openCatch?: { by: string; teamId: string; questionId: string }; caught?: true; finishingBlow?: true; undone?: number };
 }
 
 export function getSpectatorView(game: GameState): SpectatorView {
@@ -2728,6 +2769,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
 function antiCheatView(game: GameState, ac: AntiCheatState): NonNullable<SpectatorView["antiCheat"]> {
   const turn = currentTurnTeamId(game);
   const t = game.teams.find((x) => x.id === turn);
-  const caught = !!t && ac.caughtTurn === `${t.id}:${t.currentQuestionId}:${t.turns ?? 0}`;
-  return { on: ac.on, onCount: ac.onCount, ...(ac.openCatch ? { openCatch: ac.openCatch } : {}), ...(caught ? { caught: true as const } : {}), ...(ac.undone ? { undone: ac.undone } : {}) };
+  const caught = !!t && ac.caughtTurn === `${t.id}:${currentQuestionIdOf(game, t.id)}:${t.turns ?? 0}`;
+  // The boss team on turn may not ask the oracle now (尾刀): the phone hides the button.
+  const blow = !!t?.inBoss && finishingBlow(game);
+  return { on: ac.on, onCount: ac.onCount, ...(ac.openCatch ? { openCatch: ac.openCatch } : {}), ...(caught ? { caught: true as const } : {}), ...(blow ? { finishingBlow: true as const } : {}), ...(ac.undone ? { undone: ac.undone } : {}) };
 }

@@ -212,6 +212,53 @@ describe("an open catch", () => {
   });
 });
 
+describe("the boss room (#289)", () => {
+  /** Every team in the boss room taking turns (甲 on turn), a catch by 乙 open on the boss question, saved. */
+  function bossCatch(storage: RoomStorage) {
+    const g = started({ storage });
+    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => ({ ...t, inBoss: true })) };
+    // The boss question is a fill-in: its persuasion check comes first.
+    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "b1", eventId: g.state().eventId });
+    vi.advanceTimersByTime(2000);
+    g.catchBy(1, "b1");
+    expect(g.state().view.antiCheat.openCatch).toMatchObject({ by: B, teamId: A, questionId: "b1" });
+    return g;
+  }
+  async function restart(storage: RoomStorage) {
+    const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
+    const second = new DungeonRoom(io, () => 0, { bank: bank(MCS), epilogueDelayMs: 0 });
+    expect(await second.restore()).toBe("restored");
+    return second;
+  }
+
+  it("a catch on a boss team's question survives a restart", async () => {
+    const storage = memoryStorage();
+    bossCatch(storage);
+    expect((await restart(storage)).game!.antiCheat?.openCatch).toMatchObject({ teamId: A, questionId: "b1" });
+  });
+
+  it("an upheld catch that finishes the game (the boss's only question) cannot be taken back", () => {
+    const g = bossCatch(memoryStorage());
+    g.rule(true);
+    expect(g.room.game!.phase).toBe("finished");
+    expect(g.state().undoRuling).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_UNDO_RULING" });
+    expect(g.room.game!.phase).toBe("finished");
+  });
+
+  it("a saved boss catch is called off and refunded when its phase waits for the card, in a buzzer phase, or on a stale question", async () => {
+    for (const patch of [{ currentQuestionId: "b9" }, { phasePending: "cleared", phases: [{ maxHp: 3, questionIds: ["b1"] }, { maxHp: 1, questionIds: ["b1"] }] }, { phases: [{ maxHp: 3, questionIds: ["b1"], buzzer: true }] }]) {
+      const storage = memoryStorage();
+      bossCatch(storage);
+      const saved = (await storage.get("room")) as { game: { boss: object } };
+      storage.put("room", { ...saved, game: { ...saved.game, boss: { ...saved.game.boss, ...patch } } });
+      const game = (await restart(storage)).game!;
+      expect(game.antiCheat?.openCatch, JSON.stringify(patch)).toBeUndefined();
+      expect(game.teams.find((t) => t.id === B)?.catchesLeft).toBe(2);
+    }
+  });
+});
+
 describe("the rulings", () => {
   it("成立 reveals the answer with the catch, pays −10 / +15, narrates its own line and passes the turn", () => { // pregate-literal: CHEF_BONUS_PERCENT=15 the anti-cheat +15, not the chef
     const g = started();
