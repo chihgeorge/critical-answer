@@ -314,7 +314,7 @@ describe("叉路 in the room", () => {
     expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
   });
 
-  it("offline: a choosing team keeps the turn and may come back to pick; a waiting team offline is skipped with no clock", async () => {
+  it("offline: a choosing team keeps the turn and may come back to pick; an offline waiting team gets its turn", async () => {
     vi.useFakeTimers();
     const s = setup();
     const { room, phones } = s;
@@ -328,26 +328,26 @@ describe("叉路 in the room", () => {
     send(room, back, { type: "TEAM_CHOOSE_FORK", side: "left", eventId: state(room).eventId });
     expect(room.game!.teams[0].forks).toEqual([M]);
 
-    // Waiting and offline when its turn comes: skipped, still waiting, no deadline.
+    // Waiting and offline when its turn comes: the doors still open.
     const s2 = setup();
     answerRight(s2, 0);
     s2.room.onClose(s2.phones[0]);
     answerRight(s2, 1);
-    expect(s2.room.game!.teams[0].fork).toEqual({ phase: "waiting" });
-    expect(currentTurnTeamId(s2.room.game!)).toBe(T2);
+    expect(s2.room.game!.teams[0].fork).toMatchObject({ phase: "choosing" });
+    expect(currentTurnTeamId(s2.room.game!)).toBe(T1);
   });
 
-  it("an offline team's timeout: the beat still shows its doors; then the turn is the next team's", async () => {
+  it("an offline team's timeout: the beat still shows its doors; then the same team waits for the host", async () => {
     vi.useFakeTimers();
     const s = setup();
     toChoosing(s);
     s.room.onClose(s.phones[0]);
     await vi.advanceTimersByTimeAsync(FORK_MS);
-    expect(currentTurnTeamId(s.room.game!)).toBe(T2);
+    expect(currentTurnTeamId(s.room.game!)).toBe(T1);
     expect(state(s.room)).toMatchObject({ forkBeat: { teamId: T1, timeout: true }, view: { currentTurnTeamId: T1 }, question: null });
     await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
-    expect(state(s.room).view.currentTurnTeamId).toBe(T2);
-    expect(state(s.room).question?.id).toBe(s.room.game!.teams[1].currentQuestionId);
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
+    expect(state(s.room).question?.id).toBe(s.room.game!.teams[0].currentQuestionId);
   });
 
   it("结束冒險 during the beat: the finished STATE shows real scores, and the beat's timer does nothing after", async () => {
@@ -446,6 +446,7 @@ describe("叉路 in the room", () => {
       const { room } = s;
       answerRight(s, 0);
       room.onClose(s.phones[1]);
+      send(room, s.host, { type: "HOST_SKIP_TURN", teamId: T2, eventId: state(room).eventId });
       expect(room.game!.teams[0].fork?.phase).toBe("choosing");
       const back = makeConn("p1b");
       room.onConnect(back);

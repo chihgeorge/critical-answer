@@ -129,10 +129,17 @@ function describeRoll(e: NarrationEvent): string {
   const crit = "roll" in e && e.roll?.kind === "crit";
   const warrior =
     "warriorRoll" in e && e.warriorRoll !== undefined && !crit
-      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${e.type === "retry" ? "沒打中" : "命中"}。第一行要說出點數。`
+      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${warriorFacts(e)}。第一行要說出點數${e.type === "retry" && e.warriorRoll === 1 && e.penalty ? "和扣分" : ""}。`
       : "";
   // A check's line says 答對, but a warrior rolled instead: its own line stands alone.
   return warrior || describeDie(e);
+}
+
+/** What the warrior's die did under #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles. */
+function warriorFacts(e: NarrationEvent): string {
+  if (e.type === "retry") return e.warriorRoll !== 1 ? "沒打中" : `大失敗，沒打中，擲 1 要扣掉整題的獎勵，${e.penalty ? `這隊被扣了 ${e.penalty} 分` : "但這隊沒分可扣"}`;
+  if (e.type === "boss-kill") return "命中";
+  return "warriorRoll" in e && e.warriorRoll === 20 ? "命中，獎勵加倍" : "命中，但戰士擲骰只拿這題八成的獎勵";
 }
 
 /** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
@@ -143,7 +150,7 @@ function describeDie(e: NarrationEvent): string {
       ? "\n這隊說服檢定擲出 20，不用答題就說服了怪物，算答對。第一行要提到說服成功。"
       : "\n這隊說服檢定擲出 1，講錯話了，雖然答對，獎勵只拿一半。第一行用好笑的方式說他們講錯話。";
   return e.roll.value === 20
-    ? "\n這一擊擲出 20，是大成功，獎勵多拿一半。第一行要提到大成功。"
+    ? `\n這一擊擲出 20，是大成功，獎勵${"warriorRoll" in e && e.warriorRoll === 20 ? "加倍" : "多拿一半"}。第一行要提到大成功。`
     : "\n這一擊擲出 1，是大失敗，但還是打中了，分數照拿。第一行用好笑的方式說手滑了，但還是打中。";
 }
 
@@ -184,6 +191,7 @@ function describeEvent(e: NarrationEvent): string {
     case "retry":
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以再答，也不要說首領倒下，結果留待揭曉。`;
       if (e.prayed) return `事件：隊伍${q(e.team)}答錯了，但牧師的祈禱讓聖光降臨，他們現在馬上再答一次${e.boss ? `（首領${q(e.monster)}換了一題）` : ""}，不換隊。不要說下一輪再答。`;
+      if (e.buzzSecond) return `事件：搶答中，隊伍${q(e.team)}搶到了卻沒全對，所有隊伍都答過了，還沒有隊伍每一欄都對。同一首歌開始第二輪，所有隊伍可以再搶，這是最後一輪。要說第二輪、最後一次。不要說換題。`;
       if (e.buzzAgain) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，所有隊伍都答錯了這首歌。同一首歌重新開放，所有隊伍可以再搶一次。不要說換題。`;
       if (e.buzzOut) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，這題他們不能再搶，音樂繼續放，其他隊伍快搶。不要說可以再答。`;
       return e.boss

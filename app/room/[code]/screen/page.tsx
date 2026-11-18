@@ -24,14 +24,14 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, type NarrationState } from "@/lib/narration/client";
+import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, voiceNarration, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, holdBgmForBuzz, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
-import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
+import { DUNGEON_THEME, songFor, type Song } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
 import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, DIM_ALPHA, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
 import { dimVisible, playHostEffect, type HostFxLook } from "@/lib/host-fx";
@@ -344,6 +344,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.chefBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
+  // #351: 上菜's dish line already told the served answer's result, so after 下一題 the box starts on the narration's
+  // second line (the middle line, then the handoff) instead of typing the result line again.
+  const [servedId, setServedId] = useState<number | null>(null);
+  if (reveal?.served && servedId !== eventId) setServedId(eventId);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
   /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
@@ -882,7 +886,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? 1 : 0 } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -1086,7 +1090,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   const current = cooked && now.beat >= 0 && !now.done ? beats[now.beat] : undefined;
   const called = new Set(beats.slice(0, now.beat + 1).flatMap((b) => (b.kind === "place" ? [b.place] : [])));
   // Reduced motion skips the beats (t null): the titles stand as a still list instead, one row a team (eng E3).
-  const titleRows = t === null ? view.teams.flatMap((x) => {
+  const titleRows = t === null && podium?.step === undefined ? view.teams.flatMap((x) => {
     const icons = beats.flatMap((b) => (b.kind === "award" && b.teamIds.includes(x.id) ? [b.icon] : [])).join("");
     return icons ? [{ id: x.id, name: x.name, icons }] : [];
   }) : [];
@@ -1095,7 +1099,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // A narration still being read after 結束冒險 stays up: the room starts the reveal once this screen has read it.
   // Only after 結束冒險 (no dish): after a boss kill the kill-shot line has had the cooking to be read (storyboard row 1).
   const holdNarration = unread && !dish;
-  const waiting = cooked && !!podium && podium.beats === null && !holdNarration;
+  const waiting = cooked && !!podium && (podium.beats === null || podium.step === -1) && !holdNarration;
   // After 結束冒險 the box picks up at the line the game screen had reached, so the room's wait is not a second pass.
   const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
@@ -1104,7 +1108,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ended]);
   // Each beat's line is read as it comes up (a roll's chip too); a title's opens on a chime, 🎲 on the crit's (D3).
-  const spoken = current && t !== null ? now.beat : -1;
+  const spoken = current && (t !== null || podium?.step !== undefined) ? now.beat : -1;
   useEffect(() => {
     const beat = beats[spoken];
     if (spoken < 0 || !beat) return;
@@ -1157,7 +1161,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </div>
       )}
       {!cooked && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
-      {result && (reveal || killer) && (
+      {(result || (cooked && podium?.step === -1 && reveal && !dish)) && (reveal || killer) && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
             {/* With the podium up, the kill line lives here: under the title it sat on the winner's crown. */}
@@ -1664,8 +1668,8 @@ export default function ScreenPage() {
     });
     at(PARRY_MS.end, endParry);
   }
-  /** ④ The song the last STATE asked for: rage or not, null until the first STATE after connecting. */
-  const rageMusic = useRef<boolean | null>(null);
+  /** The song the last LOBBY or STATE asked for (songFor), null until the first one after connecting. */
+  const music = useRef<Song | null>(null);
   /** ③ The boss clock's turn (`teamId:questionId`) while one runs, and the heartbeat playing for it. */
   const heartKey = useRef<string | null>(null);
   const heart = useRef<{ key: string; cancel: () => void } | null>(null);
@@ -1907,7 +1911,7 @@ export default function ScreenPage() {
       cheatSeen.current = null;
       stopTransitions();
       prevState.current = null;
-      rageMusic.current = null;
+      music.current = null;
       parryKey.current = null;
       parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
@@ -1941,8 +1945,8 @@ export default function ScreenPage() {
           cheatSeen.current = null;
           stopTransitions();
           prevState.current = null;
-          rageMusic.current = false;
-          player().setSong(DUNGEON_THEME);
+          music.current = songFor("lobby", false);
+          player().setSong(music.current);
           parryKey.current = null;
           parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();
@@ -2034,11 +2038,13 @@ export default function ScreenPage() {
             const cfx = classFxFor(prev, msg);
             if (msg.phase !== "playing") clearClassFx();
             else if (cfx) onClassFx(cfx);
-            // ④ Rage music, game-wide: the 0.5 s silence only when rage starts live; a (re)connect just picks the song.
+            // The phase's song (songFor). ④ Rage gets the boss song, with the 0.5 s silence only when rage starts live
+            // over the dungeon tune; a (re)connect just picks the song. The game's end, early or not, gets the victory song.
             const rage = rageNow(msg);
-            if (rage !== rageMusic.current) {
-              player().setSong(rage ? BOSS_RAGE_THEME : DUNGEON_THEME, rage && rageMusic.current === false ? 0.5 : 0);
-              rageMusic.current = rage;
+            const song = songFor(msg.phase, rage);
+            if (song !== music.current) {
+              player().setSong(song, rage && music.current === DUNGEON_THEME ? 0.5 : 0);
+              music.current = song;
             }
             // ③ A heartbeat belongs to one boss clock: another turn, no clock or no boss scene ends it.
             const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
@@ -2087,8 +2093,8 @@ export default function ScreenPage() {
               lastSpokenNarration.current = msg; // always, even when not spoken — see the ref's doc comment
             }
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
-            const added = !revealUp.current && progress.current?.eventId === msg.eventId;
-            const voice = speakIt && (msg.eventId !== servedEvent.current || added);
+            const added = handoffAdded(revealUp.current, progress.current?.eventId, msg.eventId);
+            const voice = voiceNarration(speakIt, msg.eventId, servedEvent.current, added);
             // A finished game keeps its last reveal for good: the kill shot's line is read then, not held for a 下一題.
             const holding = revealUp.current && lastPhase.current === "playing";
             if (voice && (holding || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_LINE, MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 import * as scripted from "./scripted";
@@ -88,6 +88,18 @@ describe("scripted lines", () => {
     for (let i = 0; i < 20; i++) {
       const line = p.line({ type: "retry", team, monster, buzzOut: true, buzzAgain: true });
       expect(again.has(line)).toBe(true);
+      expect(line.length).toBeLessThanOrEqual(40);
+    }
+  });
+
+  it("#369's round 2 says it is the second and last round, never a new question", () => {
+    const p = createScriptedProvider(lcg(4));
+    const second = new Set(BUZZ_SECOND_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
+    for (let i = 0; i < 20; i++) {
+      const line = p.line({ type: "retry", team, monster, buzzAgain: true, buzzSecond: true });
+      expect(second.has(line)).toBe(true);
+      expect(line).toMatch(/第二輪/);
+      expect(line).toMatch(/最後/);
       expect(line.length).toBeLessThanOrEqual(40);
     }
   });
@@ -526,6 +538,21 @@ describe("scripted: the crit die", () => {
     // The boss kill has no 大成功 line, and a check's 1 is the persuasion die (its 答對 line would be wrong): both say the warrior's number.
     expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！/);
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 5, warriorRoll: 9, roll: { kind: "check", value: 1 } })).toMatch(/^戰士擲出 9 點，命中！(?!.*說服)/);
+  });
+
+  // Value: protects=the scripted line tells #305's warrior rules (#344); fails_when=warriorResult says only 命中 / 沒打中
+  it("a warrior's 1 says the whole question's reward was taken, a 7-19 hit says 八成", () => {
+    const p = createScriptedProvider(() => 0);
+    expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, penalty: 10 })).toMatch(/^戰士擲出 1 點，大失敗，扣 10 分！.+/);
+    expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 })).toMatch(/^戰士擲出 1 點，大失敗，沒打中！/); // nothing to take
+    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 8, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！拿八成獎勵。/);
+    expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 7 })).toContain("拿八成獎勵");
+    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！(?!拿八成)/);
+    // A warrior's 20 is a crit too, but doubles: no crit line saying 多拿一半, whichever is picked.
+    for (let i = 0; i < 6; i++) {
+      const q = createScriptedProvider(() => i / 6);
+      expect(q.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 20, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).not.toContain("多拿一半");
+    }
   });
 
   it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {

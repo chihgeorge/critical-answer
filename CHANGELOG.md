@@ -2,6 +2,44 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.102.0.0] - 2026-11-19
+
+### Added
+- The big screen gets its own song for each part of the night: a tavern-style lobby tune while teams join, and a victory fanfare that plays once and then loops a celebratory march through the awards and the epilogue (also when the host ends the game early). The raging boss's theme is rewritten to be tenser and grander.
+- The home page plays a title song from the first tap on computers (off by default on phones), with a 🎵 switch at the title's top right that this browser remembers.
+
+## [0.101.0.0] - 2026-11-19
+
+### Added
+- A multi-field music question's second buzz round has its own narration: the narrator says it is the second and last round for everyone, instead of the plain "same song again" line (#369).
+
+### Fixed
+- When the team picking the next category drops offline (during the wait, the reveal or a pause) and has not come back, the room no longer waits for the host: the next question comes in order, as with 「▶ 下一步」 (#370). A server restart, which reads every team offline until it reconnects, does not end the pick.
+- A wrong buzz ends the last winner's category pick, so a pause before buzzing reopens can no longer swap a question everyone already heard (#362).
+- The host's 指定題目 list in the buzzer phase no longer greys out the question queued for the boss room; picking it plays it now and uses the queue up (#362).
+
+## [0.100.0.0] - 2026-11-19
+
+### Fixed
+- 隊伍手機暫離時保留回合，由主持人決定是否跳過；暫離期間作答倒數暫停，回來接著算。
+- 相鄰兩隊遇到一般房怪物時避開上一隊的怪物，保留題目與獎勵。
+- 逃跑與換題公布原題答案，已公布題目這場不再出現；題庫耗盡時推進階段或依分數結束。
+- 頒獎的稱號與名次改由主持人逐步揭曉，重連及房間重開保留進度。
+
+## [0.99.0.0] - 2026-11-19
+
+### Changed
+- The home page is now a game title screen: a stone-framed 致命答題 title plate, a parade of monsters and a blinking ▶ PRESS START (still under reduced motion). Under it sit two doors: 「我是玩家」 with the join form, and 「我是主持人」 with three how-to steps, the 主持遊戲 button and the bank-editor link. On a phone the player's door comes first. The title plate leaves a slot for the title music.
+
+## [0.98.0.0] - 2026-11-19
+
+### Added
+- Have the narrator say a warrior's roll rules: a 7–19 hit pays 八成, a 20 doubles, and a 1 says how many points it took away (scripted lines and the AI narrator's facts).
+
+### Fixed
+- Stop the big screen's dialogue box from typing the served answer's result line again after 下一題; it goes on with the rest of the narration and the line naming the next team.
+- Log a narration line dropped because the narration already holds the most lines a save allows.
+
 ## [0.97.0.1] - 2026-11-19
 
 ### Changed

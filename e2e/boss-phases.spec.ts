@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame, screenUrl, rollCheck, closeLeftoverContexts } from "./answer";
+import { advanceAwards, startGame, screenUrl, rollCheck, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -92,6 +92,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   // The kill's 4d20 rolls first; the podium waits for it (docs/designs/kill-roll.md).
   await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible();
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
+  await advanceAwards(host);
   await expect(screen.getByText(/奪得榜首/)).toBeVisible({ timeout: 45_000 }); // the kill dice (4 s), the boss cooks (FINISH_PODIUM_MS), the titles (2.5 s each), then the places
 });
 

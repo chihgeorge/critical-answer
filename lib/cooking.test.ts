@@ -78,6 +78,17 @@ describe("the podium reveal's first frame", () => {
   const at = (elapsedMs: number, lag = 0, b: typeof beats | null = beats) =>
     first(() => show(revealNow({ beats: b }, useRevealTime({ ranking: ["a", "b"], beats: b, elapsedMs }, lag))));
 
+  it("host steps override elapsed time and reduced motion on both screen and phone", () => {
+    for (const t of [null, -500, 999999]) {
+      expect(revealNow({ beats, step: -1 }, t)).toEqual({ beat: -1, result: false, done: false });
+      expect(revealNow({ beats, step: 0 }, t)).toEqual({ beat: 0, result: false, done: false });
+      expect(revealNow({ beats, step: 1 }, t)).toEqual({ beat: 1, result: true, done: false });
+      expect(revealNow({ beats, step: 2 }, t)).toEqual({ beat: 1, result: true, done: true });
+    }
+    const podium = { ranking: ["a", "b"], beats, elapsedMs: 999999, step: 0 };
+    expect(first(() => show(revealNow(podium, useRevealTime(podium, PHONE_LAG_MS))))).toBe("0 false false");
+  });
+
   it("a page opened mid-reveal is on the room's beat, not the first one", () => {
     expect(at(4000)).toBe("1 true false");
     expect(at(-500)).toBe("-1 false false");

@@ -5,6 +5,7 @@ import {
   createGame,
   DEFAULT_GAME_CONFIG,
   answerQuestion,
+  advanceTurn,
   endGame,
   enterNextBossPhase,
   buzzIn,
@@ -442,6 +443,9 @@ export class DungeonRoom {
   private hostToken = "";
   // shortcut: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
+  /** Teams whose last phone closed in this instance (memory only: after a restart every team reads offline until it
+   * reconnects, and that must not end a buzz winner's pick; endPickIfPickerGone). */
+  private leftTeams = new Set<string>();
   /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
   private lastPicks: string | null = null;
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
@@ -591,6 +595,8 @@ export class DungeonRoom {
    * the count going, and time spent down counts, as it does for the players watching. */
   private answerSeconds = 0;
   private answerClock: AnswerClock | null = null;
+  /** The count left when the team on turn went away: it resumes from here when a phone returns (#366). */
+  private heldClockMs: number | null = null;
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
@@ -640,6 +646,7 @@ export class DungeonRoom {
   private stepSeq = 0;
   /** A finished game's podium waits for HOST_STEP: the hold's id, or null. Saved (as revealHeld). */
   private revealHold: number | null = null;
+  private podiumStep = -1;
   private transcript: TranscriptItem[] = [];
   /** Asked of new teams at JOIN when not "" (HOST_SET_PASSWORD). Known teams rejoin with their key alone. */
   private joinPassword = "";
@@ -1058,6 +1065,7 @@ export class DungeonRoom {
       epilogue: this.epilogue,
       epilogueRequested: this.epilogueRequested,
       podium: this.podium,
+      podiumStep: this.podiumStep,
       epiloguePage: this.epiloguePage,
       revealFrom: this.revealFrom,
       playedQuestionIds: this.playedQuestionIds,
@@ -1166,7 +1174,9 @@ export class DungeonRoom {
     if (h && s.game?.phase === "playing" && !s.game.boss.phasePending && n?.eventId === h.eventId && n.lines.length < NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, h.line], rev: n.rev + 1 };
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
-    this.podium = s.podium ?? null;
+    this.podium = s.podium ?? (s.epilogue && s.game?.ranking ? { lines: [], at: this.now() } : null);
+    // A save from before host-stepped awards: a held podium starts over, one already played shows its end.
+    this.podiumStep = s.podiumStep ?? (!s.revealHeld && s.game?.phase === "finished" ? Number.MAX_SAFE_INTEGER : -1);
     const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
     this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
@@ -1176,7 +1186,7 @@ export class DungeonRoom {
     this.tapLatency = s.tapLatency ?? 0;
     // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
     this.stepSeq = this.now();
-    this.revealHold = s.revealHeld && this.game?.phase === "finished" ? ++this.stepSeq : null;
+    this.revealHold = s.revealHeld && this.game?.phase === "finished" && this.game.ranking ? ++this.stepSeq : null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
@@ -1419,7 +1429,7 @@ export class DungeonRoom {
     // A buzzer phase is its own race: the team that buzzed answers out loud at once, so no count runs (boss-buzzer.md).
     if (isBuzzPhase(game)) return null;
     const teamId = currentTurnTeamId(game);
-    if (!teamId) return "hold";
+    if (!teamId || !game.teams.find((t) => t.id === teamId)?.online) return "hold";
     const pub = this.currentQuestion()?.pub;
     if (!pub || game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return null;
     return { key: `${teamId}:${pub.id}`, questionId: pub.id, video: pub.content.kind === "youtube", memorize: !!pub.memorize };
@@ -1441,7 +1451,14 @@ export class DungeonRoom {
    * saved or sent, so it needs no hooks of its own. */
   private syncAnswerClock(): { answerClock?: { left: number | null } } {
     const want = this.answering();
-    if (want === "hold") return {};
+    if (want === "hold") {
+      if (this.answerClock && this.heldClockMs === null) this.heldClockMs = Math.max(0, this.answerClock.endsAt - this.now());
+      // Kept fresh so a save made while away holds the time left, not the old deadline.
+      if (this.answerClock && this.heldClockMs !== null) this.answerClock = { ...this.answerClock, endsAt: this.now() + this.heldClockMs };
+      return {};
+    }
+    if (this.heldClockMs !== null && want && this.answerClock?.key === want.key) this.answerClock = { ...this.answerClock, endsAt: this.now() + this.heldClockMs };
+    this.heldClockMs = null;
     // A memory question waits for its media to end (memory-questions.md); after that its content is text, not a video.
     const waiting = !!want && (want.memorize || (want.video && this.clipEnded !== want.questionId));
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
@@ -1662,9 +1679,9 @@ export class DungeonRoom {
 
   /** The pacing switch and the step a manual room waits on, for the host page. Never which side hides ⚔️. */
   private pacingView(): { pacing?: "manual"; hold?: Hold } {
-    if (this.pacing !== "manual") return {};
     const hold = this.currentHold();
-    return { pacing: "manual", ...(hold ? { hold: { id: hold.id, kind: hold.kind, label: hold.label } } : {}) };
+    if (this.pacing !== "manual" && hold?.kind !== "podium") return {};
+    return { ...(this.pacing === "manual" ? { pacing: "manual" as const } : {}), ...(hold ? { hold: { id: hold.id, kind: hold.kind, label: hold.label } } : {}) };
   }
 
   /** The step HOST_STEP would run now: the first live one, or the podium's. */
@@ -1674,7 +1691,7 @@ export class DungeonRoom {
       const label = step?.label();
       if (step && label) return { id: step.id, kind: step.kind, label, slot };
     }
-    return this.revealHold !== null && this.game?.phase === "finished" ? { id: this.revealHold, kind: "podium", label: "接下來是頒獎台和尾聲", slot: null } : null;
+    return this.revealHold !== null && this.game?.phase === "finished" ? { id: this.revealHold, kind: "podium", label: "揭曉下一個稱號或名次", slot: null } : null;
   }
 
   /** Every pause the room times itself goes through here (manual-pacing.md): after `ms` in auto, at HOST_STEP in
@@ -1741,7 +1758,7 @@ export class DungeonRoom {
         this.startStep(slot, step);
       }
       // Never before the boss has cooked (FINISH_PODIUM_MS), when that is still to come.
-      if (this.revealHold !== null) this.releaseReveal(Math.max(now + this.epilogueDelayMs, this.revealFrom ?? 0));
+      // Awards always wait for the host, independently of pacing.
     }
     this.broadcastState();
   }
@@ -1751,10 +1768,14 @@ export class DungeonRoom {
   private handleHostStep(conn: Conn, eventId: number, id: number) {
     if (!this.requireHost(conn)) return;
     const hold = this.currentHold();
-    if (this.pacing !== "manual" || !hold || eventId !== this.eventSeq || id !== hold.id) return;
+    if (!hold || (this.pacing !== "manual" && hold.kind !== "podium") || eventId !== this.eventSeq || id !== hold.id) return;
     if (hold.slot === null) {
       // A step pressed while the boss still cooks starts the reveal when the dish is done, not under it.
-      this.releaseReveal(Math.max(this.now(), this.reveal?.dish ? (this.revealFrom ?? 0) : 0));
+      if (!this.podium || (this.reveal?.dish && this.now() < (this.revealFrom ?? 0))) return;
+      const beats = revealBeats(this.game!.teams, this.game!.ranking!, this.game!.tieRolls ?? [], this.podium.lines, this.podium.titles);
+      this.podiumStep++;
+      this.podium = { ...this.podium, at: this.now() };
+      this.revealHold = this.podiumStep < beats.length ? ++this.stepSeq : null;
       return this.broadcast(this.snapshot());
     }
     const step = this.steps.get(hold.slot)!;
@@ -1762,23 +1783,15 @@ export class DungeonRoom {
     step.run();
   }
 
-  /** A held podium starts its reveal at `at`. */
-  private releaseReveal(at: number) {
-    this.revealHold = null;
-    this.revealFrom = at;
-    if (this.podium) this.podium = { ...this.podium, at };
-  }
-
   /** The reveal on the room's clock (eng D20). Only for a game ranked by finishGame: an older one shows the podium. */
   private podiumView(): { podium?: PodiumReveal } {
     const game = this.game;
     if (game?.phase !== "finished" || !game.ranking) return {};
-    // Manual pacing holds the reveal (名次揭曉中…) until the host's ▶ 下一步.
-    if (this.revealHold !== null) return { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
+    // Beat selection belongs to the host; elapsed time never advances it.
     // No calls but the story is in: a damaged save lost them, so show the podium rather than wait for nothing.
-    if (!this.podium) return this.epilogue ? {} : { podium: { ranking: game.ranking, beats: null, elapsedMs: 0 } };
+    if (!this.podium) return { podium: { ranking: game.ranking, beats: null, elapsedMs: 0, step: this.podiumStep } };
     const beats = revealBeats(game.teams, game.ranking, game.tieRolls ?? [], this.podium.lines, this.podium.titles);
-    return { podium: { ranking: game.ranking, beats, elapsedMs: this.now() - this.podium.at } };
+    return { podium: { ranking: game.ranking, beats, elapsedMs: this.now() - this.podium.at, step: this.podiumStep } };
   }
 
   private scores(): Record<string, number> {
@@ -1853,6 +1866,7 @@ export class DungeonRoom {
 
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
+    this.endPickIfPickerGone();
     const forkOpened = this.syncFork();
     this.sayStunSkips();
     // Every state change passes here, so the timing round's close timer always follows the latest state.
@@ -2011,6 +2025,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.podiumStep = -1;
     this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealHold = null;
@@ -2459,6 +2474,9 @@ export class DungeonRoom {
         case "TEAM_CLAIM":
           this.handleClaim(sender, msg.code);
           break;
+        case "HOST_SKIP_TURN":
+          this.handleSkipTurn(sender, msg.teamId, msg.eventId);
+          break;
         case "HOST_JUDGE":
           this.handleHostJudge(sender, msg.teamId, msg.questionId, msg.correct, msg.fleeChoice, msg.eventId, msg.fields);
           break;
@@ -2688,7 +2706,7 @@ export class DungeonRoom {
     const n = this.lastNarration;
     this.revealOnRead = !!n && n.done < n.lines.length;
     this.revealFrom = this.now() + (this.revealOnRead ? END_READ_CAP_MS : this.epilogueDelayMs);
-    if (this.pacing === "manual") this.revealHold = ++this.stepSeq;
+    this.revealHold = ++this.stepSeq;
     const eventId = ++this.eventSeq;
     this.staleBeforeSeq = eventId;
     this.cue = null;
@@ -2724,6 +2742,7 @@ export class DungeonRoom {
     this.epilogue = null;
     this.epilogueRequested = false;
     this.podium = null;
+    this.podiumStep = -1;
     this.epiloguePage = 0;
     this.revealFrom = null;
     this.revealHold = null;
@@ -2877,6 +2896,18 @@ export class DungeonRoom {
     const team = this.pendingTeams.find((t) => t.id === teamId);
     if (!team) this.sendTo(conn, { type: "ERROR", error: "unknown_team" });
     return team ?? null;
+  }
+
+  private handleSkipTurn(conn: Conn, teamId: string, eventId: number) {
+    if (!this.requireHost(conn)) return;
+    const game = this.game;
+    if (!game || game.phase !== "playing" || isBuzzPhase(game) || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || game.antiCheat?.openCatch || game.fortune || game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined || eventId !== this.eventSeq || currentTurnTeamId(game) !== teamId) return;
+    // A door can wait for the team's next turn; no answer or ability is consumed.
+    this.unpace("fork");
+    this.game = advanceTurn({ ...game, prayerTurn: undefined, teams: game.teams.map((t) => t.id === teamId && t.fork?.phase === "choosing" ? { ...t, fork: { ...t.fork, phase: "waiting" as const } } : t) });
+    this.undo = null;
+    ++this.eventSeq;
+    this.broadcastState();
   }
 
   private handleHostNext(conn: Conn, eventId: number) {
@@ -3112,7 +3143,7 @@ export class DungeonRoom {
     const n = this.lastNarration;
     if (n?.eventId === eventId) {
       // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
-      if (n.lines.length >= NARRATION_MAX_LINES) return;
+      if (n.lines.length >= NARRATION_MAX_LINES) return void console.log(JSON.stringify({ event: "narration_line_dropped", eventId, lines: n.lines.length }));
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
       this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
     } else if (!n || n.eventId < eventId) {
@@ -3594,6 +3625,8 @@ export class DungeonRoom {
   private setOnline(teamId: string, online: boolean) {
     const prev = this.game!;
     const holding = prev.buzz?.teamId === teamId;
+    if (online) this.leftTeams.delete(teamId);
+    else this.leftTeams.add(teamId);
     this.keepUndoOpen(setTeamOnline(prev, teamId, online));
     // A team that sent its typed answer keeps the buzz while its phone sleeps (#368): the music stays stopped.
     if (holding && this.game!.buzz?.teamId === teamId) return;
@@ -3659,7 +3692,8 @@ export class DungeonRoom {
   }
 
   private undoHeld(): boolean {
-    return !!this.reveal || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
+    // A finished game is logged and narrated: an undo would reopen it under a ranking already told.
+    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -3693,7 +3727,9 @@ export class DungeonRoom {
     }
     // A die still rolling (a 改成答對's) waits: this judgment could start a die over it.
     if (this.pendingRoll) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "roll_pending" });
+    const previousReveal = this.reveal;
     this.game = this.undoneGame(undo, now);
+    this.reveal = null;
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
     // the 答錯, buzz and all, so the host judges it field by field again.
@@ -3702,6 +3738,7 @@ export class DungeonRoom {
       // A team whose phone dropped since cannot hold the buzz again: nobody could judge it or buzz past it (/review).
       if (!this.game.teams.find((t) => t.id === teamId)?.online) {
         this.game = now;
+        this.reveal = previousReveal;
         this.undo = undo;
         return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
       }
@@ -3718,6 +3755,7 @@ export class DungeonRoom {
     } catch (err) {
       // E.g. the team's phones all went offline, so it is not on turn in the old game: the 答錯 stands, still undoable.
       this.game = now;
+      this.reveal = previousReveal;
       this.undo = undo;
       return this.sendInvalid(conn, err);
     }
@@ -3891,6 +3929,8 @@ export class DungeonRoom {
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
+    // #369: this miss opened a music question's round 2, the last one for everyone.
+    const second = again && !!judged.game.buzz?.second && !prev.buzz?.second;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
     // everyone missed it waits for the host's ▶ (M1).
     if (again) this.buzzPaused = false;
@@ -3919,7 +3959,7 @@ export class DungeonRoom {
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
-    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const } : { buzzOut: true as const }) } : exhaustedEvent;
+    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const, ...(second ? { buzzSecond: true as const } : {}) } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
     const rolled = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
@@ -3939,7 +3979,7 @@ export class DungeonRoom {
     // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
     const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
-    if (caught && justAnswered) {
+    if ((caught || outcome.type === "incorrect-flee" || (outcome.type === "incorrect-retry" && game.revealedQuestionIds.includes(questionId) && !prev.revealedQuestionIds.includes(questionId))) && justAnswered) {
       // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
       // its own error. A wrong buzz keeps the host's live-play fallback up (review).
       this.clipError = null;
@@ -3947,7 +3987,7 @@ export class DungeonRoom {
       const q = this.question(questionId);
       if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
       const video = q && isClip(q.content) && (!explanation || explanation.kind === "text") ? hiddenVideo(q.content) : undefined;
-      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), ...(at ? { at } : {}), caught: { teamId, by: caught.by } };
+      this.reveal = { questionId, answer: justAnswered.answer, ...(explanation ? { explanation } : {}), ...(video ? { video } : {}), ...(at ? { at } : {}), ...(caught ? { caught: { teamId, by: caught.by } } : {}) };
     } else if ((outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") && justAnswered) {
       this.clipError = null;
       const imageBaseUrl = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
@@ -3983,9 +4023,9 @@ export class DungeonRoom {
     // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
     if (game.phase === "finished" && !this.epilogueRequested) {
       this.revealFrom = this.now() + (this.reveal?.dish ? FINISH_PODIUM_MS : this.epilogueDelayMs);
-      if (this.pacing === "manual") this.revealHold = ++this.stepSeq;
+      this.revealHold = ++this.stepSeq;
     }
-    // A miss that used up a boss phase has no answer to show: its card follows once the retry line has
+    // A miss without an answer reveal that used up a boss phase: its card follows once the retry line has
     // been read (D7), held like a reveal; 下一題 opens it sooner. Set before the STATE, which tells the clients.
     const cardDue = game.phase === "playing" && !!game.boss.phasePending && !this.reveal;
     if (cardDue) this.phaseCardDue = true;
@@ -4241,6 +4281,20 @@ export class DungeonRoom {
     return pickableCategories(game, this.categoryOf(), false).length > 0;
   }
 
+  /** The team picking the next category dropped (during the hold, the reveal or a pause) and is still offline: stop
+   * waiting and serve the dealt question, as the host's 下一步. Checked on every broadcast, so a hold that starts or
+   * resumes with the picker gone ends at once. */
+  private endPickIfPickerGone() {
+    const game = this.game;
+    const picker = game?.buzz?.picker;
+    if (!game || !picker || !this.leftTeams.has(picker) || !this.pickHold() || game.teams.find((t) => t.id === picker)?.online !== false) return;
+    try {
+      this.game = hostPickBuzzQuestion(game, game.buzz!.questionId, false);
+    } catch {
+      // The pick is no longer due: nothing to end.
+    }
+  }
+
   private buzzCategories(): { buzzCategories?: string[] } {
     const cats = this.game ? pickableCategories(this.game, this.categoryOf(), this.openWithoutPlay()) : [];
     return cats.length ? { buzzCategories: cats } : {};
@@ -4279,18 +4333,37 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** 沒人答對，換下一題 (boss-buzzer.md D4): a new question, the old one unrevealed. Not narrated. */
+  /** Explicitly leaving a buzzer question reveals and permanently retires its answer. */
   private handleHostBuzzSkip(conn: Conn, questionId: string) {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || this.pendingRoll || questionId !== this.game.boss.currentQuestionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
     try {
       // A timing question cannot be judged or played live: the host's skip is its only way out (timing-tap.md).
-      this.skipBuzzNow(this.question(questionId)?.kind === "timing");
+      const answered = this.currentQuestion();
+      this.skipBuzzNow(true);
+      if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
+      this.clipError = null;
+      if (answered) this.reveal = { questionId, answer: answered.answer, at: { monster: answered.pub.monster, room: null } };
+      ++this.eventSeq;
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
-    // Retiring the phase's last question ended it: straight to its card, as a reveal closing would.
-    if (this.game.boss.phasePending) return this.openPhaseCard();
+    if (this.game.phase === "finished") {
+      // The last phase ran out: finish as 結束冒險 does, keeping the skipped question's answer up.
+      this.clearAnswerTimers();
+      this.logGame(this.game);
+      this.revealFrom = this.now() + this.epilogueDelayMs;
+      this.revealHold = ++this.stepSeq;
+      const eventId = this.eventSeq;
+      this.staleBeforeSeq = eventId;
+      this.cue = null;
+      this.broadcastState();
+      this.dropUnsaidLine();
+      this.epilogueRequested = true;
+      return void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => this.epilogueFailed(err, eventId));
+    }
+    // No answer to show: the used-up phase's card follows straight away, as closing a reveal would.
+    if (!this.reveal && this.game.boss.phasePending) return this.openPhaseCard();
     this.broadcastState();
   }
 
@@ -4298,9 +4371,9 @@ export class DungeonRoom {
    * target the round would close again at once, over and over (timing-tap.md). The host's ▶ then replays it. */
   private skipBuzzNow(retire = false) {
     const before = this.game!.boss.currentQuestionId;
-    this.game = skipBuzz(this.game!, retire);
+    this.game = skipBuzz(this.game!, retire, this.rng);
     // A phase that just ended keeps its question until the card deals the next one: nothing to replay.
-    if (this.game.boss.phasePending) {
+    if (this.game.boss.phasePending || this.game.phase === "finished") {
       this.tapClock = null;
       this.tapReplay = null;
       return;

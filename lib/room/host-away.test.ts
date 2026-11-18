@@ -120,13 +120,13 @@ describe("STATE.hostAway", () => {
     expect(narrations()).toBe(lines);
   });
 
-  it("not over a finished game the host already ended", () => {
+  it("shows while awards in an auto-paced game wait for the host", () => {
     const g = setup();
     send(g.room, g.host, { type: "HOST_END_GAME" });
     expect(g.states().at(-1).phase).toBe("finished");
     g.room.onClose(g.host);
     vi.advanceTimersByTime(HOST_AWAY_GRACE_MS);
-    expect(g.away()).toBe(false);
+    expect(g.away()).toBe(true);
   });
 
   it("shows over a finished game whose podium still waits on the host (manual pacing)", () => {

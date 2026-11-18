@@ -1,5 +1,5 @@
-// Plays lib/bgm.ts's song on a loop with the Web Audio API (browser only: /screen imports it, and
-// nothing here touches the question bank). A short lookahead scheduler queues each note on the
+// Plays lib/bgm.ts's song on a loop with the Web Audio API (browser only: /screen and the home
+// page's title music import it, and nothing here touches the question bank). A short lookahead scheduler queues each note on the
 // AudioContext clock a little ahead of time, the standard way to get steady timing out of timers
 // that themselves jitter.
 //
@@ -8,7 +8,7 @@
 // layerGains(); and the existing game cues on their own bus → master.
 
 import type { Ambience } from "./ambience";
-import { DUNGEON_THEME, loopDuration, songEvents, type Song } from "./bgm";
+import { DUNGEON_THEME, introDuration, loopDuration, songEvents, type Song } from "./bgm";
 import type { SfxNote } from "./sfx";
 
 const LOOKAHEAD_S = 0.25;
@@ -77,6 +77,9 @@ export function createBgmPlayer(onState?: () => void) {
   let current: Song = DUNGEON_THEME;
   let events = songEvents(current);
   let loopLen = loopDuration(current);
+  let introLen = introDuration(current);
+  /** The first note after the intro, where every later pass starts. */
+  let loopFrom = 0;
   let ctx: AudioContext | null = null;
   let layers: Record<Layer, GainNode> | null = null;
   /** The existing game cues' bus, at a fixed volume. */
@@ -162,7 +165,8 @@ export function createBgmPlayer(onState?: () => void) {
     const horizon = ctx.currentTime + LOOKAHEAD_S;
     for (;;) {
       const e = events[next];
-      const at = loopStart + loops * loopLen + e.start;
+      // After the first pass the intro is skipped, so each later pass is introLen shorter.
+      const at = loopStart + e.start + (loops ? loopLen + (loops - 1) * (loopLen - introLen) - introLen : 0);
       if (at > horizon) break;
       // A background tab's timer runs about once a second: drop the notes it fell behind on instead of
       // playing them all at once when the tab comes back.
@@ -182,7 +186,7 @@ export function createBgmPlayer(onState?: () => void) {
   function advance() {
     next++;
     if (next === events.length) {
-      next = 0;
+      next = loopFrom;
       loops++;
     }
   }
@@ -402,6 +406,8 @@ export function createBgmPlayer(onState?: () => void) {
       current = next;
       events = songEvents(next);
       loopLen = loopDuration(next);
+      introLen = introDuration(next);
+      loopFrom = Math.max(0, events.findIndex((e) => e.start >= introLen - 1e-9));
       const was = !!timer;
       halt();
       if (was) play(gapS);

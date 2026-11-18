@@ -377,6 +377,8 @@ export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快
 
 /** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
 export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局！同一首再搶一次！", "{monster}得意大笑：沒人答對！同一首再搶一次！"];
+/** A music question with fields (#369): nobody got every field, so its second and last round opens to all. */
+export const BUZZ_SECOND_VARIANTS = ["都沒全對！第二輪開搶，這是最後一次機會！", "{team}也沒全對！同一首第二輪，最後一次搶！", "{monster}冷笑：第二輪，也是最後一輪，快搶！"];
 /** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
@@ -542,6 +544,13 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     lastFoodKey = FOOD_LINES.has(line) ? key : undefined;
     return line;
   }
+  /** The warrior's die by #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles it. */
+  function warriorResult(event: NarrationEvent): string {
+    const value = "warriorRoll" in event ? event.warriorRoll : undefined;
+    if (event.type === "retry") return value !== 1 ? "沒打中。" : event.penalty ? `大失敗，扣 ${event.penalty} 分！` : "大失敗，沒打中！";
+    if (event.type === "boss-kill") return "命中！";
+    return value === 20 ? "命中！獎勵加倍！" : "命中！拿八成獎勵。";
+  }
   /** Set by plainLine when it picked a crit die's line, which says the number itself. */
   let saidDie = false;
   const provider = {
@@ -552,7 +561,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       const text = provider.plainLine(event);
       // A 大成功 / 手滑 line already says the warrior's die.
       const said = "warriorRoll" in event && event.warriorRoll !== undefined && !saidDie;
-      return said ? `戰士擲出 ${event.warriorRoll} 點，${event.type === "retry" ? "沒打中。" : "命中！"}${text}` : text;
+      return said ? `戰士擲出 ${event.warriorRoll} 點，${warriorResult(event)}${text}` : text;
     },
     /** line() without the warrior's number. */
     plainLine(event: NarrationEvent): string {
@@ -563,6 +572,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
       if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
+      if (event.type === "retry" && event.buzzSecond) return fill(pick(BUZZ_SECOND_VARIANTS, "buzz-second"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
       if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);
@@ -585,7 +595,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
           const twenty = event.roll.value === 20;
           const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : twenty ? "crit" : "fumble";
           saidDie = event.roll.kind === "crit";
-          return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
+          // A warrior's 20 doubles the reward instead of the crit's half (#305).
+          const pool = ROLL_VARIANTS[kind][event.type].filter((l) => event.warriorRoll !== 20 || !l.includes("多拿一半"));
+          return fill(pick(pool, `${kind}-${event.type}`), event);
         }
       }
       if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(namesPart(event.part) ? [...FOODIE.dishPart, ...DISH_VARIANTS] : DISH_VARIANTS, "dish"), event);

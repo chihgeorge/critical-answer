@@ -410,6 +410,19 @@ describe("createBgmPlayer", () => {
     expect(beatGain.connected).toBe(false);
   });
 
+  it("a song's intro plays once: later passes start right after it, with no intro note in between", async () => {
+    const { bgm, ctx } = await started();
+    ctx.currentTime = 0;
+    ctx.notes = [];
+    // One-second steps: intro A4 B4, loop C5 D5.
+    bgm.setSong({ stepsPerMinute: 60, introSteps: 2, melody: ["A4", "B4", "C5", "D5"], bass: [] });
+    for (let t = 0; t < 7.3; t += 0.1) {
+      ctx.currentTime = t;
+      vi.advanceTimersByTime(100);
+    }
+    expect(ctx.notes.map((n) => Math.round((n.at - 0.1) * 10) / 10)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
   it("after the timer falls far behind (a background tab), only notes still ahead are scheduled", async () => {
     const { ctx } = await started();
     ctx.notes = [];
