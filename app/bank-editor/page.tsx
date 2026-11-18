@@ -976,7 +976,7 @@ function RoomsEditor({
         <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。打倒怪物會端上牠的菜。同一隻怪物可以放在好幾房，再次登場時會換顏色、戴配件。</div>
         <label className="flex items-center gap-2 text-[15px]">
           <input type="checkbox" data-testid="bank-random-monsters" checked={!!bank.randomMonsters} onChange={(e) => onRandomMonsters(e.target.checked)} />
-          每場隨機抽小怪（每間房換一隻不重複的小怪；下面選的房間怪物這時不用。首領在下面另外選）
+          每場隨機抽小怪（每間房換一隻不重複的小怪；下面選的房間怪物這時不用）
         </label>
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
