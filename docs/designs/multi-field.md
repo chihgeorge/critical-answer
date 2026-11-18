@@ -70,7 +70,7 @@ Status: APPROVED（F1–F8 由站長決定，細節由實作 lane 依現有做�
 
 ## 邊界情況
 
-- 搶到的隊伍斷線：搶答權和打的字（`typedAnswer`、`typedFields`）一起清掉（照 M2）。
+- 搶到的隊伍還沒送出就斷線：搶答權清掉（照 M2）。已送出才斷線：搶答權和打的字（`typedAnswer`、`typedFields`）都保留，等主持人判定（E4，#368）。
 - 全部答錯後同一首重開（M1）：逐欄判定的標記重設（元件跟著 eventId 重新掛載）。
 - 部分對而且剛好打倒首領：先擲 4d20（kill-roll.md），比例跟著 `pendingKill` 留到骰完。
 - 舊手機（沒更新的頁面）送沒有 `fields` 的 `TEAM_SUBMIT_TEXT`：房間回 `fields_mismatch`，隊伍改用講的。
