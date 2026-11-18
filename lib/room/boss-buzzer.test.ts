@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
-import { BUZZ_REOPEN_LINE } from "../narration/scripted";
+import { BUZZ_AGAIN_VARIANTS, BUZZ_REOPEN_LINE, BUZZ_SECOND_VARIANTS } from "../narration/scripted";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
 const TOKEN = "host-token-0123456789abcdef";
@@ -414,6 +414,17 @@ describe("buzzer boss phase in the room", () => {
     expect(s.view.buzz).toMatchObject({ picker: IDS[0] });
   });
 
+  it("round 2 of a music question with fields gets its own line: the second and last round (#369)", async () => {
+    const g = fieldGame(fielded, 5);
+    const room = g.room as unknown as { lastNarration: { lines: string[] } | null; heldLines: { lines: string[] } | null };
+    const said = () => [...(room.lastNarration?.lines ?? []), ...(room.heldLines?.lines ?? [])].join();
+    const fill = (t: string) => t.replace("{team}", "隊2").replace("{monster}", "");
+    for (const i of [0, 1]) g.answer(i, [true, false]);
+    g.answer(2, [false, false]);
+    await vi.waitFor(() => expect(BUZZ_SECOND_VARIANTS.some((t) => said().includes(fill(t).slice(0, 6)))).toBe(true));
+    expect(BUZZ_AGAIN_VARIANTS.some((t) => said().includes(fill(t)))).toBe(false);
+  });
+
   it("an all-right answer after part-right ones is a plain full hit; the part-right team gets nothing (#369)", () => {
     const g = fieldGame(fielded3, 5);
     const before = g.rewards();
@@ -732,6 +743,37 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-b" });
     expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { hostPicked: true } } });
     expect(g.state().pickHold).toBeUndefined();
+  });
+
+  it("the picking team's phone dropping ends the hold in order, like 下一步; another team's drop does not", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    g.room.onClose(g.phones[0]);
+    expect(g.state().pickHold).toBe(true);
+    g.room.onClose(g.phones[1]);
+    expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { hostPicked: true } } });
+    expect(g.state().pickHold).toBeUndefined();
+    expect(g.state().view.teams.find((t: { id: string }) => t.id === IDS[1]).online).toBe(false);
+  });
+
+  it("#362: a wrong buzz ends the last winner's pick, so a pause cannot swap the question already heard", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    g.next();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-b", action: "play" });
+    g.buzz(0, "b-b");
+    g.judge(IDS[0], false);
+    expect(g.state().view.buzz).toMatchObject({ category: "動漫" });
+    expect(g.state().view.buzz.picker).toBeUndefined();
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "not_picker" });
+    expect(g.room.game!.boss.currentQuestionId).toBe("b-b");
   });
 
   it("#370: no categories in the bank, no hold; with categories a timing question counts as 卡點題", () => {

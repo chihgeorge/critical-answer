@@ -13,6 +13,7 @@ import { MAX_HEARTS, REACTIONS, REACT_ROOM_MAX, scoreName, type AnswerReveal, ty
 import { epiloguePages, revealNow, unemoji, type Beat } from "@/lib/podium";
 import { CATCH_PAY, checkKey, type LockedOption, type SpectatorView, type WrongAnswer } from "@/lib/game-state";
 import { answerReader } from "@/lib/class-dice";
+import { isClip } from "@/lib/question-bank";
 
 /** Whose class reads a crit or answer die: the team's chef or armed thief; a 改成答對's die is the chef's or the thief's,
  * whichever the team is (its 偷襲 was spent on the wrong answer). */
@@ -361,7 +362,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   ) : buzz && (
     <div data-testid="screen-buzz" className="flex flex-col items-center gap-2">
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
-        {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
+        {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : isClip(question?.content) && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
       {buzz.second && !buzz.teamId && (
         <div data-testid="screen-buzz-second" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
@@ -369,7 +370,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
       )}
       {/* The category or type (#321) the last winner or the host picked (boss-music-buzzer.md M5). */}
-      {(buzz.category ?? buzz.qtype) && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
+      {(buzz.category ?? buzz.qtype) && isClip(question?.content) && !buzz.open && !buzz.teamId && (
         <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
           下一題：{buzz.category ?? buzz.qtype}
         </div>

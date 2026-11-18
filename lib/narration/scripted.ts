@@ -377,6 +377,8 @@ export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快
 
 /** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
 export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局！同一首再搶一次！", "{monster}得意大笑：沒人答對！同一首再搶一次！"];
+/** A music question with fields (#369): nobody got every field, so its second and last round opens to all. */
+export const BUZZ_SECOND_VARIANTS = ["都沒全對！第二輪開搶，這是最後一次機會！", "{team}也沒全對！同一首第二輪，最後一次搶！", "{monster}冷笑：第二輪，也是最後一輪，快搶！"];
 /** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
 export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
 
@@ -563,6 +565,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
       if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
+      if (event.type === "retry" && event.buzzSecond) return fill(pick(BUZZ_SECOND_VARIANTS, "buzz-second"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
       if (event.type === "retry" && event.buzzOut) return fill(pick(BUZZ_OUT_VARIANTS, "buzz-out"), event);
       if (event.type === "boss-hit" && event.bossHp === 0) return fill(pick(BOSS_EMPTIED_VARIANTS, "boss-emptied"), event);

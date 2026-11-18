@@ -1496,7 +1496,8 @@ export function answerQuestion(
         revealedQuestionIds: revealed,
         teams: moved ? resetBossSelections(settled) : settled,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
-        ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out, ...partial, ...second } } : {}),
+        // Someone heard this question and buzzed: the last winner's pick is over (#362), even if the room pauses before buzzing reopens.
+        ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, picker: undefined, out: allOut ? [] : out, ...partial, ...second } } : {}),
       };
       outcome =
         fleeChoice !== "retry"
