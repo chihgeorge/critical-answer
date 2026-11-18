@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.3.1] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) follows the boss room's no-persuasion-check rule, and `HIDECRIT=1` models the lobby's 隱藏暴擊骰. Tooling only; no game change.
+
 ## [0.103.3.0] - 2026-11-19
 
 ### Fixed
