@@ -64,6 +64,7 @@ import {
   type Difficulty,
   type GameState,
   hostRejudge,
+  recordJudgment,
   type RoomTemplate,
   teamMonsterId,
   allTapped,
@@ -1720,6 +1721,22 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     // A 20 pays as live, sneak ×1.5 plus the crit's half, each rounded: 8 + 3 on an odd 5.
     const odd: GameState = { ...g, judgments: [{ ...g.judgments![0], points: 5 }] };
     expect(hostRejudge(odd, 0, "T0", q, true, 20).teams[0].reward).toBe(base.reward + 11);
+  });
+
+  // Value: protects=群眾預測 follow the ledger (crowd-prediction.md): recordJudgment scores the matching locks, skips a
+  // removed team, and 改判 moves them both ways; fails_when=a lock is missed, a gone team throws, or a flip and back does not net 0.
+  it("recordJudgment scores 群眾預測 locks and hostRejudge moves them with the flip", () => {
+    const g0 = classGame([undefined, undefined, undefined]);
+    const q = currentQ(g0, "T0");
+    const { game, outcome } = answerQuestion(g0, "T0", q, true);
+    const g = recordJudgment(game, g0, "T0", q, outcome, false, { T1: true, T2: false, gone: true });
+    expect(g.teams.map((t) => t.predictionsRight ?? 0)).toEqual([0, 1, 0]);
+    expect(g.judgments!.at(-1)!.predictions).toEqual({ T1: true, T2: false, gone: true });
+    const flipped = hostRejudge(g, 0, "T0", q, false);
+    expect(flipped.teams.map((t) => t.predictionsRight ?? 0)).toEqual([0, 0, 1]);
+    expect(hostRejudge(flipped, 0, "T0", q, true).teams.map((t) => t.predictionsRight ?? 0)).toEqual([0, 1, 0]);
+    // No locks: no field on the entry.
+    expect(recordJudgment(game, g0, "T0", q, outcome, false, {}).judgments!.at(-1)!.predictions).toBeUndefined();
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {

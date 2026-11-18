@@ -249,6 +249,8 @@ export interface Team {
   /** Potions the host gave and the team drank, for lib/game-log.ts (lucky-potion.md E8). Absent until the first. */
   potionsGiven?: number;
   potionsDrunk?: number;
+  /** 群眾預測 this team locked and got right (docs/designs/crowd-prediction.md), 改判 included. Absent until the first. */
+  predictionsRight?: number;
   /** The host's 修正 presses on this team, in order (hostFix), for lib/game-log.ts. Absent until the first. */
   fixes?: FixRecord[];
   /** Let in mid-game with the last-place team's score (docs/designs/late-join.md): its boss entry is never `earned`,
@@ -1943,6 +1945,14 @@ export interface Judgment {
   /** A wrong answer whose 改成答對 is paid from an answer die rolled then (owner, 2026-11-17): a chef's, or a thief's
    * that had 偷襲 armed (`points` is the plain reward). */
   reads?: "chef" | "thief";
+  /** The waiting teams' 群眾預測 locks on this answer, true = 會答對 (crowd-prediction.md): 改判 moves their predictionsRight. */
+  predictions?: Record<string, boolean>;
+}
+
+/** Each team in `predictions` whose lock matches `correct` gains `step` predictionsRight; removed teams are skipped. */
+function scorePredictions(teams: Team[], predictions: Record<string, boolean> | undefined, correct: boolean, step: 1 | -1): Team[] {
+  if (!predictions) return teams;
+  return teams.map((t) => (Object.hasOwn(predictions, t.id) && predictions[t.id] === correct ? { ...t, predictionsRight: (t.predictionsRight ?? 0) + step } : t));
 }
 
 /** The most ability uses 修正 may give `team` back: its class's set plus the uses event rooms gave it (resolveEvent's
@@ -1999,13 +2009,14 @@ export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerO
 }
 
 /** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). `warrior`:
- * a warrior's roll decided it. */
-export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome, warrior = false): GameState {
+ * a warrior's roll decided it. `predictions`: the 群眾預測 locks on this answer, resolved here (crowd-prediction.md). */
+export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome, warrior = false, predictions?: Record<string, boolean>): GameState {
   const correct = outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit";
   const t = getTeam(prev, teamId);
   const reads = correct || warrior || isBuzzPhase(prev) ? undefined : t.classId === "chef" ? "chef" : t.sneakArmed ? "thief" : undefined;
-  const entry: Judgment = { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome), ...(warrior ? { warrior: true as const } : {}), ...(reads ? { reads } : {}) };
-  return { ...game, judgments: [...(game.judgments ?? []), entry] };
+  const locks = predictions && Object.keys(predictions).length ? predictions : undefined;
+  const entry: Judgment = { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome), ...(warrior ? { warrior: true as const } : {}), ...(reads ? { reads } : {}), ...(locks ? { predictions: locks } : {}) };
+  return { ...game, judgments: [...(game.judgments ?? []), entry], teams: scorePredictions(game.teams, locks, correct, 1) };
 }
 
 /** Whether 改成答對 on ledger entry `j` needs an answer die rolled now (owner, 2026-11-17): a chef's or armed thief's wrong
@@ -2041,12 +2052,14 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   const from = getTeam(game, teamId).reward;
   const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;
-  const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.reads ? { reads: j.reads } : {}) };
+  const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.reads ? { reads: j.reads } : {}), ...(j.predictions ? { predictions: j.predictions } : {}) };
   if (!j.flipped) entry.flipped = true;
   // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
   if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
-  return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }], ...withNaturals(x, needsDie ? [die!] : []) })) };
+  // 群眾預測 follow the flip: a lock that now matches gains one, one that no longer does loses one, so a cycle nets 0.
+  const teams = scorePredictions(scorePredictions(game.teams, j.predictions, correct, 1), j.predictions, !correct, -1);
+  return { ...game, judgments, teams: patchTeam(teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }], ...withNaturals(x, needsDie ? [die!] : []) })) };
 }
 /** Satiety each outcome gives or takes (D4, D9); the spring's goes only to a chef or a team with no class. `great` and
  * `spring` are only for saves from before the 3-scene deck. */

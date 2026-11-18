@@ -24,6 +24,16 @@ describe("game log", () => {
     ]);
   });
 
+  // Value: protects=the 🎯 神預言 title's source (crowd-prediction.md); fails_when=predictionsRight stops reaching the log or an older game breaks it
+  it("records each team's right predictions, 0 for an older game", () => {
+    const g = twoTeams();
+    const counted = { ...g, teams: g.teams.map((t) => (t.id === "B" ? { ...t, predictionsRight: 2 } : t)) };
+    expect(gameLog(endGame(counted, first), 0).teams).toEqual([
+      expect.objectContaining({ name: "Alpha", predictionsRight: 0 }),
+      expect.objectContaining({ name: "Bravo", predictionsRight: 2, titles: expect.arrayContaining(["prophet"]) }),
+    ]);
+  });
+
   // Value: protects=the owner's rounds-to-boss and boss-fight rounds; fails_when=round, turns or bossAt stop counting
   it("counts rounds to the boss, the boss fight's rounds and each team's turns", () => {
     let g: GameState = { ...twoTeams(), startedAt: Date.UTC(2026, 10, 21, 10) };
