@@ -2504,6 +2504,13 @@ describe("narration (T5-T7)", () => {
       expect(before.view.teams[0].reward).toBe(0);
       const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines.join(" ");
       expect(lines).not.toContain("進魔王房");
+      // The stage shows the game from before the answer: a fix or a 送王房 now would not show, so it waits (#364 /ship).
+      const reward = room.game!.teams[1].reward;
+      send(room, hostConn, { type: "HOST_FIX", teamId: room.game!.teams[1].id, fix: "score+" });
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "lock_pending" });
+      send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: room.game!.teams[1].id });
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "lock_pending" });
+      expect(room.game!.teams[1]).toMatchObject({ reward, inBoss: false });
       send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].inBossPhase).toBe(false);
       expect(lastBroadcast(room).view.teams[0].reward).toBeGreaterThan(0);
@@ -2512,6 +2519,7 @@ describe("narration (T5-T7)", () => {
       (room as any).servedAt = -Infinity;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].inBossPhase).toBe(true);
+      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.join(" ")).toContain("Team 0吃飽後走進首領房");
       expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.at(-1)).toBe("🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！");
     });
 

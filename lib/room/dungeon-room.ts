@@ -1576,7 +1576,8 @@ export class DungeonRoom {
     // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
     const shown = this.forkBeat?.before ?? this.fortuneBeat?.before ?? this.bossEntryBefore ?? this.game;
     const view = getSpectatorView(shown);
-    if (this.stageBeat === "kill-defeated") view.bossHp = 0;
+    // Defeated on the screen from the beat until the 4d20 land and the kill is judged.
+    if (this.stageBeat === "kill-defeated" || this.pendingRoll?.kind === "kill") view.bossHp = 0;
     if (this.bossEntryBefore && this.reveal?.served) {
       view.teams = view.teams.map((team) => ({ ...team, reward: this.game!.teams.find((live) => live.id === team.id)?.reward ?? team.reward }));
     }
@@ -3763,7 +3764,8 @@ export class DungeonRoom {
     }
     // A lock in its beat would then be judged against a room question the team no longer faces; a door opening would
     // then show a room the team has left.
-    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId) {
+    // A dish that leads into the boss room shows the game from before it (#364): a send now would not show.
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId || this.bossEntryBefore) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
@@ -5099,6 +5101,8 @@ export class DungeonRoom {
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     // A potion given now could change what the fortune's 🧪 does (fortune-teller.md E3).
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+    // STATE shows the game from before a boss-entry dish until 下一題 (#364): the potion would not show.
+    if (this.bossEntryBefore) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     try {
       this.game = giveItem(this.game, teamId);
     } catch (err) {
@@ -5181,7 +5185,8 @@ export class DungeonRoom {
     // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
     // Any door beat waits too, whoever's door: STATE shows forkBeat.before, so a fix would not show and get pressed twice.
     // So does the team's wrong answer still waiting (a cleric's 祈禱 choice): ability− could strand it with no way to pray.
-    if (this.forkBeat || this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
+    // So does a dish that leads into the boss room (#364): STATE shows the game from before the answer until 下一題.
+    if (this.forkBeat || this.bossEntryBefore || this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
       return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     }
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });

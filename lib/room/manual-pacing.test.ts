@@ -231,7 +231,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     toLastHit(s);
     expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, hold: { kind: "kill-defeated" } });
     step(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing" });
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phase).toBe("playing");
     step(s);
