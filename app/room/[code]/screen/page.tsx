@@ -61,7 +61,7 @@ import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
 import { getScreenKey } from "@/lib/room-code";
-import { sortAnswer, sortOrderOf } from "@/lib/sort-order";
+import { initialSortOrder, sortAnswer, sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
 import { HostAwayBanner } from "@/components/host-away-banner";
@@ -286,7 +286,8 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
   if (wrong?.questionId === question.id && wrong.optionIndex !== null && wrongSlots) {
     return inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" }));
   }
-  return items.map((text) => ({ text, look: "plain" }));
+  // Same start order as the phone (A → B → C → D for listen-and-order items).
+  return initialSortOrder(items).map((i) => ({ text: items[i], look: "plain" }));
 }
 
 /** Numbered 1–4 like the phone's rows; after a lock, tiles follow the submitted order. */
