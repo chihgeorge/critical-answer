@@ -2,6 +2,22 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.94.0.0] - 2026-11-19
+
+### Changed
+- Buzzer phase: the team that answers right now picks only the next question's category on its phone (the type buttons moved to the host page). Every timing question counts as one category, 卡點題. (#370)
+- Buzzer phase: when the host closes the reveal before the team has picked, the next question waits, hidden, until the team picks a category or the host presses 「▶ 下一步」. Nobody can buzz meanwhile, and the big screen says the team is picking. (#370)
+- The host's 「指定題目」 list in a buzzer phase is grouped by category, with the team's category first. (#370)
+
+## [0.93.0.0] - 2026-11-19
+
+### Changed
+- 首領題打中的分數改成照難度算：難度 1–5 各得 5／10／15／20／25 分（原本一律 10 分），沒設難度的首領題算難度 5。暴擊、偷襲、廚師和戰士擲到 1 的扣分都跟著這一下的分數算。題庫編輯器拿掉「每打中一下 N 分」，改寫這條規則。
+- 節奏預設：內建題庫改成 6 間房、難度 1／2／2／3／3／4（加起來等於進王門檻 15），首領第 1 階段 8 顆心；新的空白題庫首領 8 顆心，編輯器新增的階段預設 20 顆心。
+
+### Fixed
+- 寶箱開出美味料理時，那道菜也記進隊伍的菜單，頒獎和後記不再少一道（#371）。
+
 ## [0.92.2.0] - 2026-11-19
 
 ### Fixed
