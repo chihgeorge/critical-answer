@@ -2,6 +2,12 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.102.0.0] - 2026-11-19
+
+### Added
+- The big screen gets its own song for each part of the night: a tavern-style lobby tune while teams join, and a victory fanfare that plays once and then loops a celebratory march through the awards and the epilogue (also when the host ends the game early). The raging boss's theme is rewritten to be tenser and grander.
+- The home page plays a title song from the first tap on computers (off by default on phones), with a 🎵 switch at the title's top right that this browser remembers.
+
 ## [0.101.0.0] - 2026-11-19
 
 ### Added
