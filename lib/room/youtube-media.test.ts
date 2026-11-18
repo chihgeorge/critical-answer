@@ -84,6 +84,17 @@ describe("check first, question after", () => {
 });
 
 describe("HOST_MEDIA", () => {
+  it("keeps a selected timeline position for the screen and preserves pause state", () => {
+    const g = game([video("v1"), video("v2")]);
+    g.media("pause");
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 12 });
+    expect(g.state().media).toMatchObject({ state: "paused", seq: 1, seek: 12 });
+    g.media("play");
+    expect(g.state().media).toMatchObject({ state: "playing", seq: 1, seek: 12 });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 16 });
+    expect(g.state().media).toMatchObject({ state: "playing", seq: 2, seek: 16 });
+  });
+
   it("play, pause and restart become STATE media; restart bumps seq, every press bumps press", () => {
     const g = game([video("v1"), video("v2")]);
     const id = g.state().question.id;

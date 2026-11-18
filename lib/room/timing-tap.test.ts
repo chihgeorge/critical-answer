@@ -218,6 +218,20 @@ describe("timing question in the room", () => {
     expect(g.state().reveal).toMatchObject({ timing: { rows: [{ teamId: IDS[0] }] } });
   });
 
+  it("seeking a timing song clears taps and accepts a clock at the selected point", () => {
+    const g = tapGame();
+    g.media("play");
+    g.clock();
+    g.tapAt(0);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "t-a", action: "seek", at: 18 });
+    expect(g.room.game!.buzz).toMatchObject({ taps: undefined, tapRound: 1 });
+    expect(g.state().media).toMatchObject({ seq: 1, seek: 18, state: "playing" });
+    g.clock(Date.now() - 30_000);
+    expect(g.state().tapLive).toBeUndefined();
+    g.clock(Date.now() - 18_000);
+    expect(g.state().tapLive).toBe(true);
+  });
+
   it("one screen owns the clock until it goes stale or closes; CLOCK_PING is answered without a save; an unchanged clock does not broadcast", () => {
     const g = tapGame();
     g.media("play");

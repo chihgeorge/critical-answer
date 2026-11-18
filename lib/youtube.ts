@@ -33,6 +33,7 @@ export const youtubeThumbnailUrl = (videoId: string): string => `https://i.ytimg
  * embed (no library, no API key) via live web search during /plan-eng-review. */
 export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, zhCaptions = false): string {
   const clip = new URLSearchParams({
+    rel: "0",
     ...(start !== undefined ? { start: String(start) } : {}),
     ...(end !== undefined ? { end: String(end) } : {}),
     // enablejsapi lets the page pick the caption track itself (pickZhCaption); the rest is YouTube's own first guess.
@@ -47,6 +48,8 @@ export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, z
 export interface MediaWant {
   state: "playing" | "paused";
   seq: number;
+  /** Host-selected position, in seconds, for this seq. */
+  seek?: number;
   /** A new press re-checks the steps even when state and seq are the same (▶ after the clip ended). */
   press?: number;
 }

@@ -5,6 +5,11 @@ it("uses the public YouTube thumbnail for a timing song", () => {
   expect(youtubeThumbnailUrl("dQw4w9WgXcQ")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
 });
 
+it("limits related videos to the same channel in plain YouTube embeds", () => {
+  const url = new URL(youtubeEmbedUrl("dQw4w9WgXcQ"));
+  expect(url.searchParams.get("rel")).toBe("0");
+});
+
 it("keeps a question clip's end but lets the host end its answer reveal", () => {
   expect(clipEndForStage(42, false)).toBe(42);
   expect(clipEndForStage(42, true)).toBeUndefined();

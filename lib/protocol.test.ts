@@ -365,6 +365,8 @@ describe("parseClientMessage", () => {
     }
     expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "stop" })).toBeNull();
     expect(parseClientMessage({ type: "HOST_MEDIA", action: "play" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at: 83 })).toEqual({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at: 83 });
+    for (const at of [-1, 21601, 1.5, NaN, "83", undefined]) expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at })).toBeNull();
   });
 
   it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {

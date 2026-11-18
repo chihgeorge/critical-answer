@@ -192,6 +192,7 @@ export function YoutubePlayer({
             controls: controls ? 1 : 0,
             disablekb: controls ? 0 : 1,
             rel: 0,
+            // YouTube can still show same-channel related videos and its own overlays; the API has no share switch.
             playsinline: 1,
           },
           events: {
@@ -204,6 +205,7 @@ export function YoutubePlayer({
             onStateChange: (e) => {
               // YouTube can reach the end itself (its own `end`, or a clip with none) before the poll sees it.
               if (e.data === 0) ended.current = true;
+              if (e.data === 1) ended.current = false; // the viewer may replay inside YouTube's own frame
               if (e.data === 1) captions(e.target);
               show(clipStatusFromYoutube(e.data, ended.current));
             },
@@ -254,8 +256,15 @@ export function YoutubePlayer({
     const p = player.current;
     if (!ready || !p) return;
     const next = { state: want.state, seq: want.seq };
-    const steps = playerSteps(applied.current, next, ended.current);
+    const seek = want.seek !== undefined && applied.current?.seq !== next.seq;
+    const steps = seek ? [] : playerSteps(applied.current, next, ended.current);
     applied.current = next;
+    if (seek) {
+      ended.current = false;
+      p.seekTo(want.seek!, true);
+      if (want.state === "playing") p.playVideo();
+      else p.pauseVideo();
+    }
     for (const step of steps) {
       if (step === "pause") p.pauseVideo();
       else {
@@ -266,7 +275,7 @@ export function YoutubePlayer({
         p.playVideo();
       }
     }
-  }, [ready, want.state, want.seq, want.press, start]);
+  }, [ready, want.state, want.seq, want.press, want.seek, start]);
 
   // The reveal's replay: one seek per key and player build (a retry starts the clip over, so it seeks again), on the
   // ready player. Clearing `ended` lets a clip that already stopped at its end play again (and stop there again by the
