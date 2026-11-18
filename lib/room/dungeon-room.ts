@@ -138,7 +138,7 @@ import {
   type LockRefusal,
 } from "../protocol";
 import { epiloguePages, revealBeats, revealCalls } from "../podium";
-import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder, type Initiative } from "../initiative";
+import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, hiddenInitiativeRolls, initiativeOrder, type Initiative } from "../initiative";
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
@@ -520,6 +520,12 @@ export class DungeonRoom {
   private removedTeamIds = new Set<string>();
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
+  /** Short narrated cards before the next die or question. The step owns their duration. */
+  private stageBeat: "crit-intro" | "check-success" | "kill-defeated" | null = null;
+  /** Keep the map at the answered room until its dish has been eaten. */
+  private bossEntryBefore: GameState | null = null;
+  /** The judgment transcript keeps the entry fact even while its spoken announcement waits for the meal. */
+  private deferredBossTranscript = new Map<number, { phase?: string; order?: number }>();
   /** The last buzz stopped playing music (boss-buzzer.md D5): a wrong answer or a dropped phone plays it on. Memory only, like media. */
   private buzzPaused = false;
   /** The question whose video the big screen reported it cannot play (SCREEN_CLIP_ERROR, boss-music-buzzer.md M4).
@@ -859,7 +865,9 @@ export class DungeonRoom {
         if (said) this.sendNextLineState();
       },
       record: (entry) => {
-        this.addTranscript(entry);
+        const entersBoss = "event" in entry ? this.deferredBossTranscript.get(entry.eventId) : undefined;
+        if (entersBoss) this.deferredBossTranscript.delete(entry.eventId);
+        this.addTranscript(entersBoss && "event" in entry && entry.event.type === "correct" ? { ...entry, event: { ...entry.event, entersBoss } } : entry);
         // Called right after emit: only a narration emit just put on the screens counts, and only its AI lines
         // (not scripted fallbacks or the host's line). The epilogue's podium calls repeat names by design.
         if (entry.event.type === "epilogue" || entry.eventId !== this.lastNarration?.eventId) return;
@@ -1404,7 +1412,8 @@ export class DungeonRoom {
     if (game?.phase !== "playing" || isBuzzPhase(game)) return false;
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
-    if (!teamId || !team || atFork(team)) return false;
+    if (!teamId || !team || atFork(team) || team.inBoss) return false;
+    if (this.stageBeat === "check-success") return true;
     const id = currentQuestionIdOf(game, teamId);
     if (this.question(id)?.kind !== "text") return false;
     const roll = this.pendingRoll;
@@ -1583,10 +1592,20 @@ export class DungeonRoom {
     }
     // A door opening shows the game from before the press (branch-fork.md); online is live, phones come and go meanwhile.
     // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
-    const shown = this.forkBeat?.before ?? this.fortuneBeat?.before ?? this.game;
+    const shown = this.forkBeat?.before ?? this.fortuneBeat?.before ?? this.bossEntryBefore ?? this.game;
     const view = getSpectatorView(shown);
     const { sprite, hue } = this.bossLook();
     view.bossLook = { sprite, hue };
+    // Defeated on the screen from the beat until the 4d20 land and the kill is judged.
+    if (this.stageBeat === "kill-defeated" || this.pendingRoll?.kind === "kill") view.bossHp = 0;
+    if (this.bossEntryBefore && this.reveal?.served) {
+      view.teams = view.teams.map((team) => ({ ...team, reward: this.game!.teams.find((live) => live.id === team.id)?.reward ?? team.reward }));
+    }
+    // The meal earns its reward when judged, but the stage shows the gain only once the host serves it.
+    if (shown === this.game && this.reveal?.dish && !this.reveal.served && this.reveal.scored) {
+      const { teamId, points } = this.reveal.scored;
+      view.teams = view.teams.map((t) => t.id === teamId ? { ...t, reward: t.reward - points } : t);
+    }
     if (shown !== this.game) view.teams = view.teams.map((t) => ({ ...t, online: this.game!.teams.find((r) => r.id === t.id)?.online ?? t.online }));
     const choosing = this.forkBeat ? undefined : this.game.teams.find((t) => t.fork?.phase === "choosing")?.fork;
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.
@@ -1610,11 +1629,13 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold ? null : this.shownQuestion(),
+      // A boss-entry dish keeps the boss question back until 下一題 opens the room (#364).
+      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold || this.stageBeat || this.bossEntryBefore ? null : this.shownQuestion(),
       ...(hold ? { pickHold: true as const } : {}),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
+      ...(this.stageBeat ? { stageBeat: this.stageBeat } : {}),
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
@@ -1634,12 +1655,12 @@ export class DungeonRoom {
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
       ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
-      ...(this.initiative ? { initiative: { ...this.initiative, left: Math.max(0, this.initiativeEndsAt - this.now()), ...(this.pacing === "manual" && !this.initiative.order ? { untimed: true as const } : {}) } } : {}),
+      ...(this.initiative ? { initiative: { ...this.initiative, ...(this.initiative.order ? {} : { rolls: hiddenInitiativeRolls(this.initiative.rolls) }), left: Math.max(0, this.initiativeEndsAt - this.now()), ...(this.pacing === "manual" && !this.initiative.order ? { untimed: true as const } : {}) } } : {}),
       ...this.syncAnswerClock(),
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
-      pendingRoll: this.pendingRoll,
+      pendingRoll: this.stageBeat === "kill-defeated" ? null : this.pendingRoll,
       ...this.wrongSlots(),
       ...this.podiumView(),
       ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
@@ -2247,7 +2268,7 @@ export class DungeonRoom {
           this.handleRejoin(sender, msg.teamId, msg.teamKey);
           break;
         case "HOST_START":
-          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative, msg.answerSeconds, msg.bossThreshold);
+          this.handleHostStart(sender, msg.aiNarration, msg.intro, msg.initiative, msg.answerSeconds, msg.bossThreshold, msg.hideCritRoll);
           break;
         case "HOST_INTRO":
           this.handleHostIntro(sender, msg.page);
@@ -2934,7 +2955,7 @@ export class DungeonRoom {
 
   /** An answer reveal or the boss's phase card is up: nobody answers until the host moves on. */
   private paused(): boolean {
-    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening() || !!this.forkBeat || this.fortuneActive();
+    return !!this.reveal || !!this.eventReveal || this.phaseCard || this.phaseCardDue || this.opening() || !!this.forkBeat || this.fortuneActive() || !!this.stageBeat;
   }
 
   /** A fortune runs (docs/designs/fortune-teller.md), from the crystal ball to the effect card's 下一題. */
@@ -2976,7 +2997,10 @@ export class DungeonRoom {
   }
 
   private closeReveal() {
+    const entryBefore = this.bossEntryBefore;
+    const entryTeamId = entryBefore ? this.reveal?.scored?.teamId : undefined;
     this.reveal = null;
+    this.bossEntryBefore = null;
     // The narration on show dropped its handoff while the reveal held the stage (emit): say it now, after the STATE that
     // shows the team on turn. A phase card narrates its own.
     const held = this.heldHandoff?.eventId === this.eventSeq && this.lastNarration?.eventId === this.eventSeq ? this.heldHandoff : null;
@@ -2987,6 +3011,17 @@ export class DungeonRoom {
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
+    if (entryTeamId) {
+      const team = this.game?.teams.find((t) => t.id === entryTeamId);
+      if (team?.inBoss) {
+        const phase = this.game!.boss.phaseIndex > 0 ? this.bank.boss.phases[this.game!.boss.phaseIndex]?.name : undefined;
+        this.appendLine(this.eventSeq, `${team.name}吃飽後走進首領房，${phase ? `${phase}開始！` : "首領戰開始！"}`);
+        if (this.game?.sprint && !entryBefore?.sprint) {
+          const name = (id: string) => this.game!.teams.find((t) => t.id === id)?.name ?? "";
+          this.appendLine(this.eventSeq, sprintLine(team.name, this.game.sprint.teamIds.map(name)));
+        }
+      }
+    }
   }
 
   /** `line`, the handoff that named `named`, if that team is still on turn facing that monster; else a scripted one for
@@ -3036,6 +3071,9 @@ export class DungeonRoom {
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
+    this.stageBeat = null;
+    this.bossEntryBefore = null;
+    this.deferredBossTranscript.clear();
     if (lockTeam) this.syncLockTeam(lockTeam);
     if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
     this.lostCritTimer = null;
@@ -3402,7 +3440,7 @@ export class DungeonRoom {
     }
   }
 
-  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number, bossThreshold?: number) {
+  private handleHostStart(conn: Conn, aiNarration?: boolean, intro?: boolean, initiative?: boolean, answerSeconds?: number, bossThreshold?: number, hideCritRoll?: boolean) {
     if (!this.requireHost(conn)) return;
     if (this.game) {
       this.sendTo(conn, { type: "ERROR", error: "game_already_started" });
@@ -3422,7 +3460,7 @@ export class DungeonRoom {
       poolQuestionIds(this.bank),
       firstPhase.questionIds,
       // Stored in game.config, so it rides the snapshot and nothing changes it once the game started.
-      { ...DEFAULT_GAME_CONFIG, ...(bossThreshold !== undefined ? { bossThreshold } : {}) },
+      { ...DEFAULT_GAME_CONFIG, ...(bossThreshold !== undefined ? { bossThreshold } : {}), ...(hideCritRoll ? { hideCritRoll: true } : {}) },
       firstPhase.maxHp,
       this.rng,
       this.bank.boss.hitReward,
@@ -3785,7 +3823,8 @@ export class DungeonRoom {
     }
     // A lock in its beat would then be judged against a room question the team no longer faces; a door opening would
     // then show a room the team has left.
-    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId) {
+    // A dish that leads into the boss room shows the game from before it (#364): a send now would not show.
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId || this.bossEntryBefore) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
@@ -3900,7 +3939,19 @@ export class DungeonRoom {
         // Pin the turn, as a lock does: a skipped offline team whose phone comes back must not take it during the beat.
         this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
         this.startRoll("kill", teamId, questionId, { values: dice, value: shown.type === "correct-boss-hit" ? shown.killBonus! : 0 });
+        this.unpace("lock");
+        this.stageBeat = "kill-defeated";
+        this.setCue("boss-kill");
+        this.writeScripted([`${prev.teams.find((t) => t.id === teamId)?.name ?? "冒險者"}擊倒了首領！最後一擊已經命中，接下來擲四顆骰子結算獎勵。`]);
+        this.pace("lock", "kill-defeated", BEAT_MS, () => this.stageBeat === "kill-defeated" ? "接下來擲尾刀骰" : null, () => {
+          this.stageBeat = null;
+          this.setCue("roll");
+          const roll = this.pendingRoll;
+          this.pace("lock", "roll", KILL_BEAT_MS, () => this.pendingRoll === roll ? "接下來結算擊殺擲骰" : null, () => this.resolveRoll());
+          this.broadcastState();
+        });
         this.broadcastState();
+        this.sendNarration();
         return;
       }
     }
@@ -3944,8 +3995,11 @@ export class DungeonRoom {
     // narrator may size up the edible part meanwhile (foodie narration).
     // A gift is not a defeat: no 「倒下」 dish line and no edible part; the persuaded line says it stepped aside.
     const base = dish && !persuaded && (told.type === "correct" || told.type === "boss-kill") ? { ...told, cooked: true as const, ...(this.sayablePart(dish.part) ? { part: dish.part } : {}) } : told;
+    // The answer's narration stays in the old room. The entrance is announced after the meal.
+    const beforeEntry = outcome.type === "correct-room-advance" && outcome.entersBoss && dish ? prev : null;
+    const roomEvent = beforeEntry && base.type === "correct" ? { ...base, entersBoss: undefined } : base;
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
-    const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
+    const exhaustedEvent = game.boss.phasePending === "exhausted" && (roomEvent.type === "retry" || roomEvent.type === "boss-hit") ? { ...roomEvent, exhausted: true as const } : roomEvent;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
     const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const, ...(second ? { buzzSecond: true as const } : {}) } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
@@ -3956,6 +4010,7 @@ export class DungeonRoom {
     // phase, where nobody could react and any count left is from the turn before.
     const crowd = this.crowd.take(`${teamId}:${before?.turns ?? 0}`, next?.team, !next || isBuzzPhase(prev) || (!!this.nextLine && !this.lineInFlight()));
     const event = crowd ? { ...rolled, crowd } : rolled;
+    if (beforeEntry && told.type === "correct" && told.entersBoss) this.deferredBossTranscript.set(eventId, told.entersBoss);
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
     this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
@@ -3964,6 +4019,7 @@ export class DungeonRoom {
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
     // together in one STATE — no window where a client shows the next question first.
     this.reveal = null;
+    this.bossEntryBefore = beforeEntry;
     // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
     const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
@@ -4020,7 +4076,7 @@ export class DungeonRoom {
     this.broadcastState();
     const narration = this.narrate(eventId, event);
     // ⚔️ 最後衝刺 fired on this answer: the owl names who walked in and who was blessed (last-sprint.md).
-    if (!prev.sprint && game.sprint) {
+    if (!prev.sprint && game.sprint && !beforeEntry) {
       const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
       this.appendLine(eventId, sprintLine(name(teamId), game.sprint.teamIds.map(name)));
     }
@@ -4391,8 +4447,20 @@ export class DungeonRoom {
         this.broadcastState();
       } else if ((q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) || (q?.kind === "sort" && this.sortSlotsOf(lock.questionId, lock.optionIndex).every(Boolean))) {
         // Right: the crit die shows for a beat, then resolveRoll judges it (R9). Nothing is scored before.
-        this.startRoll("crit", lock.teamId, lock.questionId);
-        this.broadcastState();
+        if (game.config.hideCritRoll) this.judge(lock.teamId, lock.questionId, true, "retry");
+        else {
+          this.stageBeat = "crit-intro";
+          this.pendingLock = lock;
+          this.writeScripted([`${game.teams.find((t) => t.id === lock.teamId)?.name ?? "這隊"}答對了！接下來擲暴擊骰，看看這一擊的效果。`]);
+          this.pace("lock", "crit-intro", BEAT_MS, () => this.stageBeat === "crit-intro" ? "接下來擲暴擊骰" : null, () => {
+            this.stageBeat = null;
+            this.pendingLock = null;
+            this.startRoll("crit", lock.teamId, lock.questionId);
+            this.broadcastState();
+          });
+          this.broadcastState();
+          this.sendNarration();
+        }
       } else {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
         this.game = recordWrongLock(game, lock.teamId, lock.questionId, lock.optionIndex);
@@ -4405,7 +4473,8 @@ export class DungeonRoom {
       this.broadcastState();
     }
     // Its phone may have closed while the lock waited (onClose): show it offline now, or after its crit die.
-    if (this.pendingRoll?.kind !== "crit") this.syncLockTeamAndShow(lock.teamId);
+    // So does a kill a hidden crit die judged at once: its beat keeps the team on turn like the crit die.
+    if (!(holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === lock.teamId) && this.stageBeat !== "crit-intro") this.syncLockTeamAndShow(lock.teamId);
   }
 
   private syncLockTeamAndShow(teamId: string) {
@@ -4479,7 +4548,8 @@ export class DungeonRoom {
     // mage's first character: the question is not up before the check. Before mageHint, whose refusals (no_hint) would
     // tell something about the hidden answer.
     // Only on the team's own turn outside a buzzer phase: elsewhere the usual refusals answer (not_your_turn, buzzer_phase).
-    const ownFillIn = q?.kind === "text" && currentTurnTeamId(game) === teamId && !isBuzzPhase(game) && currentQuestionIdOf(game, teamId) === questionId;
+    // The boss room has no check (#364), so its fill-ins never wait on one.
+    const ownFillIn = q?.kind === "text" && currentTurnTeamId(game) === teamId && !isBuzzPhase(game) && !game.teams.find((t) => t.id === teamId)?.inBoss && currentQuestionIdOf(game, teamId) === questionId;
     // The thief's 偷襲 too: armed only once the question is up (owner, 2026-11-09).
     if ((classId === "warrior" || classId === "mage" || classId === "thief") && ownFillIn && !game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     let next: GameState;
@@ -4618,8 +4688,19 @@ export class DungeonRoom {
     if (!this.game!.checks?.[checkKey(questionId, teamId)]) return this.broadcastState();
     // A natural 20 goes straight to the win: one STATE, with the correct answer's cue (dnd design E2).
     if (value === 20) return this.judge(teamId, questionId, true, "retry");
-    this.setCue(this.game!.checks![checkKey(questionId, teamId)].passed ? "check-pass" : "check-fail");
-    this.broadcastState();
+    const passed = this.game!.checks![checkKey(questionId, teamId)].passed;
+    this.setCue(passed ? "check-pass" : "check-fail");
+    if (passed) {
+      this.stageBeat = "check-success";
+      const name = this.game!.teams.find((t) => t.id === teamId)?.name ?? "這隊";
+      this.writeScripted([`${name}說服成功！怪物露出線索，接下來可以看題目了。`]);
+      this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
+        this.stageBeat = null;
+        this.broadcastState();
+      });
+      this.broadcastState();
+      this.sendNarration();
+    } else this.broadcastState();
   }
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
@@ -4984,7 +5065,7 @@ export class DungeonRoom {
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     // No checks in a buzzer phase (boss-buzzer.md D6): refused before the die rolls, not after.
-    if (isBuzzPhase(game)) return reject("buzzer_phase");
+    if (isBuzzPhase(game) || game.teams.some((t) => t.id === teamId && t.inBoss)) return reject("buzzer_phase");
     // A fork holds no question to roll on: its held deal stays hidden.
     const forkTeam = game.teams.find((t) => t.id === teamId);
     if (forkTeam && atFork(forkTeam)) return reject("fork");
@@ -5121,6 +5202,8 @@ export class DungeonRoom {
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
     // A potion given now could change what the fortune's 🧪 does (fortune-teller.md E3).
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+    // STATE shows the game from before a boss-entry dish until 下一題 (#364): the potion would not show.
+    if (this.bossEntryBefore) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     try {
       this.game = giveItem(this.game, teamId);
     } catch (err) {
@@ -5203,7 +5286,8 @@ export class DungeonRoom {
     // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
     // Any door beat waits too, whoever's door: STATE shows forkBeat.before, so a fix would not show and get pressed twice.
     // So does the team's wrong answer still waiting (a cleric's 祈禱 choice): ability− could strand it with no way to pray.
-    if (this.forkBeat || this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
+    // So does a dish that leads into the boss room (#364): STATE shows the game from before the answer until 下一題.
+    if (this.forkBeat || this.bossEntryBefore || this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.game.pendingWrong?.teamId === teamId) {
       return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     }
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
@@ -5240,7 +5324,8 @@ export class DungeonRoom {
     // none left once those are done or an answer waits for the host. (Its answer die never takes a potion.)
     const mageDie =
       team?.classId === "mage" && team.abilityUses > 0 && team.typedAnswer === undefined && !game.mageCasts?.[checkKey(questionId, teamId)] && game.mageHints?.[questionId] === undefined && game.checks?.[checkKey(questionId, teamId)]?.hint === undefined;
-    if (q.kind === "text" && !forPrayer && !mageDie && (game.checks?.[checkKey(questionId, teamId)] || team?.typedAnswer !== undefined)) return reject("check_done");
+    // A boss fill-in rolls no check (#364): no die is left for the potion there either.
+    if (q.kind === "text" && !forPrayer && !mageDie && (game.checks?.[checkKey(questionId, teamId)] || team?.inBoss || team?.typedAnswer !== undefined)) return reject("check_done");
     try {
       this.game = drinkPotion(game, teamId);
     } catch (err) {
@@ -5448,7 +5533,8 @@ export class DungeonRoom {
     if (q?.kind !== "text") return reject("not_text_question");
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
     // No check in a buzzer phase (boss-buzzer.md D6): the team that buzzed may type at once (boss-music-buzzer.md M2).
-    if (!isBuzzPhase(this.game) && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    // No check in the boss room either (#364).
+    if (!isBuzzPhase(this.game) && !this.game.teams.find((t) => t.id === teamId)?.inBoss && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
     // A music question with fields: one box per field, blanks allowed, at least one filled (multi-field.md F4).
     if (q.fields && rawFields?.length !== q.fields.length) return reject("fields_mismatch");
     const fields = q.fields ? rawFields!.map(cleanTypedAnswer) : undefined;

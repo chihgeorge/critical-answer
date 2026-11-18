@@ -26,6 +26,7 @@ import { McOption } from "@/components/mc-option";
 import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
+import { visibleInitiativeRoll } from "@/lib/initiative";
 import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
@@ -115,10 +116,10 @@ function LookPicker({ me, teams, send }: { me: string; teams: { id: string; name
  * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
 function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "crit" | "check" | "mage" | "cleric"; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
-  if (!me?.item || me.itemArmed || game.view.buzz) return null;
+  if (!me?.item || me.itemArmed || game.view.buzz || (die === "crit" && game.view.hideCritRoll && !(me.classId === "mage" && me.abilityUses > 0))) return null;
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水<small className="text-[13px]">{POTION_DIE[die]}</small>
+      🧪 喝下幸運藥水<small className="text-[13px]">{die === "crit" && game.view.hideCritRoll ? POTION_DIE.mage : POTION_DIE[die]}</small>
       {die === "crit" && me.classId === "mage" && me.abilityUses > 0 ? <small className="text-[13px]">先施法的話，用在技能骰</small> : null}
       {/* The server never doubles the warrior's answer die (dungeon-room.ts startRoll); its button sits right below. */}
       {die === "crit" && me.classId === "warrior" && me.abilityUses > 0 ? <small className="text-[13px]">戰士的答題骰不算</small> : null}
@@ -190,8 +191,8 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     );
   } else if (!ready) {
     return null;
-  } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
-    // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2).
+  } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && !me.inBossPhase && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
+    // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2); the boss room has none (#364).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief" && !q.checkFirst) {
     // Not before the check: 偷襲 is armed once the question is up.
@@ -550,7 +551,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
   const canPray = wrong && game.view.awaitingPrayer === teamId;
   // Persuasion check (dnd design R6): the box stays locked until this team's check is written. An older server has no checks.
   const check = game.view.checks?.[checkKey(q.id, teamId)];
-  const needCheck = !buzzed && game.view.checks !== undefined && !check;
+  const needCheck = !buzzed && !me?.inBossPhase && game.view.checks !== undefined && !check;
 
   return (
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
@@ -1079,7 +1080,7 @@ export default function PlayPage() {
   const intro = !finished ? (game?.intro?.page ?? null) : null;
   /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
   const initiative = !finished ? (game?.initiative ?? null) : null;
-  const myRoll = initiative && teamId ? initiative.rolls[teamId] : undefined;
+  const myRoll = initiative && teamId ? visibleInitiativeRoll(initiative, teamId) : undefined;
   const cards = (
     <>
       {/* While waiting, the roster above already highlights our own team. */}
@@ -1271,13 +1272,15 @@ export default function PlayPage() {
           // Panel takes no data-testid, so the wrapper carries it.
           <div data-testid="phone-initiative">
             <Panel tone="lav" role="status" className="flex flex-col items-center gap-2 px-3 py-5 text-center">
-              {myRoll === undefined ? (
+              {myRoll === undefined && initiative.rolls[teamId!] === undefined ? (
                 <>
                   <div className="text-[20px]">擲先攻！點數大的先上場</div>
                   <PixelButton variant="ok" className="!m-0 !min-h-[72px] !text-[23px]" onClick={() => send({ type: "TEAM_ROLL_INITIATIVE" })}>
                     🎲 擲骰
                   </PixelButton>
                 </>
+              ) : myRoll === undefined ? (
+                <div className="text-[20px]">已擲骰，等大家擲完一起公布點數 👀</div>
               ) : (
                 <>
                   <D20 value={myRoll} size={90} />
@@ -1367,8 +1370,8 @@ export default function PlayPage() {
               <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
-              答對了！{revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
-              {revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.choice.chefBonus)}）</span> : null}
+              答對了！{(!revealed.dish || revealed.served) && revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
+              {(!revealed.dish || revealed.served) && revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.choice.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}
@@ -1381,8 +1384,8 @@ export default function PlayPage() {
               <McOption key={i} index={i} badge={i + 1} text={item} disabled look="ok" label="✓" className="min-h-[56px] text-[21px]" />
             ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
-              答對了！{revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
-              {revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.sorted.chefBonus)}）</span> : null}
+              答對了！{(!revealed.dish || revealed.served) && revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
+              {(!revealed.dish || revealed.served) && revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.sorted.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}

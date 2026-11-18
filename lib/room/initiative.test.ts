@@ -84,7 +84,8 @@ describe("擲先攻 in the room", () => {
     g.roll(0, 4);
     send(g.room, g.phones[0], { type: "TEAM_ROLL_INITIATIVE" }); // a second roll from the same phone is ignored
     g.roll(1, 18);
-    expect(g.state().initiative.rolls).toEqual({ [A]: 4, [B]: 18 });
+    // Who rolled shows; the faces wait for the last team (#364).
+    expect(g.state().initiative.rolls).toEqual({ [A]: 0, [B]: 0 });
     expect(g.state().initiative.order).toBeUndefined();
     g.roll(2, 11);
     expect(g.state().initiative).toMatchObject({ order: [B, C, A], tieRolls: [] });

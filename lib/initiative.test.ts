@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { initiativeOrder } from "./initiative";
+import { initiativeOrder, visibleInitiativeRoll } from "./initiative";
+
+it("keeps initiative values hidden until every roll establishes the order", () => {
+  const rolling = { rolls: { a: 20 } };
+  expect(visibleInitiativeRoll(rolling, "a")).toBeUndefined();
+  expect(visibleInitiativeRoll(rolling, "b")).toBeUndefined();
+  expect(visibleInitiativeRoll({ ...rolling, rolls: { a: 20, b: 1 }, order: ["a", "b"] }, "a")).toBe(20);
+});
 
 const dice = (...values: number[]) => () => values.shift()!;
 

@@ -5,7 +5,7 @@ export default defineConfig({
   resolve: { alias: { "@": new URL(".", import.meta.url).pathname } },
   test: {
     environment: "node",
-    include: ["lib/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: ["lib/**/*.test.ts", "scripts/**/*.test.ts", "components/**/*.test.ts", "components/**/*.test.tsx"],
     // Live API tests cost money: only with LIVE=1 (npm run test:live).
     exclude: process.env.LIVE ? configDefaults.exclude : [...configDefaults.exclude, "**/*.live.test.ts"],
   },
