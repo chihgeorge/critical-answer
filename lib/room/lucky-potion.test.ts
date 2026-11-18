@@ -174,6 +174,7 @@ describe("🧪 lucky potion in the room", () => {
     cast.drink();
     expect(cast.lastTo(cast.phones[0])).toMatchObject({ detail: "check_done" });
     expect(cast.team(A).itemArmedFor).toBeUndefined();
+    expect(cast.team(A).item).toBe("luckyPotion");
 
     const typed = failedCheck();
     send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });

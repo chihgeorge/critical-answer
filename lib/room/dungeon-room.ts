@@ -1021,7 +1021,7 @@ export class DungeonRoom {
           ? publicMediaContent(q.content, "", questionId)
           : fileVideo(q.content, base);
     if (video.kind !== "youtube" && video.kind !== "instagram" && video.kind !== "file") return;
-    const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video } satisfies ServerMessage);
+    const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video, range: this.mediaRange(questionId, q.content) } satisfies ServerMessage);
     const to = only ? [only] : [...this.hostConns.values(), ...[...this.keyedScreens].flatMap((id) => this.conns.get(id) ?? [])];
     for (const conn of to) {
       try {
@@ -1608,7 +1608,6 @@ export class DungeonRoom {
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
       ...this.fortuneView(),
       ...this.liveMedia(),
-      ...this.liveMediaRange(),
       ...this.liveDim(),
       ...(this.clipError !== null && this.clipError === this.shownVideoId() ? { clipError: true as const } : {}),
       ...(this.tapLive() ? { tapLive: true as const } : {}),
@@ -4114,15 +4113,12 @@ export class DungeonRoom {
     return this.reveal?.explanation?.kind === "file";
   }
 
-  /** STATE's `mediaRange`: the host's timeline for the video on screen, the question clip's bounds until the reveal
+  /** SCREEN_VIDEO's `range`: the host's timeline for question `id`'s video on screen, the clip's bounds until the reveal
    * (handleHostMedia clamps a seek to them) and the reported length after it. */
-  private liveMediaRange(): { mediaRange?: { min: number; max: number } } {
-    const id = this.shownVideoId();
-    if (id === null) return {};
-    const clip = this.question(id)?.content;
+  private mediaRange(id: string, clip: BankQuestion["content"]): { min: number; max: number } {
     const d = this.clipDuration;
     const seconds = d?.questionId === id && d.file === this.fileReveal() ? d.seconds : null;
-    return { mediaRange: seekRange(!this.reveal && clip?.kind === "youtube" ? clip : null, seconds) };
+    return seekRange(!this.reveal && clip.kind === "youtube" ? clip : null, seconds);
   }
 
   /** ▶ ⏸ ⟲ from the host page. Ignored unless it names the video on screen: a second host device may still show

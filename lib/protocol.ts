@@ -568,8 +568,6 @@ export type ServerMessage =
       media?: MediaCommand;
       /** The big screen reported that the video in play cannot play (SCREEN_CLIP_ERROR): the host page warns (boss-music-buzzer.md M4). */
       clipError?: true;
-      /** The host's 選擇播放段落 bounds (s) for the video on screen (lib/youtube.ts seekRange). Absent from older servers: 0 to 10 minutes. */
-      mediaRange?: { min: number; max: number };
       /** A timing question's clip is playing on the chosen big screen and its clock is fresh: phones may tap (timing-tap.md). */
       tapLive?: true;
       /** The host's speaker latency in ms (HOST_TAP_LATENCY); absent is 0. */
@@ -655,7 +653,9 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo }
+  /** `range`: the host's 選擇播放段落 bounds (s), lib/youtube.ts seekRange. Here, not in STATE: before the reveal the clip's
+   * bounds and the video's length point at a music question's song. Absent from older servers: 0 to 10 minutes. */
+  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo; range?: { min: number; max: number } }
   /** To the one keyed big screen that runs the test (screen-media-test.md D2): every distinct clip in the bank, never an
    * answer. It answers each with SCREEN_TEST_RESULT. */
   | { type: "SCREEN_TEST"; runId: number; items: ScreenVideo[] }

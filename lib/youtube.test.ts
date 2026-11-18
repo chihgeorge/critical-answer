@@ -189,6 +189,7 @@ describe("seekRange (the host's 選擇播放段落)", () => {
   it("the whole video after the reveal; 10 minutes, or past the clip's end, until the screen reports its length", () => {
     expect(seekRange(null, null)).toEqual({ min: 0, max: 600 });
     expect(seekRange({ end: 900 }, null)).toEqual({ min: 0, max: 900 });
+    expect(seekRange({ start: 700 }, null)).toEqual({ min: 700, max: 700 });
     expect(seekRange(null, 5400.2)).toEqual({ min: 0, max: 5400 });
     expect(seekRange(null, 99999)).toEqual({ min: 0, max: MAX_SEEK_S });
   });

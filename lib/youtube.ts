@@ -142,11 +142,14 @@ export function formatClipTime(seconds: number): string {
 /** The longest seek HOST_MEDIA accepts (s): six hours. */
 export const MAX_SEEK_S = 21600;
 
-/** The host's 選擇播放段落 timeline (STATE's mediaRange). `clip`: a question clip's bounds before the reveal, where the
- * room clamps a seek to them, else null (the whole video). `duration`: the length the big screen reported (s), null
- * until it does, and then 10 minutes, or to the clip's end if that is later. */
+/** The host's timeline before any length comes in (s): 10 minutes. */
+export const FALLBACK_SEEK_S = 600;
+
+/** The host's 選擇播放段落 timeline (SCREEN_VIDEO's range). `clip`: a question clip's bounds before the reveal, where the
+ * room clamps a seek to them, else null (the whole video). `duration`: the length the big screen reported (s), or null;
+ * while null the timeline runs to 10 minutes, or to the clip's start or end if that is later. */
 export function seekRange(clip: { start?: number; end?: number } | null, duration: number | null): { min: number; max: number } {
-  const full = Math.min(MAX_SEEK_S, Math.floor(duration ?? Math.max(600, clip?.end ?? 0)));
+  const full = Math.min(MAX_SEEK_S, Math.floor(duration ?? Math.max(FALLBACK_SEEK_S, clip?.end ?? 0, clip?.start ?? 0)));
   const min = Math.min(clip?.start ?? 0, full);
   return { min, max: Math.max(min, Math.min(clip?.end ?? full, full)) };
 }
