@@ -41,7 +41,7 @@ In manual, none of the pauses below ends by itself. The host page shows a dashed
 
 - Initiative roll: no countdown while the teams roll, and 「下一步」 rolls for the teams that have not; once the order is up, one more press brings the first question.
 - The reveal after 「公布答案」, the card after a correct answer saying the crit die comes next, the crit die, the persuasion check, the persuasion-success card, the warrior's die, the defeated-boss card and the kill dice after it, a boss miss, and the boss's phase card.
-- A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door. Once the door is open, one more press enters the room.
+- A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door (on a fork whose doors the bank named, the left door; the host page then names both, for example 「選「⚔️ 怪物房」或「🏷️ 動漫」」). Once the door is open, one more press enters the room.
 - The podium after the game (in auto too): each title, tie-break roll and place takes one press of 「下一步」, and one more press shows the full result and the epilogue; the host turns the epilogue's pages as before. After a reconnect or a room restart it goes on from the last step shown.
 
 The answer countdown is not affected: it still counts in manual. On a switch back to auto, the held step runs its usual time again from the start (a fork counts a fresh 15 seconds). The mode is saved with the room and survives a server restart. Design in [docs/designs/manual-pacing.md](designs/manual-pacing.md).

@@ -129,6 +129,22 @@ between two doors and lives with the result.
   票」 between its header and the doors. The big screen: 「👥 N 票」 on each door's face. All of it disappears with the
   door opening. Not narrated; the host page is unchanged.
 
+## Placed forks and labelled doors (Approach B, #286, 2026-11-18)
+
+- **Where.** `BankRoom.fork` (`{}` or `{ doors: [left, right] }`), on a middle room only (not the first, where a game
+  starts, nor the last, which never forks). `roomForkProblem` is the one check: parseBank refuses a bad fork and the
+  editor's `bankProblems` flags the same before a save. It is copied to `RoomTemplate.fork`. Bank format 13
+  (`FORK_FORMAT`): format-12 code would drop the field on its next save.
+- **The plan wins.** `forkRule`: a bank that places any fork draws no random forks; walking into a placed room by a
+  correct answer always forks, without the one-room gap. The host's queued question (`picked`) still blocks a fork.
+- **Labelled, owner decision A.** A fork with `doors` shows them from the start (STATE `forkDoors` while the team chooses
+  and during its door opening; the vote buttons of #285 read the same labels); a timeout opens the left door, and
+  `syncFork` draws no `monsterSide`. Without `doors` it is the unlabelled ⚔️ / ❓ fork above.
+- **Door kinds.** monster and mystery as before. hard: `redealForDoor` deals from pool d+1 and sets `currentDifficulty`, so
+  progress follows the pool; refused in a difficulty-5 room. category: an unrevealed question of the category from the
+  room's pool that no other team holds, undrawn ones first; with none, the team keeps its question. `ForkRecord.category`
+  logs which.
+
 ## Deferred (TODOS.md)
 
-- Question-bank or editor-placed forks, and difficulty or category doors (Approach B; needs a bank format bump).
+- None for forks.
