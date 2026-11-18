@@ -34,7 +34,7 @@ Status: APPROVED（D1–D4 由站長 2026-11-08 逐題決定）
 
 ## 不在範圍
 
-- Codex 的「燈籠」預測點子（見 `docs/designs/phone-answering.md`）。
+- Codex 的「燈籠」預測點子（見 `docs/designs/phone-answering.md`）。之後做成只預測、不計分的版本，見 [crowd-prediction.md](crowd-prediction.md)（#283）。
 - 主持人頁顯示反應、反應的音效。
 
 ## 測試

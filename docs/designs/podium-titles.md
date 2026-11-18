@@ -46,6 +46,7 @@ Mode: Builder
 | 🧪 藥水成癮 | 喝最多幸運藥水 | 藥水 PR 的 `potionsDrunk`。這一列的程式碼由後合併的那個 PR 加（見 Dependencies）；執行時缺值當 0 |
 | 🍲 大胃王 | 吃最多料理 | `team.dishes.length` |
 | ⚡ 閃電突擊 | 靠答對最少回合進魔王房 | `team.bossAt.turns`，越少越好。只算靠答對進門的隊：`bossAt` 加 `earned: true`，只在 `answerQuestion` 答對進門時寫；`sendToBoss`（主持人送、搶答階段拉人）和門檻 0 的 `createGame` 不寫。有 `earned` 的 turns 至少 1，所以不會碰到「0 不頒」。沒有隊靠答對進門就不頒 |
+| 🎯 神預言 | 群眾預測猜中最多次 | `team.predictionsRight`（[crowd-prediction.md](crowd-prediction.md)，#283，之後加的；改判會跟著改） |
 | 🎲 大成功王 | 擲出最多次 20 | `team.natural20s`（取代現在的 crit beat） |
 
 - 頒獎順序照上表，大成功王壓軸。最後是 AI 稱號（每隊一拍，照隊伍順序）。
