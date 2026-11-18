@@ -545,6 +545,9 @@ export class DungeonRoom {
   private fortuneIntroTimer: ReturnType<typeof setTimeout> | null = null;
   /** When the host pressed 上菜 on the reveal up now (only read while `reveal.served`). */
   private servedAt = 0;
+  /** The scoring team's reward right after the judgment the reveal shows: the stage holds the dish's gain back only
+   * while it still is, so a host 改分 meanwhile shows as set, not less the dish (#364 follow-up). */
+  private dishReward = 0;
   /** The host's last ▶ ⏸ ⟲ (docs/designs/youtube-questions.md). In memory only (D6): a restart forgets it. */
   private media: MediaCommand | null = null;
   /** A timing question's clock (docs/designs/timing-tap.md): the big screen that reported first, the server ms at
@@ -1102,7 +1105,21 @@ export class DungeonRoom {
       ...(this.memoryShow ? { memoryShow: this.memoryShow } : {}),
       ...(this.bankChoice ? { bankChoice: this.bankChoice } : {}),
       ...(this.tapLatency ? { tapLatency: this.tapLatency } : {}),
+      ...this.savedBeats(),
     };
+  }
+
+  /** The beats a restart can bring back (#364 follow-up): a passed check's card, and the boss entrance a dish was holding
+   * back. The crit and kill beats are not saved: their lock or dice are memory only, and the team answers again. */
+  private savedBeats(): Pick<RoomSnapshot, "checkBeat" | "bossEntry"> {
+    const game = this.game;
+    if (game?.phase !== "playing") return {};
+    const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry"> = {};
+    const teamId = this.stageBeat === "check-success" ? currentTurnTeamId(game) : null;
+    if (teamId) out.checkBeat = { teamId, questionId: currentQuestionIdOf(game, teamId) };
+    const entered = this.bossEntryBefore && this.reveal?.scored?.teamId;
+    if (entered) out.bossEntry = { eventId: this.eventSeq, teamId: entered, ...(game.sprint && !this.bossEntryBefore!.sprint ? { sprint: true as const } : {}) };
+    return out;
   }
 
   /**
@@ -1222,6 +1239,11 @@ export class DungeonRoom {
     if (this.initiative) this.armInitiative(this.initiative.order ? (this.initiative.tieRolls?.length ?? 0) * INITIATIVE_TIE_MS + this.initiativeHoldMs : INITIATIVE_MS);
     // The answer reveal does not survive a restart, so a phase that ended under it goes straight to its card.
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
+    try {
+      this.restoreBeats(s);
+    } catch {
+      // a damaged save (a null team) restores without its beats
+    }
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
     // A game without a start time (a save from before the cap, or a damaged one): its last activity is the oldest time
@@ -1273,6 +1295,19 @@ export class DungeonRoom {
       void this.sendEpilogue(Promise.resolve(), this.eventSeq).catch((err) => this.epilogueFailed(err, this.eventSeq));
     }
     return "restored";
+  }
+
+  /** The beats savedBeats() kept, where they still fit the restored game. The dish reveal is gone, so the stage already
+   * shows the team in the boss room: only the entrance line joins the narration on show, as heldHandoff does. */
+  private restoreBeats(s: RoomSnapshot) {
+    const game = this.game;
+    if (game?.phase !== "playing" || this.phaseCard) return;
+    const c = s.checkBeat;
+    if (c && currentTurnTeamId(game) === c.teamId && currentQuestionIdOf(game, c.teamId) === c.questionId && game.checks?.[checkKey(c.questionId, c.teamId)]?.passed) this.checkSuccessBeat();
+    const e = s.bossEntry;
+    const lines = e ? this.bossEntryLines(e.teamId, !!e.sprint) : [];
+    const n = this.lastNarration;
+    if (lines.length && n?.eventId === e!.eventId && n.lines.length + lines.length <= NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
@@ -1604,7 +1639,7 @@ export class DungeonRoom {
     // The meal earns its reward when judged, but the stage shows the gain only once the host serves it.
     if (shown === this.game && this.reveal?.dish && !this.reveal.served && this.reveal.scored) {
       const { teamId, points } = this.reveal.scored;
-      view.teams = view.teams.map((t) => t.id === teamId ? { ...t, reward: t.reward - points } : t);
+      view.teams = view.teams.map((t) => t.id === teamId && t.reward === this.dishReward ? { ...t, reward: t.reward - points } : t);
     }
     if (shown !== this.game) view.teams = view.teams.map((t) => ({ ...t, online: this.game!.teams.find((r) => r.id === t.id)?.online ?? t.online }));
     const choosing = this.forkBeat ? undefined : this.game.teams.find((t) => t.fork?.phase === "choosing")?.fork;
@@ -3011,17 +3046,21 @@ export class DungeonRoom {
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
-    if (entryTeamId) {
-      const team = this.game?.teams.find((t) => t.id === entryTeamId);
-      if (team?.inBoss) {
-        const phase = this.game!.boss.phaseIndex > 0 ? this.bank.boss.phases[this.game!.boss.phaseIndex]?.name : undefined;
-        this.appendLine(this.eventSeq, `${team.name}吃飽後走進首領房，${phase ? `${phase}開始！` : "首領戰開始！"}`);
-        if (this.game?.sprint && !entryBefore?.sprint) {
-          const name = (id: string) => this.game!.teams.find((t) => t.id === id)?.name ?? "";
-          this.appendLine(this.eventSeq, sprintLine(team.name, this.game.sprint.teamIds.map(name)));
-        }
-      }
+    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint)) this.appendLine(this.eventSeq, entry);
+  }
+
+  /** What the narrator says once a boss-entry dish is eaten (#364): the entrance, then the 最後衝刺 line it held back. */
+  private bossEntryLines(teamId: string, sprintStarted: boolean): string[] {
+    const game = this.game;
+    const team = game?.teams.find((t) => t.id === teamId);
+    if (!game || !team?.inBoss) return [];
+    const phase = game.boss.phaseIndex > 0 ? this.bank.boss.phases[game.boss.phaseIndex]?.name : undefined;
+    const lines = [`${team.name}吃飽後走進首領房，${phase ? `${phase}開始！` : "首領戰開始！"}`];
+    if (sprintStarted && game.sprint) {
+      const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
+      lines.push(sprintLine(team.name, game.sprint.teamIds.map(name)));
     }
+    return lines;
   }
 
   /** `line`, the handoff that named `named`, if that team is still on turn facing that monster; else a scripted one for
@@ -4013,7 +4052,8 @@ export class DungeonRoom {
     if (beforeEntry && told.type === "correct" && told.entersBoss) this.deferredBossTranscript.set(eventId, told.entersBoss);
     // A natural 20 or 1 swaps the correct / boss-hit sound; the boss kill keeps its own (E2).
     const mark = "roll" in outcome ? outcome.roll : undefined;
-    this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
+    // The kill's dice land after its beat, which already played boss-kill: played again, the defeat sounds twice (#364).
+    if (!(killDice && event.type === "boss-kill")) this.setCue(event.type === "epilogue" || event.type === "event-room" ? null : event.type !== "boss-kill" && mark?.kind === "crit" ? (mark.value === 20 ? "crit" : "fumble") : event.type);
     // Shown to everyone (D3), but only on a genuinely correct answer (D5): a retry or a flee
     // must never reveal it, or the question loses its point; game-state.ts's deal()/boss ring
     // treat a revealed question (answered, or fled after a wrong lock) as not safe to redeal. Set before broadcastState so the reveal and the post-judgment state arrive
@@ -4063,6 +4103,7 @@ export class DungeonRoom {
         scored: { teamId, points: outcome.reward },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...chefOf(outcome), monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
+      this.dishReward = game.teams.find((t) => t.id === teamId)?.reward ?? 0;
     }
     // Fixed before the STATE is saved: the boss cooks first (cooking R8), otherwise the kill-shot line is read first.
     if (game.phase === "finished" && !this.epilogueRequested) {
@@ -4691,16 +4732,21 @@ export class DungeonRoom {
     const passed = this.game!.checks![checkKey(questionId, teamId)].passed;
     this.setCue(passed ? "check-pass" : "check-fail");
     if (passed) {
-      this.stageBeat = "check-success";
       const name = this.game!.teams.find((t) => t.id === teamId)?.name ?? "這隊";
       this.writeScripted([`${name}說服成功！怪物露出線索，接下來可以看題目了。`]);
-      this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
-        this.stageBeat = null;
-        this.broadcastState();
-      });
+      this.checkSuccessBeat();
       this.broadcastState();
       this.sendNarration();
     } else this.broadcastState();
+  }
+
+  /** The passed check's card before the question; restore() starts it again for a save made during it. */
+  private checkSuccessBeat() {
+    this.stageBeat = "check-success";
+    this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
+      this.stageBeat = null;
+      this.broadcastState();
+    });
   }
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE

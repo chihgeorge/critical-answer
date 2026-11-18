@@ -254,7 +254,8 @@ describe("buzzer boss phase in the room", () => {
       vi.useRealTimers();
     }
     expect(g.room.game!.phase).toBe("finished");
-    expect(g.state()).toMatchObject({ cue: "boss-kill" });
+    // The kill's beat played boss-kill; the 4d20 that land after it leave their own roll cue (#364).
+    expect(g.state()).toMatchObject({ cue: "roll" });
   });
 
   it("a buzzing phone that drops during the kill dice still takes the kill (onClose keeps a kill beat's team)", () => {
