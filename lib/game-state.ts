@@ -1097,7 +1097,7 @@ function unpicked(buzz: BuzzState): BuzzState {
   return rest;
 }
 
-/** The buzz winner (`teamId`), or the host (null), picks the next question by category or by type (#321): the
+/** The buzz winner (`teamId`, by category since #370), or the host (null, by type, #321), picks the next question: the
  * boss question becomes the current one if it matches, else the next unrevealed one in the ring that does. The
  * winner may change its mind until buzzing opens, unless the host has picked; the host may pick any time before
  * (`open`: the room's call, as in buzzIn). Nobody has heard the question it replaces. */
