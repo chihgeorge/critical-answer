@@ -36,6 +36,7 @@ import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
 import { isAnswerSeconds } from "./answer-clock";
 import { isLook } from "./team-look";
+import { MAX_SEEK_S } from "./youtube";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -290,6 +291,9 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
+  /** /screen: the length (s) of the video it loaded for that question, so the host's timeline reaches its end. Same trust
+   * as above; one for another question than the one whose video is on screen is dropped. */
+  | { type: "SCREEN_CLIP_DURATION"; questionId: string; seconds: number }
   /** /screen: test clip `index` of SCREEN_TEST `runId` loaded (error null) or failed. Same trust as above; the room also
    * drops a result from another screen than the one it asked, an old run, or an index it already has. */
   | { type: "SCREEN_TEST_RESULT"; runId: number; index: number; error: ScreenTestError | null }
@@ -564,6 +568,8 @@ export type ServerMessage =
       media?: MediaCommand;
       /** The big screen reported that the video in play cannot play (SCREEN_CLIP_ERROR): the host page warns (boss-music-buzzer.md M4). */
       clipError?: true;
+      /** The host's 選擇播放段落 bounds (s) for the video on screen (lib/youtube.ts seekRange). Absent from older servers: 0 to 10 minutes. */
+      mediaRange?: { min: number; max: number };
       /** A timing question's clip is playing on the chosen big screen and its clock is fresh: phones may tap (timing-tap.md). */
       tapLive?: true;
       /** The host's speaker latency in ms (HOST_TAP_LATENCY); absent is 0. */
@@ -957,6 +963,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.seq !== undefined && !isCount(m.seq)) return null;
       return { type: m.type, questionId, ...(m.seq !== undefined ? { seq: m.seq } : {}) };
     }
+    case "SCREEN_CLIP_DURATION": {
+      const questionId = str(m.questionId, MAX_RAW_TEXT);
+      return questionId && isFiniteNumber(m.seconds) && m.seconds > 0 ? { type: m.type, questionId, seconds: m.seconds } : null;
+    }
     case "SCREEN_TAP_CLOCK": {
       const questionId = str(m.questionId, MAX_ID);
       if (!questionId || !isCount(m.seq) || (m.anchor !== null && !isFiniteNumber(m.anchor))) return null;
@@ -1061,7 +1071,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (questionId === null || !action) return null;
       if (action !== "seek") return { type: "HOST_MEDIA", questionId, action };
       const at = m.at;
-      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= 21600 ? { type: "HOST_MEDIA", questionId, action, at } : null;
+      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= MAX_SEEK_S ? { type: "HOST_MEDIA", questionId, action, at } : null;
     }
     case "HOST_MEMORY_DONE": {
       const questionId = str(m.questionId, MAX_ID);

@@ -208,6 +208,27 @@ describe("the screen key", () => {
   }
   const FULL = { kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
 
+  // Value: protects=the host's timeline reaches a long video's end after the reveal, and stays inside the clip before it;
+  // fails_when=mediaRange ignores SCREEN_CLIP_DURATION or takes it from a phone or unkeyed screen; why_new=the timeline
+  // stopped at 10 minutes; seam=none; no_claim=the YouTube player's getDuration (screen side)
+  it("the timeline: the clip's bounds before the reveal, the length a keyed screen reports after it", () => {
+    const g = game([video("v1"), video("v2")]);
+    const id = g.state().question.id;
+    expect(g.state().mediaRange).toEqual({ min: 5, max: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    const bare = screen(g.room, "bare");
+    send(g.room, bare, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 3000 });
+    send(g.room, g.phone, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 3000 });
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: "elsewhere", seconds: 3000 });
+    g.correct();
+    expect(g.state().mediaRange).toEqual({ min: 0, max: 600 });
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 1234.6 });
+    expect(g.state().mediaRange).toEqual({ min: 0, max: 1234 });
+    serveNext(g.room, g.host, g.state().eventId);
+    g.check();
+    expect(g.state().mediaRange).toEqual({ min: 5, max: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+  });
+
   it("a phone, a big screen with no key and one with a wrong key never get the video id: not with the question, the ▶ or the reveal", () => {
     const g = game([video("v1"), video("v2")]);
     const key = keyOf(g.host);

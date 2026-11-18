@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeThumbnailUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, clipStopAt, END_SCREEN_GUARD_S, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeThumbnailUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, seekRange, MAX_SEEK_S, hostMediaStatus, hostBuzzWait, resendClipError, clipStopAt, END_SCREEN_GUARD_S, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
 
 it("uses the public YouTube thumbnail for a timing song", () => {
   expect(youtubeThumbnailUrl("dQw4w9WgXcQ")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
@@ -174,6 +174,23 @@ describe("parseClipTime / formatClipTime (D22)", () => {
     expect(formatClipTime(65)).toBe("1:05");
     expect(formatClipTime(0)).toBe("0:00");
     expect(parseClipTime(formatClipTime(754))).toBe(754);
+  });
+});
+
+describe("seekRange (the host's 選擇播放段落)", () => {
+  it("before the reveal: the clip's bounds, inside the video's length when known", () => {
+    expect(seekRange({ start: 30, end: 45 }, null)).toEqual({ min: 30, max: 45 });
+    expect(seekRange({ start: 30, end: 45 }, 3600)).toEqual({ min: 30, max: 45 });
+    expect(seekRange({ start: 30 }, 3600.7)).toEqual({ min: 30, max: 3600 });
+    expect(seekRange({ start: 30, end: 900 }, 200)).toEqual({ min: 30, max: 200 });
+    expect(seekRange({ start: 300 }, 200)).toEqual({ min: 200, max: 200 });
+  });
+
+  it("the whole video after the reveal; 10 minutes, or past the clip's end, until the screen reports its length", () => {
+    expect(seekRange(null, null)).toEqual({ min: 0, max: 600 });
+    expect(seekRange({ end: 900 }, null)).toEqual({ min: 0, max: 900 });
+    expect(seekRange(null, 5400.2)).toEqual({ min: 0, max: 5400 });
+    expect(seekRange(null, 99999)).toEqual({ min: 0, max: MAX_SEEK_S });
   });
 });
 

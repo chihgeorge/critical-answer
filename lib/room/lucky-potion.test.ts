@@ -157,6 +157,33 @@ describe("🧪 lucky potion in the room", () => {
     expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
   });
 
+  it("refuses a mage's drink on a fill-in once its skill is cast or its answer is in (#345)", () => {
+    const failedCheck = () => {
+      const m = started(text("t1"), ["mage", null]);
+      m.give(A);
+      m.dice.push(2); // a failed check: no hint, the skill die is still to come
+      send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
+      vi.advanceTimersByTime(2000);
+      return m;
+    };
+    const cast = failedCheck();
+    cast.dice.push(9);
+    send(cast.room, cast.phones[0], { type: "TEAM_USE_ABILITY", questionId: "t1" });
+    vi.advanceTimersByTime(2000);
+    expect(cast.room.game!.mageCasts?.[checkKey("t1", A)]).toBeTruthy();
+    cast.drink();
+    expect(cast.lastTo(cast.phones[0])).toMatchObject({ detail: "check_done" });
+    expect(cast.team(A).itemArmedFor).toBeUndefined();
+
+    const typed = failedCheck();
+    send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });
+    typed.drink();
+    expect(typed.team(A).typedAnswer).toBe("答");
+    expect(typed.lastTo(typed.phones[0])).toMatchObject({ detail: "check_done" });
+    expect(typed.team(A).itemArmedFor).toBeUndefined();
+    expect(typed.team(A).item).toBe("luckyPotion");
+  });
+
   it("a wrong answer with no roll keeps the potion, no longer armed", () => {
     const g = started(text("t1"));
     g.give(A);
