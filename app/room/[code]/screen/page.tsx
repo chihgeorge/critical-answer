@@ -361,6 +361,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
         {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
+      {buzz.second && !buzz.teamId && (
+        <div data-testid="screen-buzz-second" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
+          第二輪・最後一次搶
+        </div>
+      )}
       {/* The category or type (#321) the last winner or the host picked (boss-music-buzzer.md M5). */}
       {(buzz.category ?? buzz.qtype) && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
         <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>

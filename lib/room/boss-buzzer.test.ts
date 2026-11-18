@@ -347,24 +347,78 @@ describe("buzzer boss phase in the room", () => {
     expect(JSON.stringify(g.state())).not.toContain("晴天");
   });
 
-  it("half the fields right is a hit scaled by half; the reveal marks each field (multi-field.md F6, F7)", () => {
-    const g = buzzerGame(fielded);
+  const fielded3 = (id: string) => ({ ...fielded(id), fields: [...fielded(id).fields, { label: "作品", answer: `作 ${id}` }] });
+  /** buzzerGame with the boss at `hp` and no 最後衝刺 blessing, so a hit pays the plain hit reward; the song plays. */
+  const fieldGame = (q: (id: string) => object, hp: number) => {
+    const g = buzzerGame(q);
+    g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp }, teams: g.room.game!.teams.map((t) => ({ ...t, boon: undefined })) };
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    const answer = (i: number, fields: boolean[]) => {
+      g.buzz(i);
+      send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[i], questionId: "b-a", correct: fields.some(Boolean), fields, eventId: g.state().eventId });
+    };
+    const rewards = () => g.room.game!.teams.map((t) => t.reward);
+    return { ...g, answer, rewards };
+  };
+
+  it("part right is out, not a hit; after two rounds with nobody all right the most right fields score (#369)", () => {
+    const g = fieldGame(fielded3, 5);
+    const before = g.rewards();
+    g.answer(1, [true, false, false]);
+    expect(g.state()).toMatchObject({ reveal: null, view: { bossHp: 5, buzz: { out: [IDS[1]] } } });
+    // A part-right team may not buzz again this round.
     g.buzz(1);
-    const judge = (fields: boolean[]) => send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: fields.some(Boolean), fields, eventId: g.state().eventId });
-    judge([true, false, true]);
-    expect(g.lastError(g.host)).toMatchObject({ detail: "fields_mismatch" });
-    // No 最後衝刺 blessing on top, so the sum is the plain hit reward.
-    g.room.game = { ...g.room.game!, teams: g.room.game!.teams.map((t) => ({ ...t, boon: undefined })) };
-    const before = g.room.game!.teams[1].reward;
-    judge([true, false]);
+    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "buzz_out" });
+    g.answer(0, [true, true, false]);
+    g.answer(2, [false, false, false]);
+    // Everyone out: round 2, every team buzzes again.
+    expect(g.state()).toMatchObject({ reveal: null, view: { bossHp: 5, buzz: { out: [], second: true } } });
+    g.answer(1, [false, false, false]);
+    g.answer(2, [true, false, false]);
+    g.answer(0, [false, false, false]);
+    // Team 0's round-1 answer had the most right fields: 2 hearts, ⅔ of the 10-point hit; nobody else scores.
     const s = g.state();
-    // One right field hits for 1 HP (D2); the 10-point hit reward × ½ is 5.
-    expect(s.view.bossHp).toBe(1);
-    expect(g.room.game!.teams[1].reward - before).toBe(5);
-    expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: { teamId: IDS[1], marks: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] } });
-    // A partial answer still earns the category pick (F6).
-    expect(s.view.buzz).toMatchObject({ picker: IDS[1] });
+    expect(s.view.bossHp).toBe(3);
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([7, 0, 0]);
+    expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a／作 b-a", scored: { teamId: IDS[0] }, fields: { teamId: IDS[0], marks: [{ right: true }, { right: true }, { right: false }] } });
+    expect(s.view.buzz).toMatchObject({ picker: IDS[0] });
+  });
+
+  it("an all-right answer after part-right ones is a plain full hit; the part-right team gets nothing (#369)", () => {
+    const g = fieldGame(fielded3, 5);
+    const before = g.rewards();
+    g.answer(1, [true, true, false]);
+    g.answer(2, [true, true, true]);
+    expect(g.state()).toMatchObject({ view: { bossHp: 2 }, reveal: { scored: { teamId: IDS[2] } } });
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 0, 10]);
+  });
+
+  it("the best part-right team went offline: the best one still online scores (#369)", () => {
+    const g = fieldGame(fielded3, 5);
+    g.answer(1, [true, false, false]);
+    g.answer(0, [true, true, false]);
+    g.answer(2, [false, false, false]);
+    g.answer(1, [false, false, false]);
+    g.room.onClose(g.phones[0]);
+    g.answer(2, [false, false, false]);
+    expect(g.state()).toMatchObject({ view: { bossHp: 4 }, reveal: { fields: { teamId: IDS[1] } } });
+  });
+
+  it("a tie on right fields goes to the team judged first (#369)", () => {
+    const g = fieldGame(fielded, 5);
+    const before = g.rewards();
+    g.answer(1, [true, false]);
+    g.answer(0, [false, true]);
+    g.answer(2, [false, false]);
+    for (const i of [0, 2, 1]) g.answer(i, [false, false]);
+    expect(g.state()).toMatchObject({ view: { bossHp: 4 }, reveal: { fields: { teamId: IDS[1] } } });
+    expect(g.rewards().map((r, i) => r - before[i])).toEqual([0, 5, 0]);
+  });
+
+  it("two rounds with no field right anywhere reopen the song, as an all-wrong buzz does (#369)", () => {
+    const g = fieldGame(fielded, 5);
+    for (const i of [0, 1, 2, 0, 1, 2]) g.answer(i, [false, false]);
+    expect(g.state()).toMatchObject({ reveal: null, view: { bossHp: 5, buzz: { out: [], second: true } } });
   });
 
   it("every field wrong is a wrong buzz: the team is shut out (multi-field.md F6)", () => {
@@ -384,24 +438,22 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
   });
 
-  it("a partial answer that kills keeps its per-field verdicts through the 4d20 beat (multi-field.md D2, E1)", () => {
-    const g = buzzerGame(fielded);
-    g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp: 1 }, teams: g.room.game!.teams.map((t) => ({ ...t, boon: undefined })) };
-    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
-    g.buzz(1);
-    const before = g.room.game!.teams[1].reward;
+  it("a settled part-right answer that kills keeps its verdicts through the 4d20 beat (#369, kill-roll.md)", () => {
+    const g = fieldGame(fielded, 1);
+    const before = g.rewards();
+    g.answer(1, [true, false]);
+    for (const i of [0, 2, 0, 2]) g.answer(i, [false, false]);
     vi.useFakeTimers();
     try {
-      send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [true, false], eventId: g.state().eventId });
-      expect(g.state().pendingRoll).toMatchObject({ kind: "kill" });
+      g.answer(1, [false, false]);
+      expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
       vi.advanceTimersByTime(10000);
     } finally {
       vi.useRealTimers();
     }
-    const s = g.state();
-    expect(s.reveal.fields.marks.map((f: { right: boolean }) => f.right)).toEqual([true, false]);
+    expect(g.state().reveal.fields).toMatchObject({ teamId: IDS[1], marks: [{ right: true }, { right: false }] });
     // Half the 10-point hit, plus the whole kill bonus (rng 0 → four 1s).
-    expect(g.room.game!.teams[1].reward - before).toBe(5 + 4);
+    expect(g.rewards()[1] - before[1]).toBe(5 + 4);
   });
 
   it("HOST_JUDGE with fields on a question without them is refused", () => {
@@ -432,8 +484,10 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: IDS[1], questionId: "b-a", eventId: g.state().eventId });
     const s = g.state();
     expect(s).toMatchObject({ reveal: null, media: { state: "paused" }, view: { bossHp: 2, buzz: { teamId: IDS[1], out: [] } } });
+    // Part right now: the team is out with its verdicts kept, not all right (#369).
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [false, true], eventId: g.state().eventId });
-    expect(g.state()).toMatchObject({ view: { bossHp: 1 }, reveal: { fields: { marks: [{ right: false }, { right: true }] } } });
+    expect(g.state()).toMatchObject({ reveal: null, view: { bossHp: 2, buzz: { out: [IDS[1]] } } });
+    expect(g.room.game!.buzz?.partials).toEqual([{ teamId: IDS[1], marks: [false, true] }]);
   });
 
   it("the last team still in drops while holding the buzz: the same song reopens, the music stays paused until ▶", async () => {

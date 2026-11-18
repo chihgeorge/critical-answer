@@ -9,6 +9,7 @@ import {
   enterNextBossPhase,
   buzzIn,
   isBuzzPhase,
+  settleBuzz,
   openBuzz,
   pickableCategories,
   pickCategory,
@@ -3545,6 +3546,23 @@ export class DungeonRoom {
       return;
     }
     try {
+      // A music question with fields in a buzzer phase (#369): only all fields right is a hit. Anything less shuts the
+      // team out with its verdicts kept, unless it ends the second round: then the best part-right answer scores.
+      const marks = q?.kind === "text" && q.fields && isBuzzPhase(this.game) ? (fields ?? q.fields.map(() => correct)) : undefined;
+      if (marks && !marks.every(Boolean)) {
+        const settled = settleBuzz(this.game, teamId, marks);
+        if (settled) {
+          const before = this.game;
+          this.game = settled.game;
+          try {
+            return this.judge(settled.teamId, questionId, true, "retry", undefined, undefined, settled.marks);
+          } catch (err) {
+            this.game = before;
+            throw err;
+          }
+        }
+        return this.withUndo(teamId, questionId, () => this.judge(teamId, questionId, false, "retry", undefined, undefined, marks));
+      }
       const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry", undefined, undefined, correct ? fields : undefined);
       if (correct) judge();
       else this.withUndo(teamId, questionId, judge);
@@ -3809,7 +3827,7 @@ export class DungeonRoom {
     const recalled = !!this.question(questionId)?.memory;
     // A correct answer on a music question with fields: the host's verdicts, or every field right (multi-field.md D2).
     const fieldQ = this.question(questionId);
-    const marks = correct && fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => true)) : undefined;
+    const marks = fieldQ?.kind === "text" && fieldQ.fields ? (fields ?? fieldQ.fields.map(() => correct)) : undefined;
     const monster = justAnswered?.pub.monster.name ?? "怪物";
     // A boss MC miss has no flee (D2=B): the host's stuck row (button or key 3) resolves it as the beat would.
     // A cleric's fill-in wait (optionIndex null) keeps its 逃跑, which rotates the question (#106 D2=A).
@@ -3822,8 +3840,8 @@ export class DungeonRoom {
         : roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, isAutoJudged(this.question(questionId)), dice)
         : roll?.kind === "answer"
-        ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length }, false, roll.value)
-        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, marks && { right: marks.filter(Boolean).length, total: marks.length });
+        ? answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length, marks }, false, roll.value)
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.value, dice, marks && { right: marks.filter(Boolean).length, total: marks.length, marks });
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
     if (!killDice) {
