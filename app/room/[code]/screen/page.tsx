@@ -1375,7 +1375,9 @@ export default function ScreenPage() {
   function speak(lines: string[], eventId: number | null = null, from = 0) {
     if (!ttsOn || !ttsSupported()) return;
     if (!ttsVoice) {
-      pendingLines.current = { lines, eventId, from };
+      // The handoff added to a narration still waiting here must not drop its earlier lines.
+      const p0 = pendingLines.current;
+      pendingLines.current = { lines, eventId, from: p0 && eventId !== null && p0.eventId === eventId ? Math.min(from, p0.from) : from };
       return;
     }
     const p = progress.current;
@@ -1582,7 +1584,7 @@ export default function ScreenPage() {
       pendingLines.current = null;
       speech.current = null;
       setVoiceAt(null);
-    } else if (!playing && !revealUp.current && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
+    } else if (!playing && !(revealUp.current && lastPhase.current === "playing") && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
       // Not on a buzz's pause: an earlier line must not be read over the team answering.
       const waiting = deferredNarration.current;
       if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
