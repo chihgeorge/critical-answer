@@ -1769,7 +1769,9 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
   const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
   const [picked, setPicked] = useState<{ questionId: string; seq: number; at: number } | null>(null);
   const at = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0;
-  const seek = (value: string) => send({ type: "HOST_MEDIA", questionId, action: "seek", at: Number(value) });
+  // Only a value the host moved since the last command: a stray tap must not seek (and clear a timing round's taps).
+  const moved = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0);
+  const seek = (value: string) => { if (moved) send({ type: "HOST_MEDIA", questionId, action: "seek", at: Number(value) }); };
   const look = (lit: boolean) => ({ minHeight: 48, background: lit ? "var(--ok)" : "var(--cream)" });
   // An Instagram embed has no player API: ▶ asks someone at the screen to click it, ⏸ and ⟲ reload it (instagram-explanations.md).
   return (

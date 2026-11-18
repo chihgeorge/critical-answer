@@ -2065,8 +2065,10 @@ export default function ScreenPage() {
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
             const added = !revealUp.current && progress.current?.eventId === msg.eventId;
             const voice = speakIt && (msg.eventId !== servedEvent.current || added);
-            if (voice && (revealUp.current || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
-            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, revealUp.current, videoPlaying.current));
+            // A finished game keeps its last reveal for good: the kill shot's line is read then, not held for a 下一題.
+            const holding = revealUp.current && lastPhase.current === "playing";
+            if (voice && (holding || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
+            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, holding, videoPlaying.current));
           }
           break;
         case "EPILOGUE":

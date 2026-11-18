@@ -4079,8 +4079,9 @@ export class DungeonRoom {
     if (action === "seek" && at !== undefined && !this.reveal && clip?.kind === "youtube") at = Math.min(Math.max(at, clip.start ?? 0), clip.end ?? at);
     // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
     // Never played (skipped before ▶): the plain ▶ starts at the clip start anyway, and either way the replay is used up.
-    if (action !== "pause" && action !== "seek" && this.tapReplay === questionId) {
-      if (this.media?.questionId === questionId) action = "restart";
+    if (action !== "pause" && this.tapReplay === questionId) {
+      // A seek picks its own point, and uses the replay up too.
+      if (action !== "seek" && this.media?.questionId === questionId) action = "restart";
       this.tapReplay = null;
     }
     const same = this.media?.questionId === questionId ? this.media : null;
