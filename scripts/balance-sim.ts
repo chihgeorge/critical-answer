@@ -207,7 +207,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       // 隱藏暴擊骰 (HIDECRIT=1, #382): the room judges a right choice with no crit die; a fill-in's answer die still rolls.
       const crit = HIDECRIT ? undefined : knows() ? potionRoll() : d20();
       // What-if under HIDECRIT: HIDEDIE=1 rolls the chef's / armed thief's answer die anyway; CHEFFIX=v gives the chef a fixed die v.
-      const die = !HIDECRIT ? undefined : HIDEDIE && answerDie() !== undefined ? d20() : CHEFFIX && t.classId === "chef" ? CHEFFIX : undefined;
+      const die = !HIDECRIT ? undefined : HIDEDIE ? answerDie() : CHEFFIX && t.classId === "chef" ? CHEFFIX : undefined;
       settle(G.answerQuestion(g, id, q, true, "retry", R, crit, undefined, undefined, false, die), true);
       continue;
     }
