@@ -18,6 +18,8 @@
 //   order with SORTFIX; the mage's first item cracks SORTHINT of the unknown ones.
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
 //   tap-clock ranks them, the closest hits, the others get its small bonus.
+// - Fill-ins outside the boss room roll a persuasion check first; the boss room rolls none (#382). HIDECRIT=1: the lobby's
+//   隱藏暴擊骰, a right multipleChoice or sort is scored with no crit die.
 // - A potion a team holds (a fortune's) goes on its next check, mage or prayer die, or the crit die of an answer it knows.
 // - A turn-based boss question's knowledge and hit pay follow its difficulty in lib (unset = 3); a song's pay does, its
 //   knowledge stays KB. BOSSD rates every phase-1 question,
@@ -29,7 +31,7 @@
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, multi-field songs, late teams, offline phones, away teams.
 // Env knobs: ROOMS TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD GUESSB GUESSOK EVENTS=0 THRESH HP1 HP2 KB MAGE_MIN
-// WAR_MIN THIEF_MIN BOSSD BUZZD BOSSTEXT, plus the 抓包與神諭 ones above (see the defaults below).
+// WAR_MIN THIEF_MIN BOSSD BUZZD BOSSTEXT HIDECRIT, plus the 抓包與神諭 ones above (see the defaults below).
 // The event bank (2026-11-18): ROOMS=1,2,2,3,4,4,5,5 TEXT=0.29 SORT=0.12 BOSSTEXT=1 BOSSD=4 HP2=20 TAP=0.07 BUZZD=2:17,3:38,4:13,5:4.
 import { registerHooks } from "node:module";
 import type * as GT from "../lib/game-state";
@@ -68,6 +70,7 @@ if (BOSSD) for (const b of boss) bossDifficulties[b] = BOSSD as GT.Difficulty;
 let songAt = 0;
 for (const [d, n] of (process.env.BUZZD ?? "").split(",").filter(Boolean).map((x) => x.split(":").map(Number)))
   for (let j = 0; j < n && songAt < songs.length; j++) bossDifficulties[songs[songAt++]] = d as GT.Difficulty;
+const HIDECRIT = process.env.HIDECRIT === "1";
 const AC = process.env.AC === "1", ORACLEP = env("ORACLEP", 1), ORACLE_MIN = env("ORACLE_MIN", 3), AIOK = env("AIOK", 0.9);
 const CHEATBOSS = process.env.CHEATBOSS !== "0", CHEATERS = env("CHEATERS", 0), CHEAT = env("CHEAT", 0.5), SPOT = env("SPOT", 0.3), FALSE = env("FALSE", 0);
 // CATCH_PAY is a const in lib; the sim overrides it in place for a sweep.
@@ -141,7 +144,8 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // A fill-in's answer die: rolled for a chef or an armed thief (never with a potion).
     const answerDie = () => (team().classId === "chef" || team().sneakArmed ? d20() : undefined);
     const rightText = () => settle(G.answerQuestion(g, id, q, true, "retry", R, undefined, undefined, undefined, false, answerDie()), true);
-    if (text && !g.checks?.[G.checkKey(q, id)]) {
+    // The boss room rolls no persuasion check (#382; the room refuses one there, lib does not).
+    if (text && !inBoss && !g.checks?.[G.checkKey(q, id)]) {
       const v = potionRoll();
       g = G.recordCheck(g, id, q, v, "ab");
       if (v === 20) { rightText(); continue; }
@@ -187,7 +191,8 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     if (knows() || (!text && R() < 1 / (opts - gone().length))) {
       // Roll first: potionRoll spends the potion on g, and the call must see that g.
       if (text) { rightText(); continue; }
-      const crit = knows() ? potionRoll() : d20();
+      // 隱藏暴擊骰 (HIDECRIT=1, #382): the room judges a right choice with no crit die; a fill-in's answer die still rolls.
+      const crit = HIDECRIT ? undefined : knows() ? potionRoll() : d20();
       settle(G.answerQuestion(g, id, q, true, "retry", R, crit), true);
       continue;
     }
