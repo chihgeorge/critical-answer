@@ -111,6 +111,21 @@ export const CHECK_DC = [8, 10, 12, 14, 16] as const;
 /** A boss question the bank gives no difficulty. */
 export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 5;
 
+/** What hitting the boss pays per question difficulty 1–5 (issue #371). */
+export const BOSS_HIT_REWARDS = [5, 10, 15, 20, 25] as const;
+
+/** A boss question's difficulty: the bank's (bossDifficulties), or DEFAULT_BOSS_DIFFICULTY. */
+export function bossQuestionDifficulty(game: GameState, questionId: string | null | undefined): Difficulty {
+  // Own keys only (an id like "constructor" must not read Object.prototype); a damaged value falls back to the default.
+  const d = questionId && game.bossDifficulties && Object.hasOwn(game.bossDifficulties, questionId) ? game.bossDifficulties[questionId] : DEFAULT_BOSS_DIFFICULTY;
+  return BOSS_HIT_REWARDS[d - 1] === undefined ? DEFAULT_BOSS_DIFFICULTY : d;
+}
+
+/** What one hit on the boss's current question pays (BOSS_HIT_REWARDS by its difficulty). */
+export function bossHitReward(game: GameState): number {
+  return BOSS_HIT_REWARDS[bossQuestionDifficulty(game, game.boss.currentQuestionId) - 1];
+}
+
 /** One team's persuasion check on one question (dnd design R6): `hint` is the answer's first letter or number,
  * given on a pass that is not a natural 20 (that one wins outright) and only when the answer is long enough (R8). */
 export interface CheckRecord {
@@ -1380,7 +1395,8 @@ export function answerQuestion(
       // The 4d20 is not raised by a crit (R4).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
       const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
-      const hit = sneakPay(baseOf(boss.hitReward)) + critBonus(boss.hitReward);
+      const hitReward = bossHitReward(game);
+      const hit = sneakPay(baseOf(hitReward)) + critBonus(hitReward);
       const gain = withChef(fields ? Math.round((hit * fields.right) / fields.total) : hit, killBonus ?? 0);
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
@@ -1528,7 +1544,7 @@ export function answerQuestion(
 
   // A warrior's 1 takes the question's whole reward (class dice): the room's, or the boss's hit; never below 0.
   if (!correct && warriorDie === 1) {
-    const base = inBoss ? boss.hitReward : game.rooms[team.roomIndex].reward;
+    const base = inBoss ? bossHitReward(game) : game.rooms[team.roomIndex].reward;
     const penalty = Math.min(base, getTeam(nextGame, teamId).reward);
     if (penalty > 0) {
       nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ reward: t.reward - penalty })) };
@@ -1659,9 +1675,7 @@ export function checkTarget(game: GameState, teamId: string, questionId: string)
   const team = getTeam(game, teamId);
   const bonus = CHECK_BONUS[team.classId ?? "none"];
   if (isInBossPhase(game, teamId)) {
-    // Own keys only (an id like "constructor" must not read Object.prototype); a damaged value falls back to the default.
-    const d = game.bossDifficulties && Object.hasOwn(game.bossDifficulties, questionId) ? game.bossDifficulties[questionId] : DEFAULT_BOSS_DIFFICULTY;
-    return { bonus, dc: CHECK_DC[d - 1] ?? CHECK_DC[DEFAULT_BOSS_DIFFICULTY - 1] };
+    return { bonus, dc: CHECK_DC[bossQuestionDifficulty(game, questionId) - 1] };
   }
   const difficulty = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
   return { bonus, dc: CHECK_DC[difficulty - 1] };
@@ -1933,11 +1947,11 @@ export function hostSetScore(game: GameState, teamId: string, score: number): Ga
 }
 
 /** N for the ledger, from `prev` (the game before the judgment): a correct outcome's whole gain; for a wrong one, what a
- * plain correct answer there gives (room reward or the boss's hitReward). */
+ * plain correct answer there gives (room reward or the boss's hit, bossHitReward). */
 export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerOutcome): number {
   if (outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit") return outcome.reward;
   const t = getTeam(prev, teamId);
-  return t.inBoss ? prev.boss.hitReward : (prev.rooms[t.roomIndex]?.reward ?? 0);
+  return t.inBoss ? bossHitReward(prev) : (prev.rooms[t.roomIndex]?.reward ?? 0);
 }
 
 /** Appends one applied judgment to the ledger (the room calls this once per judgment, never for a 🚨 catch). `warrior`:
@@ -2276,6 +2290,11 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
   }));
   const moved = { ...game, teams, usedQuestionIds: dealt.used, round, lastTurnIndex: order, currentTurnIndex: order, prayerTurn: undefined };
   return { game: advanceTurn(splitShared(moved, rng)), result };
+}
+
+/** The chest's feast (openEvent) served `dish`, drawn by the room from the catalog: it goes on the team's menu too (issue #371). */
+export function serveFeast(game: GameState, teamId: string, dish: string): GameState {
+  return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ ...ate(t, dish) })) };
 }
 
 /** The team's dishes with `dish` eaten, or nothing when the monster has none. */

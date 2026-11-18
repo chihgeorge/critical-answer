@@ -245,11 +245,15 @@ describe("叉路 in the room", () => {
     let calls = 0;
     const s = setup({ rng: () => (calls++, values.shift() ?? 0) });
     toChoosing(s);
+    const ate = s.room.game!.teams[0].dishes ?? [];
     choose(s, "mystery");
     expect(s.room.game!.teams[0].events).toEqual(["feast"]);
     // The dish is in the held outcome already, before the beat ends.
-    expect((s.room as unknown as { forkBeat: { reveal?: { dish?: unknown } } }).forkBeat.reveal?.dish).toBeDefined();
+    const dish = (s.room as unknown as { forkBeat: { reveal?: { dish?: { name: string } } } }).forkBeat.reveal?.dish;
+    expect(dish).toBeDefined();
     expect(calls).toBeGreaterThan(0);
+    // ...and on the team's menu, for the podium's 菜單 (issue #371).
+    expect(s.room.game!.teams[0].dishes).toEqual([...ate, dish!.name]);
   });
 
   it("the clock runs out: timeout takes ⚔️ with a ⏳ beat; a stale timer after a send to the boss does nothing", async () => {

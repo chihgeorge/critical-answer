@@ -60,7 +60,7 @@ const legacyKey = (id: string) => (id === DEFAULT_BANK_ID ? "legacyBank" : `lega
 export const BLANK_BANK: Bank = {
   pools: { 1: [{ kind: "text", id: "r0-q1", content: { kind: "text", value: "範例題：1 + 1 = ?" }, answer: "2" }], 2: [], 3: [], 4: [], 5: [] },
   rooms: [{ monster: "slime-soft", difficulty: 1, reward: 10 }],
-  boss: { monster: "dragon", hitReward: 10, phases: [{ name: "", rule: "", maxHp: 10, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "範例魔王題：2 + 2 = ?" }, answer: "4" }] }] },
+  boss: { monster: "dragon", hitReward: 10, phases: [{ name: "", rule: "", maxHp: 8, questions: [{ kind: "text", id: "b-q1", content: { kind: "text", value: "範例魔王題：2 + 2 = ?" }, answer: "4" }] }] },
 };
 
 export interface BankEntry {
