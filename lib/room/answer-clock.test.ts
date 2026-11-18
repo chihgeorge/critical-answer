@@ -6,7 +6,7 @@ import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { nextAnswerClock } from "../answer-clock";
-import { SERVE_HOLD_MS, parseClientMessage } from "../protocol";
+import { INTRO_PAGES, SERVE_HOLD_MS, parseClientMessage } from "../protocol";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
 const [A, B] = IDS;
@@ -200,7 +200,7 @@ describe("每題作答倒數 in the room", () => {
     const g = started({ answerSeconds: 45, intro: true, initiative: true });
     expect(g.state().intro).toBeDefined();
     expect(g.state().answerClock).toBeUndefined();
-    for (let page = 2; page <= 5; page++) send(g.room, g.host, { type: "HOST_INTRO", page });
+    for (let page = 2; page <= INTRO_PAGES + 1; page++) send(g.room, g.host, { type: "HOST_INTRO", page });
     expect(g.state().initiative).toBeDefined();
     expect(g.state().answerClock).toBeUndefined();
     vi.advanceTimersByTime(10000);

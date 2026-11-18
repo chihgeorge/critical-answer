@@ -26,7 +26,7 @@
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
 import { rankTeams, type TieRoll } from "./podium";
-import { MONSTERS, monsterById } from "./monster-catalog";
+import { MONSTERS, monsterById, type CatalogMonster } from "./monster-catalog";
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
@@ -2636,6 +2636,8 @@ export interface SpectatorView {
   bossThreshold?: number;
   bossHp: number;
   bossMaxHp: number;
+  /** This game's boss as the map strip draws it (the room's bossLook: drawn, or the bank's). Absent from an older server. */
+  bossLook?: { sprite: CatalogMonster["sprite"]; hue: number };
   /** The boss phase being fought, from 1. Only phases already reached: never the total (boss-phases.md). */
   bossPhase: number;
   bossCurrentQuestionId: string;

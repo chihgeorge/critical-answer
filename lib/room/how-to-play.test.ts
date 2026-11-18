@@ -1,11 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// The room side of the how-to-play intro (docs/designs/how-to-play.md, eng D2–D5): four pages the host
-// turns one at a time, with the first question, the start cue and the start narration held until page 5.
+// The room side of the how-to-play intro (docs/designs/how-to-play.md, eng D2–D5): INTRO_PAGES pages the host
+// turns one at a time, with the first question, the start cue and the start narration held until the page after the last.
 import { describe, it, expect, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import { SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
+import { INTRO_PAGES } from "../protocol";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const TOKEN = "host-token-0123456789abcdef";
@@ -86,13 +87,13 @@ describe("how-to-play intro in the room", () => {
     expect(g.state().intro).toEqual({ page: 1 });
   });
 
-  it("page 5 ends the intro and only then deals the first question with the start cue and narration (D3)", async () => {
+  it("the page after the last ends the intro and only then deals the first question with the start cue and narration (D3)", async () => {
     const g = lobby();
     g.start({ intro: true });
-    for (const n of [2, 3, 4]) g.page(n);
+    for (let n = 2; n <= INTRO_PAGES; n++) g.page(n);
     await tick();
     expect(g.narrations()).toHaveLength(0);
-    g.page(5);
+    g.page(INTRO_PAGES + 1);
     await tick();
     expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.state().intro).toBeUndefined();
@@ -109,15 +110,15 @@ describe("how-to-play intro in the room", () => {
     expect(g.state().intro).toEqual({ page: 1 });
   });
 
-  it("on page 4: back one works, and a double-tapped page 5 starts the game once", async () => {
+  it("on the last page: back one works, and a double-tapped page after it starts the game once", async () => {
     const g = lobby();
     g.start({ intro: true });
-    for (const n of [2, 3, 4]) g.page(n);
-    g.page(3);
-    expect(g.state().intro).toEqual({ page: 3 });
-    g.page(4);
-    g.page(5);
-    g.page(5); // double tap: the intro is over
+    for (let n = 2; n <= INTRO_PAGES; n++) g.page(n);
+    g.page(INTRO_PAGES - 1);
+    expect(g.state().intro).toEqual({ page: INTRO_PAGES - 1 });
+    g.page(INTRO_PAGES);
+    g.page(INTRO_PAGES + 1);
+    g.page(INTRO_PAGES + 1); // double tap: the intro is over
     await tick();
     expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.narrations()).toHaveLength(1);
@@ -132,10 +133,10 @@ describe("how-to-play intro in the room", () => {
     expect(g.state().question).not.toBeNull();
   });
 
-  it("結束冒險 on page 4 drops the intro", () => {
+  it("結束冒險 on the last page drops the intro", () => {
     const g = lobby();
     g.start({ intro: true });
-    for (const n of [2, 3, 4]) g.page(n);
+    for (let n = 2; n <= INTRO_PAGES; n++) g.page(n);
     send(g.room, g.host, { type: "HOST_END_GAME" });
     expect(g.state()).toMatchObject({ phase: "finished" });
     expect(g.state().intro).toBeUndefined();
@@ -198,5 +199,17 @@ describe("how-to-play intro in the room", () => {
     delete old.intro;
     storage.data.set(SNAPSHOT_KEY, old);
     expect((await restored()).intro).toBeUndefined();
+  });
+
+  // Value: protects=the map strip's boss is this game's boss, drawn or the bank's (#367); fails_when=the view sends no
+  // bossLook, or the bank's boss when the game drew another; seam=none; no_claim=how the sprite looks on the strip.
+  it("the view carries this game's boss for the map strip", async () => {
+    const g = lobby();
+    g.start({});
+    await tick();
+    expect(g.state().view.bossLook).toEqual({ sprite: "dragon", hue: 0 });
+    const room = g.room as unknown as { game: object; snapshot(): { view: { bossLook?: unknown } } };
+    room.game = { ...room.game, bossMonsterId: "kraken" };
+    expect(room.snapshot().view.bossLook).toEqual({ sprite: "kraken", hue: 0 });
   });
 });

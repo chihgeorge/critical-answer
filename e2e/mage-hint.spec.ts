@@ -49,7 +49,7 @@ test.describe("a fill-in answer with a first character", () => {
     await host.getByRole("button", { name: "送王房" }).click();
     await host.getByRole("button", { name: "確定送？" }).click();
     await host.getByRole("button", { name: "關閉" }).click();
-    await expect(screen.getByTestId("screen-check-dc")).toContainText("說服 DC 16");
+    await expect(screen.getByTestId("screen-check-dc")).toContainText("說服擲骰檢定 16");
     await rollCheck(team);
     await expect(team.getByTestId("check-result")).toHaveText("🗣️ 沒過，直接答吧");
     await team.getByRole("button", { name: /施法：看答案提示/ }).click();

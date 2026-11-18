@@ -6,6 +6,7 @@ import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS } from "../initiative";
+import { INTRO_PAGES } from "../protocol";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
 const [A, B, C] = IDS;
@@ -147,7 +148,7 @@ describe("擲先攻 in the room", () => {
       expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     };
     refused();
-    [4, 18, 11].forEach((face, i) => g.roll(i, face));
+    [4, 18, 11].forEach((face, i) => g.roll(i, face)); // pregate-literal: INTRO_PAGES=4 die faces, not intro pages
     const eventId = g.state().eventId;
     refused();
     expect(g.state().eventId).toBe(eventId);
@@ -166,9 +167,9 @@ describe("擲先攻 in the room", () => {
     expect(g.state().initiative.rolls[B]).toBe(1);
   });
 
-  it("follows the intro: page 5 starts the rolling, not the first question", () => {
+  it("follows the intro: the page after the last starts the rolling, not the first question", () => {
     const g = started({ initiative: true, intro: true });
-    for (const page of [2, 3, 4, 5]) send(g.room, g.host, { type: "HOST_INTRO", page });
+    for (let page = 2; page <= INTRO_PAGES + 1; page++) send(g.room, g.host, { type: "HOST_INTRO", page });
     expect(g.state()).toMatchObject({ initiative: { rolls: {} }, question: null });
     expect(g.state().intro).toBeUndefined();
   });
@@ -308,7 +309,7 @@ describe("擲先攻 across a restart", () => {
     const host = makeConn("host2");
     second.room.onConnect(host);
     send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
-    for (const page of [2, 3, 4, 5]) send(second.room, host, { type: "HOST_INTRO", page });
+    for (let page = 2; page <= INTRO_PAGES + 1; page++) send(second.room, host, { type: "HOST_INTRO", page });
     expect((second.room as any).initiative).toEqual({ rolls: {} });
   });
 });
