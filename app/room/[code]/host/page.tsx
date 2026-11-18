@@ -1295,6 +1295,9 @@ export default function HostPage() {
                   )}
                   {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}
                   {buzz.out.length > 0 && <div className="text-[14px]">已鎖住：{buzz.out.map(teamName).join("、")}</div>}
+                  {/* A music question with fields (#369): round 2 and the part-right answers kept for its end. */}
+                  {buzz.second && <div data-testid="host-buzz-second" className="p-1 text-[14px]" style={{ background: "var(--warn)" }}>第二輪（最後一輪）：再沒人全對，就由答對最多欄的隊伍得分（同分算先答的）</div>}
+                  {!!buzz.partials?.length && <div className="text-[14px]">部分答對：{buzz.partials.map((p) => `${teamName(p.teamId)} ${p.marks.filter(Boolean).length}/${p.marks.length}`).join("、")}</div>}
                   {!buzz.teamId && (
                     <PixelButton className="!m-0 min-h-[44px] text-[15px]" disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_SKIP", questionId: buzz.questionId })}>
                       沒人答對，換下一題
