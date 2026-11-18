@@ -1027,7 +1027,8 @@ describe("restoring after a restart", () => {
     await new Promise((r) => setTimeout(r, 30));
     expect((first.room as any).bossEntryBefore).not.toBeNull();
     const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
-    expect(saved.bossEntry).toMatchObject({ teamId: T1, eventId: saved.lastNarration.eventId });
+    // Two teams and a threshold of 1: this entry also starts 最後衝刺, saved with it.
+    expect(saved.bossEntry).toMatchObject({ teamId: T1, eventId: saved.lastNarration.eventId, sprint: true });
     const lines = async (patch?: (s: any) => void) => (await restoredFrom(storage, saved, patch)).lastNarration.lines.join(" ");
     expect(saved.lastNarration.lines.join(" ")).not.toContain("吃飽後走進首領房");
     expect(await lines()).toContain("甲隊吃飽後走進首領房");
