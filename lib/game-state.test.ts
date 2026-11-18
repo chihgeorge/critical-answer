@@ -482,7 +482,7 @@ describe("boss combat", () => {
     if (outcome.type === "correct-boss-hit") {
       expect(outcome.killBonus).toBeGreaterThanOrEqual(4);
       expect(outcome.killBonus).toBeLessThanOrEqual(80);
-      expect(outcome.reward).toBe(25 + outcome.killBonus!); // an unrated boss question is difficulty 5: 25
+      expect(outcome.reward).toBe(15 + outcome.killBonus!); // an unrated boss question is difficulty 3: 15
       expect(g2.teams.find((t) => t.id === "T0")!.reward).toBe(outcome.reward);
     }
     expect(g2.teams.find((t) => t.id === "T1")!.reward).toBe(0); // non-participating team gets nothing from the kill
@@ -494,26 +494,26 @@ describe("boss combat", () => {
   it("a music question's right fields each hit for 1 HP; its reward is scaled by right / total, rounded half up", () => {
     const game = makeGame({ bossThreshold: 0, bossMaxHp: 5, teamCount: 1 });
     const hit = (right: number, total: number, crit?: number) => answerQuestion(game, "T0", game.boss.currentQuestionId, true, "retry", first, crit, undefined, { right, total }).outcome;
-    // An unrated boss question is difficulty 5: a 25-point hit.
-    expect(hit(1, 2)).toMatchObject({ bossHpRemaining: 4, reward: 13 });
-    expect(hit(2, 2)).toMatchObject({ bossHpRemaining: 3, reward: 25 });
-    expect(hit(1, 3)).toMatchObject({ bossHpRemaining: 4, reward: 8 });
-    expect(hit(2, 3)).toMatchObject({ bossHpRemaining: 3, reward: 17 });
-    expect(hit(3, 3)).toMatchObject({ bossHpRemaining: 2, reward: 25 });
-    expect(hit(1, 3, 20)).toMatchObject({ bossHpRemaining: 3, reward: 13 }); // a crit adds its 1 HP; (25 + 13) × ⅓ → 13
-    // The killing blow's 4d20 is not scaled (E1): 1/2 of the 25-point hit plus the whole kill bonus.
+    // An unrated boss question is difficulty 3: a 15-point hit.
+    expect(hit(1, 2)).toMatchObject({ bossHpRemaining: 4, reward: 8 });
+    expect(hit(2, 2)).toMatchObject({ bossHpRemaining: 3, reward: 15 });
+    expect(hit(1, 3)).toMatchObject({ bossHpRemaining: 4, reward: 5 });
+    expect(hit(2, 3)).toMatchObject({ bossHpRemaining: 3, reward: 10 });
+    expect(hit(3, 3)).toMatchObject({ bossHpRemaining: 2, reward: 15 });
+    expect(hit(1, 3, 20)).toMatchObject({ bossHpRemaining: 3, reward: 8 }); // a crit adds its 1 HP; (15 + 8) × ⅓ → 8
+    // The killing blow's 4d20 is not scaled (E1): 1/2 of the 15-point hit plus the whole kill bonus.
     const low = { ...game, boss: { ...game.boss, hp: 1 } };
     const kill = answerQuestion(low, "T0", low.boss.currentQuestionId, true, "retry", first, undefined, [5, 5, 5, 5], { right: 1, total: 2 }).outcome;
-    expect(kill).toMatchObject({ bossKilled: true, killBonus: 20, reward: 33 });
+    expect(kill).toMatchObject({ bossKilled: true, killBonus: 20, reward: 28 });
   });
 
   // Value: protects=issue #371: boss questions come easiest first and a hit pays 5/10/15/20/25 by difficulty, an unrated
-  // one as the default 5; fails_when=a hit pays the flat bank hitReward, or an unrated question pays less than 25.
-  it("boss hits pay by the question's difficulty, easiest first: 5, then 15, then an unrated question's 25", () => {
+  // one as the default 3 (owner, 2026-11-18); fails_when=a hit pays the flat bank hitReward, or an unrated question is not 15.
+  it("boss hits pay by the question's difficulty, easiest first: 5, then an unrated question's 15, then 25", () => {
     expect(BOSS_HIT_REWARDS).toEqual([5, 10, 15, 20, 25]);
-    let g = createGame([{ id: "T0", name: "A" }], ...deck(1), ["boss-u", "boss-3", "boss-1"], { bossThreshold: 0 }, 5, first, 10, {}, [], undefined, [], { "boss-1": 1, "boss-3": 3 });
+    let g = createGame([{ id: "T0", name: "A" }], ...deck(1), ["boss-5", "boss-u", "boss-1"], { bossThreshold: 0 }, 5, first, 10, {}, [], undefined, [], { "boss-1": 1, "boss-5": 5 });
     const paid: number[] = [];
-    for (const id of ["boss-1", "boss-3", "boss-u"]) {
+    for (const id of ["boss-1", "boss-u", "boss-5"]) {
       expect(g.boss.currentQuestionId).toBe(id);
       const r = answerQuestion(g, "T0", id, true, "retry", first);
       if (r.outcome.type === "correct-boss-hit") paid.push(r.outcome.reward);
@@ -594,13 +594,13 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
   it("each boss hit pays the hit reward; the final blow adds the kill bonus", () => {
     let g = twoTeams(0, 2);
     const hit = answer(g, "T0");
-    // Unrated boss questions are difficulty 5: 25 a hit.
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: false, reward: 25 });
+    // Unrated boss questions are difficulty 3: 15 a hit.
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: false, reward: 15 });
     expect(hit.outcome).not.toHaveProperty("killBonus");
     g = hit.game;
     const kill = answer(g, "T1");
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 4, reward: 29 }); // first() rolls 1 on each d20
-    expect(getTeam(kill.game, "T1").reward).toBe(29);
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 4, reward: 19 }); // first() rolls 1 on each d20
+    expect(getTeam(kill.game, "T1").reward).toBe(19);
   });
 
   it("the winner is the highest reward total, even when another team landed the final blow", () => {
@@ -608,7 +608,7 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
     g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 100 } : t)) };
     const { game } = answer(g, "T0");
     expect(game.boss.killedByTeamId).toBe("T0");
-    expect(getTeam(game, "T0").reward).toBe(29);
+    expect(getTeam(game, "T0").reward).toBe(19);
     expect(game.winners).toEqual(["T1"]);
     expect(getSpectatorView(game).bossKilledBy).toBe("T0");
     expect(getSpectatorView(g).bossKilledBy).toBeNull();
@@ -618,7 +618,7 @@ describe("scoring and winners (docs/designs/scoring-and-score-pools.md)", () => 
   // fails_when=finishGame shares the win again or drops the dice; why_new=the rule replaced 並列第一; seam=none; no_claim=none beyond protects
   it("teams tied on reward roll a d20: the higher die wins alone, and the dice are kept", () => {
     let g = twoTeams(0, 1);
-    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 29 } : t)) };
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, reward: 19 } : t)) };
     // The kill's 4d20 land on 1, then the tie-break: T0 5, T1 18.
     const rolls = [0, 0, 0, 0, 4 / 20, 17 / 20];
     const { game } = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", () => rolls.shift() ?? 0);
@@ -1401,7 +1401,7 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
 
   it("a hit that empties an earlier phase only marks it cleared: no kill, no bonus, same question, game goes on", () => {
     const { game, outcome } = hit(phased(1));
-    expect(outcome).toEqual({ type: "correct-boss-hit", teamId: "T0", bossHpRemaining: 0, bossKilled: false, reward: 25 });
+    expect(outcome).toEqual({ type: "correct-boss-hit", teamId: "T0", bossHpRemaining: 0, bossKilled: false, reward: 15 });
     expect(game.phase).toBe("playing");
     expect(game.boss).toMatchObject({ hp: 0, phaseIndex: 0, phasePending: "cleared", currentQuestionId: "p1-a", killedByTeamId: null });
     expect(getSpectatorView(game).bossPhase).toBe(1); // nothing about phase 2 before the card
@@ -1517,7 +1517,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
   it("in the boss room WARRIOR_TARGET+ is a hit; a miss with nothing eliminated keeps the question", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 3, teamCount: 1 });
     const hit = warriorRoll(g, "T0", g.boss.currentQuestionId, 12, first);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 2, reward: 20 }); // 80% of 25
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 2, reward: 12 }); // 80% of 15
     const q = hit.game.boss.currentQuestionId;
     const miss = warriorRoll(hit.game, "T0", q, 2, first);
     expect(miss.outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
@@ -1628,14 +1628,14 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   it("sneak attack in the boss room takes 2 HP and gives 1.5× the hit reward and the kill bonus", () => {
     const g = armSneak(classGame(["thief"], 0, 3), "T0");
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first);
-    // An unrated boss question hits for 25: ×1.5 = 37.5 rounds to 38.
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 38 });
+    // An unrated boss question hits for 15: ×1.5 = 22.5 rounds to 23.
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 23 });
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
     // rollBossKillDice(first) sums to 4 (4d20 all ones), ×1.5 = 6; the bar never goes below 0.
-    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 6, reward: 44 });
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 6, reward: 29 });
     // The room's shown dice get the same 1.5× (kill-roll.md): 43 × 1.5 = 64.5 rounds to 65.
     const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 103 });
+    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 88 });
   });
 
   // Value: protects=the chef reads the answer die (class dice): ×0.1 / ×0.8 / ×1.3 / ×2 of the whole gain, rounded half up;
@@ -1663,11 +1663,11 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
   it("the chef's share goes on the boss hit but not on the kill's 4d20", () => {
     const g = classGame(["chef"], 0, 2);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 12);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 33, chefBonus: 8 });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 20, chefBonus: 5 });
     const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, 12, [9, 14, 3, 17]);
-    // An unrated boss question's 25 × 1.3 = 32.5 → 33, plus the 4d20's 43 as rolled.
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 76, chefBonus: 8 });
-    expect(kill.game.teams[0].reward).toBe(109);
+    // An unrated boss question's 15 × 1.3 = 19.5 → 20, plus the 4d20's 43 as rolled.
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 63, chefBonus: 5 });
+    expect(kill.game.teams[0].reward).toBe(83);
   });
 
   it("the chef's 20 doubles a crit's whole gain, and a wrong answer pays it nothing", () => {
@@ -2160,16 +2160,16 @@ describe("the crit die (dnd design R4, R5)", () => {
   it("a boss 20 takes one more heart and adds half the hit reward; with a sneak it takes 3", () => {
     const g = critGame([undefined], 0, 5);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 38, roll: { kind: "crit", value: 20 } }); // an unrated boss question: 25 + 13
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 23, roll: { kind: "crit", value: 20 } }); // an unrated boss question: 15 + 8
     const sneaky = armSneak(critGame(["thief"], 0, 5), "T0");
-    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 51 }); // 25 × 1.5 → 38, + 13
+    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 31 }); // 15 × 1.5 → 23, + 8
   });
 
   it("a 20 on the boss's last heart kills it, and the 4d20 is not raised by the crit", () => {
     const g = critGame([undefined], 0, 1);
     const kill = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    // rollBossKillDice(first) sums to 4 (4d20 all ones): 25 + 13 + 4.
-    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 42 });
+    // rollBossKillDice(first) sums to 4 (4d20 all ones): 15 + 8 + 4.
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 27 });
     expect(kill.game.phase).toBe("finished");
   });
 
@@ -2289,14 +2289,14 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(checkTarget(g, "T1", g.teams[1].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.warrior, dc: CHECK_DC[0] });
     expect(checkTarget(g, "T2", g.teams[2].currentQuestionId)).toEqual({ bonus: CHECK_BONUS.none, dc: CHECK_DC[0] });
     const boss = checkGame(["mage"], 0);
-    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: CHECK_DC[4] });
+    expect(checkTarget(boss, "T0", q0(boss))).toEqual({ bonus: CHECK_BONUS.mage, dc: CHECK_DC[2] });
     // A boss question the bank marked easier rolls against its own difficulty's DC.
     expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }, "T0", q0(boss)).dc).toBe(CHECK_DC[1]);
     // The big screen's DC chip reads the boss's question, not the team's stale room question.
     expect(getSpectatorView({ ...boss, bossDifficulties: { [q0(boss)]: 2 } }).teams[0].checkTarget?.dc).toBe(CHECK_DC[1]);
-    // Only own keys count, and a damaged value falls back to 16.
-    expect(checkTarget({ ...boss, bossDifficulties: {} }, "T0", "constructor").dc).toBe(CHECK_DC[4]);
-    expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 9 as Difficulty } }, "T0", q0(boss)).dc).toBe(CHECK_DC[4]);
+    // Only own keys count, and a damaged value falls back to the default 3 (DC 12).
+    expect(checkTarget({ ...boss, bossDifficulties: {} }, "T0", "constructor").dc).toBe(CHECK_DC[2]);
+    expect(checkTarget({ ...boss, bossDifficulties: { [q0(boss)]: 9 as Difficulty } }, "T0", q0(boss)).dc).toBe(CHECK_DC[2]);
     expect(getSpectatorView(g).teams[0].checkTarget).toEqual({ bonus: CHECK_BONUS.thief, dc: CHECK_DC[0] });
   });
 
@@ -2310,7 +2310,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("a natural 20 passes with no hint even at the boss's DC; a natural 1 fails whatever the bonus", () => {
     const boss = checkGame(["thief"], 0);
-    expect(rec(check(boss, 20))).toEqual({ value: 20, bonus: CHECK_BONUS.thief, dc: 16, passed: true });
+    expect(rec(check(boss, 20))).toEqual({ value: 20, bonus: CHECK_BONUS.thief, dc: 12, passed: true });
     expect(rec(check(checkGame(["thief"]), 1))).toMatchObject({ value: 1, passed: false });
   });
 
@@ -2328,7 +2328,7 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     const sneaky = check(armSneak(checkGame(["thief"]), "T0"), 1);
     expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 8 });
     const boss = check(checkGame([undefined], 0), 1);
-    expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 13 }); // 25 halved
+    expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 8 }); // 15 halved
   });
 
   it("a warrior's hit after a natural-1 check is halved too (R3-7)", () => {
@@ -2460,17 +2460,17 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
     let g = buzzer();
     g = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, classId: "chef" as const } : t)) };
     const hit = judge(buzzIn(g, "T1", "b-a", true), "T1", true);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 25 }); // an unrated boss question
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 15 }); // an unrated boss question
     expect(hit.outcome).not.toHaveProperty("chefBonus");
-    // The second hit is a timing round's closest tap, and it kills: 25 + the 4d20, still no share.
+    // The second hit is a timing round's closest tap, and it kills: 15 + the 4d20, still no share.
     let t = openBuzz(hit.game, hit.game.boss.currentQuestionId, true);
     t = tapWinner(tapIn(t, "T1", t.boss.currentQuestionId, 0, 1000), "T1", {});
     const kill = answerQuestion(t, "T1", t.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 68 });
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 58 });
     expect(kill.outcome).not.toHaveProperty("chefBonus");
     // A wrong buzz's ledger N (改判) is the plain hit reward, no share either.
     const b = buzzIn(g, "T1", "b-a", true);
-    expect(judgmentPoints(b, "T1", judge(b, "T1", false).outcome)).toBe(25);
+    expect(judgmentPoints(b, "T1", judge(b, "T1", false).outcome)).toBe(15);
   });
 
   it("the buzzer phase pulls every team into the boss room, and only the view of that phase carries a buzz", () => {
@@ -2496,7 +2496,7 @@ describe("boss buzzer phase (docs/designs/boss-buzzer.md)", () => {
   it("a right buzz is a plain hit: one HP, the hit reward, a new question that needs a new buzz", () => {
     const g = buzzIn(buzzer(), "T1", "b-a", true);
     const { game, outcome } = judge(g, "T1", true);
-    expect(outcome).toMatchObject({ type: "correct-boss-hit", teamId: "T1", bossHpRemaining: 1, reward: 25 });
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", teamId: "T1", bossHpRemaining: 1, reward: 15 });
     expect(game.boss.currentQuestionId).toBe("b-b");
     // The winner may pick the next question's category (boss-music-buzzer.md M5).
     expect(game.buzz).toEqual({ questionId: "b-b", out: [], picker: "T1" });
@@ -2745,7 +2745,7 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
     const inBoss = sendToBoss(g, "T1");
     const turn = { ...inBoss, currentTurnIndex: 1 };
     const { outcome } = answerQuestion(turn, "T1", turn.boss.currentQuestionId, true, "retry", first);
-    expect(outcome).toMatchObject({ type: "correct-boss-hit", reward: 38 }); // 25 + the blessing's 13
+    expect(outcome).toMatchObject({ type: "correct-boss-hit", reward: 23 }); // 15 + the blessing's 8
   });
 
   it("does not fire on a buzzer phase's pull: a team is already in the boss room", () => {
