@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { HostPick } from "@/lib/protocol";
+import { byCategory, type HostPick } from "@/lib/protocol";
 import { Panel, PixelButton } from "@/components/pixel";
 
 /** The host picks a target's next question (HOST_QUEUE_QUESTION). The list only ever reaches the host page. */
@@ -13,6 +13,8 @@ export function QuestionPicker({
   teamName,
   onPick,
   onClose,
+  grouped,
+  first,
 }: {
   title: string;
   note: string;
@@ -22,6 +24,10 @@ export function QuestionPicker({
   teamName: (id: string) => string;
   onPick: (id: string) => void;
   onClose: () => void;
+  /** Rows under a heading per category (#370), uncategorized last. */
+  grouped?: boolean;
+  /** With `grouped`: this category's group comes first (the buzz winner's pick). */
+  first?: string;
 }) {
   const [query, setQuery] = useState("");
   const q = query.trim();
@@ -41,7 +47,10 @@ export function QuestionPicker({
           <div className="text-[13px]">{note}</div>
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="搜尋題目或答案" className="w-full border-4 border-[var(--k)] bg-white p-2 text-[16px]" />
           {shown.length === 0 && <div className="text-[14px]">沒有符合的題目</div>}
-          {shown.map((x) => {
+          {(grouped ? byCategory(shown, first) : [{ name: "", rows: shown }]).map((g) => (
+            <div key={g.name} data-testid={grouped ? "picker-group" : undefined} className="flex flex-col gap-2">
+              {grouped && <div className="mt-1 text-[16px]">{g.name}{g.name === first ? "（隊伍選的）" : ""}</div>}
+          {g.rows.map((x) => {
             const mine = x.id === current;
             const blocked = x.block && !mine;
             return (
@@ -62,6 +71,8 @@ export function QuestionPicker({
               </button>
             );
           })}
+            </div>
+          ))}
         </div>
       </Panel>
     </div>

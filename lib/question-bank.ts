@@ -115,6 +115,8 @@ export const fieldsAnswer = (fields: AnswerField[]): string => fields.map((f) =>
 export const isMusicQuestion = (q: BankQuestion): boolean =>
   q.kind === "text" && ((q.content.kind === "youtube" && q.content.audioOnly === true) || q.content.kind === "audio");
 /** A question's type as a buzzer phase's winner picks it (#321): only this name ever reaches a phone, never the content. */
+/** The buzz-pick category every timing question counts as, in a bank that uses categories (#370). */
+export const TIMING_CATEGORY = "卡點題";
 export function questionType(q: BankQuestion): string {
   if (q.kind === "timing") return "卡點";
   if (q.kind === "multipleChoice") return "選擇";

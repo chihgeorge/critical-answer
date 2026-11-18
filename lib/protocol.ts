@@ -443,7 +443,6 @@ export type ClientMessage =
   /** The buzz winner picks the category of the next song (boss-music-buzzer.md M5); one of STATE `buzzCategories`. */
   | { type: "TEAM_PICK_CATEGORY"; category: string }
   /** The buzz winner picks the type of the next question (#321); one of STATE `buzzTypes` with `left`. */
-  | { type: "TEAM_PICK_TYPE"; qtype: string }
   /** Host: the next buzzer question by type, or the question itself (#321), until buzzing opens. Ends the winner's pick. */
   | { type: "HOST_BUZZ_PICK"; qtype: string }
   | { type: "HOST_BUZZ_PICK"; questionId: string }
@@ -582,6 +581,9 @@ export type ServerMessage =
       screenDim?: true;
       /** The categories the buzz winner (`view.buzz.picker`) may pick for the next song, while it may (boss-music-buzzer.md M5). */
       buzzCategories?: string[];
+      /** #370: the next buzzer question waits, hidden (`question` null), for the winner's category or the host's pick.
+       * The host still reads it in HOST_ANSWER. */
+      pickHold?: true;
       /** The buzzer phase's question types while the next question may be picked (#321): names only, `left` false
        * when none of that type is left (greyed). The winner picks while `view.buzz.picker` is it and not `hostPicked`. */
       buzzTypes?: { type: string; left: boolean }[];
@@ -726,7 +728,22 @@ export interface HostPick {
   answer: string;
   /** Its questionType (聽歌, 卡點…, #321). Absent from older servers. */
   type?: string;
+  /** Its category for the buzz pick (a timing question's is 卡點題, #370), when the bank uses categories. */
+  category?: string;
   block?: PickBlock;
+}
+
+const NO_CATEGORY = "未分類";
+
+/** `rows` grouped by category in first-seen order, `first`'s group on top and the uncategorized last. */
+export function byCategory(rows: HostPick[], first?: string): { name: string; rows: HostPick[] }[] {
+  const groups = new Map<string, HostPick[]>();
+  for (const x of rows) {
+    const name = x.category ?? NO_CATEGORY;
+    groups.set(name, [...(groups.get(name) ?? []), x]);
+  }
+  const rank = (n: string) => (n === first ? 0 : n === NO_CATEGORY ? 2 : 1);
+  return [...groups].map(([name, rows]) => ({ name, rows })).sort((a, b) => rank(a.name) - rank(b.name));
 }
 
 export type ScreenSound = "ready" | "muted" | "none";
@@ -1100,10 +1117,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_PICK_CATEGORY": {
       const category = str(m.category, MAX_ID);
       return category ? { type: "TEAM_PICK_CATEGORY", category } : null;
-    }
-    case "TEAM_PICK_TYPE": {
-      const qtype = str(m.qtype, MAX_ID);
-      return qtype ? { type: "TEAM_PICK_TYPE", qtype } : null;
     }
     case "HOST_BUZZ_PICK": {
       const qtype = m.qtype === undefined ? null : str(m.qtype, MAX_ID);
