@@ -29,7 +29,7 @@ import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
-import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
+import { createBgmPlayer, holdBgmForBuzz, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
@@ -1478,7 +1478,7 @@ export default function ScreenPage() {
   // The music stays silent from a buzz until the host judges it, and while the host plays the song from their own
   // device (boss-music-buzzer.md M3, M4): the room must hear the answer, and the song.
   const buzzView = game?.phase === "playing" ? game.view.buzz : undefined;
-  const held = !!buzzView?.teamId || (!!game?.clipError && !!buzzView?.open);
+  const held = holdBgmForBuzz(!!game?.reveal, buzzView?.teamId, !!game?.clipError, !!buzzView?.open);
   /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): LOBBY's `calibrate` shows the card on every screen; SCREEN_CALIBRATE
    * comes to the one screen that beeps. The music and the ambience stay quiet meanwhile. */
   const [calibCard, setCalibCard] = useState(false);
