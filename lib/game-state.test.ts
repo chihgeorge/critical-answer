@@ -812,6 +812,13 @@ describe("question deck (T2)", () => {
     expect(game.teams.filter((t) => !t.inBoss).every((t) => t.currentQuestionId !== "room0-q1")).toBe(true);
   });
 
+  it("a question a hint revealed earlier stays with its team through a 重答", () => {
+    const game = createGame(seeds(1), ...deck(1), boss, cfg, 1, first);
+    const q = game.teams[0].currentQuestionId;
+    const next = answerQuestion({ ...game, revealedQuestionIds: [q] }, "T0", q, false, "retry", first).game;
+    expect(next.teams[0].currentQuestionId).toBe(q);
+  });
+
   it("refuses a late team when every room question has been revealed (#366)", () => {
     const game = createGame(seeds(2), ...deck(1, 1, 2), boss, cfg, 1, first);
     expect(() => addLateTeam({ ...game, revealedQuestionIds: game.pools.flat() }, { id: "late", name: "Late" }, first)).toThrow("late_closed");
@@ -1463,13 +1470,14 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
     expect(game.boss.phasePending).toBe("exhausted");
   });
 
-  it("the last phase out of questions repeats them, as a one-phase boss does today", () => {
+  it("the last phase out of questions finishes the game instead of repeating a revealed one (#366)", () => {
     let g = enterNextBossPhase(hit(phased(1)).game);
     g = { ...g, boss: { ...g.boss, hp: 9, maxHp: 9 } };
     g = hit(g).game;
+    expect(g.phase).toBe("playing");
     g = hit(g).game;
+    expect(g.phase).toBe("finished");
     expect(g.boss.phasePending).toBeUndefined();
-    expect(["p2-a", "p2-b"]).toContain(g.boss.currentQuestionId);
   });
 
   it("a one-phase boss has phase 1 and nothing else", () => {
@@ -3171,6 +3179,12 @@ describe("adjacent teams' monsters (#366)", () => {
       const next = g.teams.find((t) => t.id === currentTurnTeamId(g))!;
       expect(teamMonsterId(g, next)).not.toBe(monster);
     }
+  });
+
+  it("swaps nothing after a turn that faced no monster (an event room)", () => {
+    const g = monsters();
+    expect(advanceTurn(g).teams[1].swappedMonsterId).toBeDefined();
+    expect(advanceTurn(g, null).teams[1]).toEqual(g.teams[1]);
   });
 
   it("keeps a different monster and leaves a shared boss alone", () => {

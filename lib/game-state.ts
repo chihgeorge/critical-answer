@@ -1217,13 +1217,14 @@ function nextTurnIndex(game: GameState, from: number): number | null {
 }
 
 /** Advance once, applying stuns and avoiding the previous turn's room monster. */
-export function advanceTurn(game: GameState, facedMonster?: string): GameState {
+export function advanceTurn(game: GameState, facedMonster?: string | null): GameState {
   const previous = game.teams.find((t) => t.id === currentTurnTeamId(game));
   const idx = nextTurnIndex(game, 1);
   if (idx === null) return game;
   const next = landTurn({ ...game, currentTurnIndex: idx });
   const team = next.teams.find((t) => t.id === currentTurnTeamId(next));
-  if (!previous || !team || previous.id === team.id || (previous.inBoss && !facedMonster) || team.inBoss) return next;
+  // null: the previous team faced no monster (an event room).
+  if (!previous || !team || previous.id === team.id || facedMonster === null || (previous.inBoss && !facedMonster) || team.inBoss) return next;
   const lastMonster = facedMonster ?? teamMonsterId(game, previous);
   if (!lastMonster || lastMonster !== teamMonsterId(next, team)) return next;
   const monster = switchMonster(next, team, () => 0);
@@ -1349,6 +1350,7 @@ export function answerQuestion(
   };
 
   const answeringTeam = getTeam(game, teamId);
+  const revealedAtStart = game.revealedQuestionIds;
   const facedMonster = answeringTeam.inBoss ? undefined : teamMonsterId(game, answeringTeam);
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
@@ -1593,9 +1595,10 @@ export function answerQuestion(
   if ((correct || fleeChoice !== "retry") && getTeam(nextGame, teamId).oracleQ !== undefined) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ oracleQ: undefined })) };
   const left = getTeam(nextGame, teamId).wrongOn;
   if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
-  // Revealing a shared question retires it for every team, including tiny custom banks.
+  // A question this answer revealed retires for every team holding it (tiny custom banks). One a hint revealed
+  // earlier (a mage's cast) stays with its team until that team leaves it.
   for (const t of nextGame.teams) {
-    if (t.inBoss || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
+    if (t.inBoss || revealedAtStart.includes(t.currentQuestionId) || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
     const dealt = dealFor(nextGame, t, t.currentDifficulty, nextGame.revealedQuestionIds, rng);
     nextGame = { ...nextGame, usedQuestionIds: dealt.used, teams: patchTeam(nextGame.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined, oracleQ: undefined, queuedQuestionId: dealt.queuedQuestionId })) };
   }
@@ -2330,7 +2333,7 @@ export function openEvent(game: GameState, teamId: string, rng: () => number = M
   // No unseen room question is left for the next room: the team goes on to the boss, as in answerQuestion (#366).
   const placed = dealt.questionId ? moved : sendToBoss(moved, teamId, rng);
   if (!dealt.questionId) result.entersBoss = true;
-  return { game: advanceTurn(splitShared(placed, rng)), result };
+  return { game: advanceTurn(splitShared(placed, rng), null), result };
 }
 
 /** The chest's feast (openEvent) served `dish`, drawn by the room from the catalog: it goes on the team's menu too (issue #371). */

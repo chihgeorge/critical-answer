@@ -588,6 +588,8 @@ export class DungeonRoom {
    * the count going, and time spent down counts, as it does for the players watching. */
   private answerSeconds = 0;
   private answerClock: AnswerClock | null = null;
+  /** The count left when the team on turn went away: it resumes from here when a phone returns (#366). */
+  private heldClockMs: number | null = null;
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
@@ -1166,7 +1168,8 @@ export class DungeonRoom {
     this.epilogue = s.epilogue;
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? (s.epilogue && s.game?.ranking ? { lines: [], at: this.now() } : null);
-    this.podiumStep = s.podiumStep ?? -1;
+    // A save from before host-stepped awards: a held podium starts over, one already played shows its end.
+    this.podiumStep = s.podiumStep ?? (s.revealHeld ? -1 : Number.MAX_SAFE_INTEGER);
     const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
     this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
@@ -1176,7 +1179,7 @@ export class DungeonRoom {
     this.tapLatency = s.tapLatency ?? 0;
     // Ids start past any the room handed out before the restart: a HOST_STEP in flight then names no step.
     this.stepSeq = this.now();
-    this.revealHold = (s.revealHeld || s.podiumStep === undefined) && this.game?.phase === "finished" && this.game.ranking ? ++this.stepSeq : null;
+    this.revealHold = s.revealHeld && this.game?.phase === "finished" && this.game.ranking ? ++this.stepSeq : null;
     this.playedQuestionIds = s.playedQuestionIds ?? [];
     this.joinPassword = s.joinPassword;
     this.editedLines = s.editedLines;
@@ -1441,7 +1444,12 @@ export class DungeonRoom {
    * saved or sent, so it needs no hooks of its own. */
   private syncAnswerClock(): { answerClock?: { left: number | null } } {
     const want = this.answering();
-    if (want === "hold") return {};
+    if (want === "hold") {
+      if (this.answerClock && this.heldClockMs === null) this.heldClockMs = Math.max(0, this.answerClock.endsAt - this.now());
+      return {};
+    }
+    if (this.heldClockMs !== null && want && this.answerClock?.key === want.key) this.answerClock = { ...this.answerClock, endsAt: this.now() + this.heldClockMs };
+    this.heldClockMs = null;
     // A memory question waits for its media to end (memory-questions.md); after that its content is text, not a video.
     const waiting = !!want && (want.memorize || (want.video && this.clipEnded !== want.questionId));
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
@@ -4284,6 +4292,8 @@ export class DungeonRoom {
       // A timing question cannot be judged or played live: the host's skip is its only way out (timing-tap.md).
       const answered = this.currentQuestion();
       this.skipBuzzNow(true);
+      if (this.media?.questionId === questionId) this.media = { ...this.media, state: "paused" };
+      this.clipError = null;
       if (answered) this.reveal = { questionId, answer: answered.answer, at: { monster: answered.pub.monster, room: null } };
       ++this.eventSeq;
     } catch (err) {
@@ -4303,6 +4313,8 @@ export class DungeonRoom {
       this.epilogueRequested = true;
       return void this.sendEpilogue(Promise.resolve(), eventId).catch((err) => this.epilogueFailed(err, eventId));
     }
+    // No answer to show: the used-up phase's card follows straight away, as closing a reveal would.
+    if (!this.reveal && this.game.boss.phasePending) return this.openPhaseCard();
     this.broadcastState();
   }
 

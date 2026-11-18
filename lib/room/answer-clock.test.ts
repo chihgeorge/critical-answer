@@ -237,7 +237,7 @@ describe("每題作答倒數 in the room", () => {
     second.room.onConnect(phone);
     send(second.room, phone, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
     expect(peek(second.room).view.currentTurnTeamId).toBe(A);
-    expect(peek(second.room).answerClock).toEqual({ left: 40000 });
+    expect(peek(second.room).answerClock).toEqual({ left: 45000 }); // the 5 s offline after the restart did not count
   });
 
   it("an away team keeps its turn and remaining count until it returns", () => {
@@ -252,7 +252,7 @@ describe("每題作答倒數 in the room", () => {
     g.room.onConnect(phone);
     send(g.room, phone, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
     expect(g.state().view.currentTurnTeamId).toBe(A);
-    expect(g.state().answerClock).toEqual({ left: 30000 });
+    expect(g.state().answerClock).toEqual({ left: 50000 }); // frozen while away (#366)
   });
 });
 
