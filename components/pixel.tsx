@@ -463,7 +463,8 @@ export function DialogueBox({
   onRead?: (count: number) => void;
   /** The line the voice is reading now: the box shows it, and waits for the voice before the next (#365). */
   voiceLine?: number;
-  /** Lines of `id` already read when the box starts on it: it starts after them (#351). */
+  /** Lines of `id` already read when the box starts on it: it starts after them (#351). Read once: the box remounts
+   * for each new `id`. */
   read?: number;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square

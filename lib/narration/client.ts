@@ -33,8 +33,8 @@ export function handoffAdded(revealUp: boolean, trackedEventId: number | undefin
   return !revealUp && trackedEventId === eventId;
 }
 
-/** Whether to voice a NARRATION: never the served dish's own narration (上菜 said it, cooking I1), only what the room
- * added to it after 下一題. */
+/** Whether to voice a NARRATION: every narration except the served dish's own (上菜 said it, cooking I1); for that one,
+ * only the lines the room added after 下一題. */
 export function voiceNarration(speakIt: boolean, eventId: number, servedEventId: number | null, added: boolean): boolean {
   return speakIt && (eventId !== servedEventId || added);
 }

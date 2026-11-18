@@ -30,8 +30,7 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 type ByClass<T> = T & { classId?: ClassId };
 
 /** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
- * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits).
- * A retry's `penalty`: the points a warrior's 1 took away (the question's whole reward, #305). */
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
 type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
 
 export type NarrationEvent =
@@ -50,6 +49,7 @@ export type NarrationEvent =
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
    * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1).
    * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
+  // `penalty`: the points a warrior's 1 took away (the question's whole reward, never below 0; #305).
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; prayed?: true; warriorRoll?: number; penalty?: number }>>
   /** `to`: 逃跑・換房 put this new monster in the team's room.
    * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */

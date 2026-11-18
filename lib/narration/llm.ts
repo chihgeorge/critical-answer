@@ -129,7 +129,7 @@ function describeRoll(e: NarrationEvent): string {
   const crit = "roll" in e && e.roll?.kind === "crit";
   const warrior =
     "warriorRoll" in e && e.warriorRoll !== undefined && !crit
-      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${warriorFacts(e)}。第一行要說出點數${e.type === "retry" && e.warriorRoll === 1 ? "和扣分" : ""}。`
+      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${warriorFacts(e)}。第一行要說出點數${e.type === "retry" && e.warriorRoll === 1 && e.penalty ? "和扣分" : ""}。`
       : "";
   // A check's line says 答對, but a warrior rolled instead: its own line stands alone.
   return warrior || describeDie(e);
@@ -137,7 +137,7 @@ function describeRoll(e: NarrationEvent): string {
 
 /** What the warrior's die did under #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles. */
 function warriorFacts(e: NarrationEvent): string {
-  if (e.type === "retry") return e.warriorRoll !== 1 ? "沒打中" : `大失敗，沒打中，還${e.penalty ? `扣掉整題的獎勵 ${e.penalty} 分` : "要扣整題的獎勵，但這隊沒分可扣"}`;
+  if (e.type === "retry") return e.warriorRoll !== 1 ? "沒打中" : `大失敗，沒打中，擲 1 要扣掉整題的獎勵，${e.penalty ? `這隊被扣了 ${e.penalty} 分` : "但這隊沒分可扣"}`;
   if (e.type === "boss-kill") return "命中";
   return "warriorRoll" in e && e.warriorRoll === 20 ? "命中，獎勵加倍" : "命中，但戰士擲骰只拿這題八成的獎勵";
 }

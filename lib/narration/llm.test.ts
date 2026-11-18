@@ -119,9 +119,11 @@ describe("prompt", () => {
   it("tells the model a warrior's hit pays 八成, a 20 doubles, and a 1 takes the whole question's reward", () => {
     expect(buildPrompt({ ...event, warriorRoll: 14 } as NarrationEvent, []).user).toContain("八成");
     const one = buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, penalty: 10 }, []).user;
-    expect(one).toContain("扣掉整題的獎勵 10 分");
+    expect(one).toContain("扣掉整題的獎勵，這隊被扣了 10 分");
     expect(one).toContain("說出點數和扣分");
-    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 }, []).user).toContain("沒分可扣");
+    const broke = buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 }, []).user;
+    expect(broke).toContain("沒分可扣");
+    expect(broke).not.toContain("和扣分");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 4 }, []).user).not.toContain("扣");
     // A warrior's 20 is a crit too: its 大成功 doubles the reward instead of adding half.
     const twenty = buildPrompt({ ...event, warriorRoll: 20, roll: { kind: "crit", value: 20 } } as NarrationEvent, []).user;

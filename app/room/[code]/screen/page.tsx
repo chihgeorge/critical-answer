@@ -344,10 +344,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.chefBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
   const served = cook !== null;
-  // #351: the lines the served dish's narration had under its reveal were never typed (上菜 said them); after 下一題 the
-  // box starts on what the room added (the handoff) instead of typing the result line again.
-  const [servedRead, setServedRead] = useState<{ id: number; n: number } | null>(null);
-  if (reveal?.served && narration?.eventId === eventId && (servedRead?.id !== eventId || servedRead.n !== narration.lines.length)) setServedRead({ id: eventId, n: narration.lines.length });
+  // #351: 上菜's dish line already told the served answer's result, so after 下一題 the box starts on the narration's
+  // second line (the middle line, then the handoff) instead of typing the result line again.
+  const [servedId, setServedId] = useState<number | null>(null);
+  if (reveal?.served && servedId !== eventId) setServedId(eventId);
   // The phase card (docs/designs/boss-phases.md, approved mockup panel 1) takes the question's slot, as a reveal does.
   const card = phaseCard && bossPhaseInfo;
   /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
@@ -884,7 +884,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedRead?.id === narration.eventId ? servedRead.n : 0 } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? 1 : 0 } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
