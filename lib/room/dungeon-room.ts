@@ -160,6 +160,7 @@ import { keyHint, withBudget } from "./ai-budget";
 import { createBreaker, withBreaker } from "../narration/breaker";
 import { skillLine } from "../class-dice";
 import { firstFreeLook } from "../team-look";
+import { seekRange } from "../youtube";
 
 const MAX_TEAM_NAME_LENGTH = 20;
 const MAX_TRANSCRIPT = 500;
@@ -531,6 +532,9 @@ export class DungeonRoom {
   /** The question whose video the big screen reported it cannot play (SCREEN_CLIP_ERROR, boss-music-buzzer.md M4).
    * Memory only, like media; a ▶ clears it, since the screen then tries again. */
   private clipError: string | null = null;
+  /** The length a big screen reported for the video on screen (SCREEN_CLIP_DURATION), for the host's timeline. `file`:
+   * reported under a file explanation's reveal, which plays another clip under the same question id. Memory only. */
+  private clipDuration: { questionId: string; seconds: number; file: boolean } | null = null;
   /** An opened event on show until 下一題 (docs/designs/event-rooms.md). Memory only, like the reveal: its effect is saved. */
   private eventReveal: EventReveal | null = null;
   /** The door that just opened, on show for FORK_BEAT_MS. `before` is the game before the press: STATE shows it
@@ -1032,7 +1036,7 @@ export class DungeonRoom {
           ? publicMediaContent(q.content, "", questionId)
           : fileVideo(q.content, base);
     if (video.kind !== "youtube" && video.kind !== "instagram" && video.kind !== "file") return;
-    const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video } satisfies ServerMessage);
+    const text = JSON.stringify({ type: "SCREEN_VIDEO", questionId, video, range: this.mediaRange(questionId, q.content) } satisfies ServerMessage);
     const to = only ? [only] : [...this.hostConns.values(), ...[...this.keyedScreens].flatMap((id) => this.conns.get(id) ?? [])];
     for (const conn of to) {
       try {
@@ -2376,6 +2380,14 @@ export class DungeonRoom {
           this.screenSoundChanged();
           break;
         }
+        case "SCREEN_CLIP_DURATION": {
+          if (!this.isScreen(sender) || msg.questionId !== this.shownVideoId()) break;
+          const d = { questionId: msg.questionId, seconds: msg.seconds, file: this.fileReveal() };
+          if (this.clipDuration?.questionId === d.questionId && this.clipDuration.seconds === d.seconds && this.clipDuration.file === d.file) break;
+          this.clipDuration = d;
+          this.broadcastState();
+          break;
+        }
         case "SCREEN_CLIP_ERROR":
           if (!this.isScreen(sender) || msg.questionId !== this.shownVideoId() || this.clipError === msg.questionId) break;
           this.clipError = msg.questionId;
@@ -2555,7 +2567,7 @@ export class DungeonRoom {
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_CLIP_DURATION" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -4190,6 +4202,19 @@ export class DungeonRoom {
   private liveMedia(): { media?: MediaCommand } {
     if (this.media && this.media.questionId !== this.shownVideoId()) this.media = null;
     return this.media ? { media: this.media } : {};
+  }
+
+  /** A file explanation is on show: the screen plays it, not the question's clip. */
+  private fileReveal(): boolean {
+    return this.reveal?.explanation?.kind === "file";
+  }
+
+  /** SCREEN_VIDEO's `range`: the host's timeline for question `id`'s video on screen, the clip's bounds until the reveal
+   * (handleHostMedia clamps a seek to them) and the reported length after it. */
+  private mediaRange(id: string, clip: BankQuestion["content"]): { min: number; max: number } {
+    const d = this.clipDuration;
+    const seconds = d?.questionId === id && d.file === this.fileReveal() ? d.seconds : null;
+    return seekRange(!this.reveal && clip.kind === "youtube" ? clip : null, seconds);
   }
 
   /** ▶ ⏸ ⟲ from the host page. Ignored unless it names the video on screen: a second host device may still show

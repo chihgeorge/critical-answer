@@ -100,6 +100,7 @@ export function YoutubePlayer({
   onPlayingChange,
   onEnded,
   onError,
+  onDuration,
   errorNote,
   title = "題目影片",
   cardTitle,
@@ -127,6 +128,8 @@ export function YoutubePlayer({
   onEnded?: () => void;
   /** The video cannot play here: the room tells the host (boss-music-buzzer.md M4). */
   onError?: () => void;
+  /** The video's length (s), once YouTube knows it: the host's timeline reaches its end. May repeat. */
+  onDuration?: (seconds: number) => void;
   /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
   errorNote?: string;
   title?: string;
@@ -151,6 +154,7 @@ export function YoutubePlayer({
   const report = useRef(onPlayingChange);
   const reportEnd = useRef(onEnded);
   const reportError = useRef(onError);
+  const reportDuration = useRef(onDuration);
   const zh = useRef(zhCaptions);
   /** A Chinese track is set on this player. */
   const captioned = useRef(false);
@@ -158,7 +162,8 @@ export function YoutubePlayer({
     report.current = onPlayingChange;
     reportEnd.current = onEnded;
     reportError.current = onError;
-  }, [onPlayingChange, onEnded, onError]);
+    reportDuration.current = onDuration;
+  }, [onPlayingChange, onEnded, onError, onDuration]);
 
   useEffect(() => {
     let gone = false;
@@ -170,6 +175,11 @@ export function YoutubePlayer({
       if (s !== "loading") report.current?.(s === "playing");
       if (s === "ended") reportEnd.current?.();
       if (s === "error") reportError.current?.();
+    };
+    // getDuration reads 0 until the video's data is in, so every ready and state change asks again.
+    const length = (p: YTPlayer) => {
+      const s = p.getDuration();
+      if (!gone && s > 0) reportDuration.current?.(s);
     };
     const captions = (p: YTPlayer) => {
       if (!captioned.current) captioned.current = syncZhCaptions(p, zh.current);
@@ -203,6 +213,7 @@ export function YoutubePlayer({
               player.current = e.target;
               setReady(true);
               show("paused");
+              length(e.target);
             },
             onStateChange: (e) => {
               // YouTube can reach the end itself (its own `end`, or a clip with none) before the poll sees it.
@@ -210,6 +221,7 @@ export function YoutubePlayer({
               if (e.data === 1) ended.current = false; // the viewer may replay inside YouTube's own frame
               if (e.data === 1) captions(e.target);
               show(clipStatusFromYoutube(e.data, ended.current));
+              length(e.target);
             },
             // onError codes 2, 5, 100, 101 and 150 all leave nothing to play: one message covers them (D7).
             onError: () => show("error"),

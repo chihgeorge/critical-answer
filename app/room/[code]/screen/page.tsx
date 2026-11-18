@@ -322,7 +322,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -544,6 +544,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         replay={replay}
         // An explanation's error reaches the host too (the room clears the question's own at the reveal).
         onError={reveal && !fileExplanation ? undefined : () => onClipError(v.id)}
+        onDuration={(s) => onClipDuration(v.id, s)}
         errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
         title={fileExplanation ? "詳解影片" : reveal ? "正解影片" : "題目影片"}
       />
@@ -564,6 +565,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         timeRef={clipTime(v.id)}
         replay={replay}
         onError={reveal ? undefined : () => onClipError(v.id)}
+        onDuration={(s) => onClipDuration(v.id, s)}
         // The host plays the song from their own device (boss-music-buzzer.md M4).
         errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
         title={reveal ? "正解影片" : "題目影片"}
@@ -1589,6 +1591,8 @@ export default function ScreenPage() {
    * reaches the room before this socket's SCREEN_HELLO, so the room drops it. Forgotten once another question is up
    * or the game is over: the same question may come round again, and then its clip has not ended. */
   const clipEnded = useRef<string | null>(null);
+  /** The length this screen's player last reported, sent once per change and again after a reconnect. */
+  const clipDuration = useRef<{ questionId: string; seconds: number } | null>(null);
   /** This screen's player is playing a clip: a SCREEN_EFFECT is dropped (immersion.md PR2). */
   const videoPlaying = useRef(false);
   /** From the player's real state (the clip stops itself at its end): the music goes silent (D10) and a line still
@@ -1616,6 +1620,13 @@ export default function ScreenPage() {
     clipEnded.current = questionId;
     clipEndedSeq.current = game?.media?.questionId === questionId ? game.media.seq : undefined;
     send({ type: "SCREEN_CLIP_ENDED", questionId, ...(clipEndedSeq.current !== undefined ? { seq: clipEndedSeq.current } : {}) });
+  }
+  function onClipDuration(questionId: string, length: number) {
+    // Whole seconds: YouTube refines the length by fractions while it plays, and the timeline steps by 1.
+    const seconds = Math.floor(length);
+    if (seconds <= 0 || (clipDuration.current?.questionId === questionId && clipDuration.current.seconds === seconds)) return;
+    clipDuration.current = { questionId, seconds };
+    send({ type: "SCREEN_CLIP_DURATION", questionId, seconds });
   }
   function onClipError(questionId: string) {
     clipErrored.current = { questionId, press: game?.media?.questionId === questionId ? game.media.press : 0 };
@@ -1996,6 +2007,7 @@ export default function ScreenPage() {
             const seen = clipErrored.current;
             if (seen && resendClipError(seen, msg.media)) send({ type: "SCREEN_CLIP_ERROR", questionId: seen.questionId });
             if (clipEnded.current) send({ type: "SCREEN_CLIP_ENDED", questionId: clipEnded.current, ...(clipEndedSeq.current !== undefined ? { seq: clipEndedSeq.current } : {}) });
+            if (clipDuration.current) send({ type: "SCREEN_CLIP_DURATION", ...clipDuration.current });
           }
           {
             const t = nextTransition(transitionSeen.current, msg);
@@ -2180,7 +2192,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}
