@@ -1298,7 +1298,7 @@ export default function HostPage() {
                       {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(answer?.typed?.teamId === buzz.teamId ? answer.typed.text : undefined)}
                     </div>
                   )}
-                  {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}
+                  {buzz.category && <div className="text-[14px]">{buzz.picker ? `${teamName(buzz.picker)} ` : ""}選的類別：{buzz.category}</div>}
                   {buzz.out.length > 0 && <div className="text-[14px]">已鎖住：{buzz.out.map(teamName).join("、")}</div>}
                   {/* A music question with fields (#369): round 2 and the part-right answers kept for its end. */}
                   {buzz.second && <div data-testid="host-buzz-second" className="p-1 text-[14px]" style={{ background: "var(--warn)" }}>第二輪（最後一輪）：再沒人全對，就由答對最多欄的隊伍得分（同分算先答的）</div>}
@@ -1655,7 +1655,8 @@ export default function HostPage() {
           note="照類別分組，隊伍選的類別排最前面。換成這題，主持人按 ▶（或揭曉結束）後開放搶答。隊伍選的不算了。只有你看得到這個清單。"
           grouped
           first={game.view.buzz.category}
-          questions={(picks.options.boss ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? [])}
+          // The question queued for the boss room is free here: playing it now uses the queue up (pickQuestion, #362).
+          questions={(picks.options.boss ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? []).map((x) => (x.block?.kind === "queued" && x.block.teamId === "boss" ? { ...x, block: undefined } : x))}
           current={game.view.buzz.questionId}
           teamName={teamName}
           onPick={(id) => {

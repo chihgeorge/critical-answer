@@ -442,6 +442,9 @@ export class DungeonRoom {
   private hostToken = "";
   // shortcut: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
+  /** Teams whose last phone closed in this instance (memory only: after a restart every team reads offline until it
+   * reconnects, and that must not end a buzz winner's pick; endPickIfPickerGone). */
+  private leftTeams = new Set<string>();
   /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
   private lastPicks: string | null = null;
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
@@ -1859,6 +1862,7 @@ export class DungeonRoom {
 
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
+    this.endPickIfPickerGone();
     const forkOpened = this.syncFork();
     this.sayStunSkips();
     // Every state change passes here, so the timing round's close timer always follows the latest state.
@@ -3609,6 +3613,8 @@ export class DungeonRoom {
   private setOnline(teamId: string, online: boolean) {
     const prev = this.game!;
     const holding = prev.buzz?.teamId === teamId;
+    if (online) this.leftTeams.delete(teamId);
+    else this.leftTeams.add(teamId);
     this.keepUndoOpen(setTeamOnline(prev, teamId, online));
     // A team that sent its typed answer keeps the buzz while its phone sleeps (#368): the music stays stopped.
     if (holding && this.game!.buzz?.teamId === teamId) return;
@@ -3911,6 +3917,8 @@ export class DungeonRoom {
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
+    // #369: this miss opened a music question's round 2, the last one for everyone.
+    const second = again && !!judged.game.buzz?.second && !prev.buzz?.second;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
     // everyone missed it waits for the host's ▶ (M1).
     if (again) this.buzzPaused = false;
@@ -3939,7 +3947,7 @@ export class DungeonRoom {
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (base.type === "retry" || base.type === "boss-hit") ? { ...base, exhausted: true as const } : base;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
-    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const } : { buzzOut: true as const }) } : exhaustedEvent;
+    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const, ...(second ? { buzzSecond: true as const } : {}) } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
     const rolled = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
@@ -4246,6 +4254,20 @@ export class DungeonRoom {
     const b = game.buzz;
     if (!b?.picker || b.questionId !== game.boss.currentQuestionId || b.category || b.qtype || b.hostPicked) return false;
     return pickableCategories(game, this.categoryOf(), false).length > 0;
+  }
+
+  /** The team picking the next category dropped (during the hold, the reveal or a pause) and is still offline: stop
+   * waiting and serve the dealt question, as the host's 下一步. Checked on every broadcast, so a hold that starts or
+   * resumes with the picker gone ends at once. */
+  private endPickIfPickerGone() {
+    const game = this.game;
+    const picker = game?.buzz?.picker;
+    if (!game || !picker || !this.leftTeams.has(picker) || !this.pickHold() || game.teams.find((t) => t.id === picker)?.online !== false) return;
+    try {
+      this.game = hostPickBuzzQuestion(game, game.buzz!.questionId, false);
+    } catch {
+      // The pick is no longer due: nothing to end.
+    }
   }
 
   private buzzCategories(): { buzzCategories?: string[] } {
