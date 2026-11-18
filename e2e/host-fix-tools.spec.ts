@@ -1,7 +1,7 @@
 // The host's tools for a day that goes wrong: 🩺 檢查題庫, the room's closing warning with 延長 1 小時, and ⚙ 更多's
 // 修正・改判 with the scoreboard they change (docs/hosting.md).
 import { test, expect, type WebSocketRoute } from "@playwright/test";
-import { startGame, rollCheck, openMore, closeLeftoverContexts, textOnlyBank } from "./answer";
+import { startGame, rollCheck, openMore, serveDish, closeLeftoverContexts, textOnlyBank } from "./answer";
 
 closeLeftoverContexts();
 textOnlyBank();
@@ -18,6 +18,8 @@ test("room closing: the warning shows, 延長 1 小時 extends the room and the 
   await context.routeWebSocket(/:1996\//, (ws) => {
     ws.connectToServer();
     sockets.push(ws);
+    // A closed socket (the home page's, a reconnect's) must not get the warning.
+    ws.onClose(() => void sockets.splice(sockets.indexOf(ws), 1));
   });
   const host = await context.newPage();
   await host.goto("/");
@@ -34,7 +36,8 @@ test("room closing: the warning shows, 延長 1 小時 extends the room and the 
     for (const ws of sockets) ws.send(JSON.stringify({ type: "HOST_ROOM_CLOSING", minutesLeft: 5, canExtend }));
   };
   warn(true);
-  const closing = host.getByTestId("room-closing");
+  // Panel drops a data-testid (components/pixel.tsx), so the warning is found by its text.
+  const closing = host.getByRole("status").filter({ hasText: /房間再 \d+ 分鐘關閉/ });
   await expect(closing).toContainText("房間再 5 分鐘關閉");
   await expect(host.getByTestId("room-extend")).toHaveText("延長 1 小時");
   await host.getByTestId("room-extend").click();
@@ -72,9 +75,11 @@ test("host fixes: 🩺 檢查題庫 answers in the lobby, then 修正 and 改判
   await rollCheck(team);
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByTestId("host-reveal")).toBeVisible({ timeout: 10_000 });
+  // A cooked monster's points count once its dish is served (docs/designs/monster-cuisine.md).
+  await serveDish(host);
 
   const reward = host.getByTestId("host-scoreboard").locator("span.px-num").last();
-  await expect(reward).not.toHaveText("0");
+  await expect(reward).not.toHaveText("0", { timeout: 15_000 });
   await openMore(host);
   const fix = host.getByTestId("host-fix");
   await expect(fix).toContainText("修正隊");

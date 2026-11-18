@@ -62,7 +62,7 @@ test.afterEach(async ({ request }) => {
   if (!original) return;
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
   bank.pools["1"] = original;
-  await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } });
+  expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } })).ok()).toBe(true);
   original = undefined;
 });
 
@@ -123,6 +123,8 @@ test("📺 大螢幕試播影音: the big screen probes every clip and the host 
     });
   });
 
+  // The keyed screen is in (its lobby is up): the room refuses a test with no screen.
+  await expect(screen.getByRole("button", { name: /開啟音效與氣氛/ }).first()).toBeVisible();
   await openMore(host);
   const panel = host.getByTestId("host-bank-health");
   await panel.getByTestId("host-screen-test").click();

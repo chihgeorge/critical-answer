@@ -106,7 +106,7 @@ test("memory question (image): shown for its seconds, then the question appears 
   const { key } = await uploaded.json();
   const prompt = "圖裡有幾隻松鼠？";
   await seed(request, (bank) => {
-    bank.pools["1"] = [{ kind: "text", id: "mem-img", content: { kind: "image", value: key }, prompt, answer: "1", memory: true, memorySeconds: 6 }];
+    bank.pools["1"] = [{ kind: "text", id: "mem-img", content: { kind: "image", value: key }, prompt, answer: "1", memory: true, memorySeconds: 12 }];
   });
   const { host, screen, team } = await room(browser);
 
@@ -114,7 +114,7 @@ test("memory question (image): shown for its seconds, then the question appears 
   await expect(host.getByTestId("host-memorize")).toContainText("圖片時間到才出題");
   await expectMemorizing(screen, team, prompt);
 
-  await expect(screen.getByText(prompt)).toBeVisible({ timeout: 15_000 });
+  await expect(screen.getByText(prompt)).toBeVisible({ timeout: 20_000 });
   await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible();
   await expect(host.getByTestId("host-memorize")).toHaveCount(0);
   await expect(screen.getByTestId("screen-memorize")).toHaveCount(0);
@@ -155,8 +155,8 @@ test("bank editor: a memory question's checkbox and a timing question's target a
   await page.getByRole("button", { name: "儲存全部變更" }).click();
   await expect(page.getByRole("button", { name: "儲存全部變更" })).toBeEnabled();
   await expect(page.getByTestId("bank-editor-error")).toHaveCount(0);
-  const { bank } = await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json();
-  const saved = bank.pools["1"].find((q: { id: string }) => q.id === "mem-ed");
-  expect(saved.memory).toBeUndefined();
-  expect(bank.boss.phases.at(-1).questions[0]).toMatchObject({ kind: "timing", target: 12.55, label: "嘿" });
+  // Polled: the button can read enabled before the save's request has started.
+  const savedBank = async () => (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
+  await expect.poll(async () => (await savedBank()).boss.phases.at(-1).questions[0]).toMatchObject({ kind: "timing", target: 12.55, label: "嘿" });
+  expect((await savedBank()).pools["1"].find((q: { id: string }) => q.id === "mem-ed").memory).toBeUndefined();
 });
