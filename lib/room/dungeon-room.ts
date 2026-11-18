@@ -1306,8 +1306,11 @@ export class DungeonRoom {
     const c = s.checkBeat;
     if (c && currentTurnTeamId(game) === c.teamId && currentQuestionIdOf(game, c.teamId) === c.questionId && game.checks?.[checkKey(c.questionId, c.teamId)]?.passed) this.checkSuccessBeat(c.teamId, c.questionId);
     const e = s.bossEntry;
-    // Through appendLine, as closeReveal says them: the same length cut and line cap.
-    if (e && this.lastNarration?.eventId === e.eventId) for (const line of this.bossEntryLines(e.teamId, !!e.sprint)) this.appendLine(e.eventId, line);
+    const n = this.lastNarration;
+    if (!e || n?.eventId !== e.eventId) return;
+    // appendLine's cut and line cap, but not appendLine itself: its broadcast would save a half-restored room.
+    const lines = this.bossEntryLines(e.teamId, !!e.sprint).map((line) => sanitizeText(line, MAX_EDIT_LINE)).filter(Boolean).slice(0, NARRATION_MAX_LINES - n.lines.length);
+    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
