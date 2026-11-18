@@ -29,7 +29,7 @@ test.beforeEach(async ({ request }) => {
       ...bank.boss,
       phases: [
         { name: "", rule: "", maxHp: 1, questions: [text("buzz-p1")] },
-        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 3, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), music("buzz-c")] },
+        { name: "最終決戰", rule: "聽前奏搶答", maxHp: 3, buzzer: true, questions: [text("buzz-a"), text("buzz-b"), music("buzz-c"), text("buzz-d")] },
       ],
     },
   };
