@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOSS_RAGE_THEME, DUNGEON_THEME, LOBBY_THEME, TITLE_THEME, VICTORY_THEME, introDuration, loopDuration, noteToFreq, songEvents } from "./bgm";
+import { BOSS_RAGE_THEME, DUNGEON_THEME, LOBBY_THEME, TITLE_THEME, VICTORY_THEME, introDuration, loopDuration, noteToFreq, songEvents, songFor } from "./bgm";
 
 describe("noteToFreq", () => {
   it("tunes A4 to 440 Hz and moves by octaves and semitones", () => {
@@ -77,5 +77,16 @@ describe("TITLE_THEME, LOBBY_THEME, BOSS_RAGE_THEME and VICTORY_THEME", () => {
     expect(VICTORY_THEME.introSteps! % 12).toBe(0);
     expect(introDuration(VICTORY_THEME)).toBe(8); // 60 triplet steps at 150 bpm
     expect(introDuration(LOBBY_THEME)).toBe(0);
+  });
+});
+
+describe("songFor: which song the big screen plays", () => {
+  it("the lobby tune before the game, the dungeon tune while it runs, the boss song in rage, the victory song at the end", () => {
+    expect(songFor("lobby", false)).toBe(LOBBY_THEME);
+    expect(songFor("playing", false)).toBe(DUNGEON_THEME);
+    expect(songFor("playing", true)).toBe(BOSS_RAGE_THEME);
+    // An early end (結束冒險) is a finished game too: the podium gets the victory song either way.
+    expect(songFor("finished", false)).toBe(VICTORY_THEME);
+    expect(songFor("finished", true)).toBe(VICTORY_THEME);
   });
 });

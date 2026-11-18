@@ -7,6 +7,7 @@ import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
 import { MAX_PASSWORD } from "@/lib/protocol";
 import { rememberJoinPassword } from "@/lib/stored";
 import { DialogueBox, HomeBackground, Panel, PixelButton, Sprite } from "@/components/pixel";
+import { TitleMusic } from "@/components/title-music";
 
 const inputClass =
   "w-full border-4 border-[var(--k)] bg-white px-4 py-3 text-[20px] text-[var(--ink)] outline-none focus:bg-[var(--turn)]";
@@ -43,6 +44,7 @@ function HomeForm() {
   return (
     <main className="relative min-h-screen overflow-hidden">
       <HomeBackground />
+      <TitleMusic />
       <div className="relative z-10 mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-6 px-4 py-10">
         <div className="text-center">
           <div className="flex justify-center gap-2">

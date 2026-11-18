@@ -254,3 +254,11 @@ export function songEvents(song: Song): NoteEvent[] {
   }
   return events.sort((a, b) => a.start - b.start);
 }
+
+/** The big screen's song: the lobby tune before the game, the dungeon tune while it runs (the boss song once the
+ * boss is in ④ rage), and the victory song once it is over, ended early by the host included. */
+export function songFor(phase: "lobby" | "playing" | "finished", rage: boolean): Song {
+  if (phase === "lobby") return LOBBY_THEME;
+  if (phase === "finished") return VICTORY_THEME;
+  return rage ? BOSS_RAGE_THEME : DUNGEON_THEME;
+}
