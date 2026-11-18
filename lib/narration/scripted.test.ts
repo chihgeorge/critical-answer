@@ -528,6 +528,21 @@ describe("scripted: the crit die", () => {
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 5, warriorRoll: 9, roll: { kind: "check", value: 1 } })).toMatch(/^戰士擲出 9 點，命中！(?!.*說服)/);
   });
 
+  // Value: protects=the scripted line tells #305's warrior rules (#344); fails_when=warriorResult says only 命中 / 沒打中
+  it("a warrior's 1 says the whole question's reward was taken, a 7-19 hit says 八成", () => {
+    const p = createScriptedProvider(() => 0);
+    expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, penalty: 10 })).toMatch(/^戰士擲出 1 點，大失敗，扣 10 分！.+/);
+    expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 })).toMatch(/^戰士擲出 1 點，大失敗，沒打中！/); // nothing to take
+    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 8, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！拿八成獎勵。/);
+    expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 7 })).toContain("拿八成獎勵");
+    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！(?!拿八成)/);
+    // A warrior's 20 is a crit too, but doubles: no crit line saying 多拿一半, whichever is picked.
+    for (let i = 0; i < 6; i++) {
+      const q = createScriptedProvider(() => i / 6);
+      expect(q.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 20, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).not.toContain("多拿一半");
+    }
+  });
+
   it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);
     const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 15 } as const;
