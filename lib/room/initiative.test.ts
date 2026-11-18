@@ -148,7 +148,7 @@ describe("擲先攻 in the room", () => {
       expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
     };
     refused();
-    [4, 18, 11].forEach((face, i) => g.roll(i, face));
+    [4, 18, 11].forEach((face, i) => g.roll(i, face)); // pregate-literal: INTRO_PAGES=4 die faces, not intro pages
     const eventId = g.state().eventId;
     refused();
     expect(g.state().eventId).toBe(eventId);
