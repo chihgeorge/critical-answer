@@ -6,8 +6,9 @@ import { SERVE_HOLD_MS } from "../lib/protocol";
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
-/** How long a judgment may take to land: the killing blow waits for its 4 s 4d20 beat (docs/designs/kill-roll.md). */
-const JUDGE_LANDS_MS = 6000;
+/** How long a judgment may take to land: the killing blow shows the defeated boss (2 s, #364), then its 4 s 4d20 beat
+ * (docs/designs/kill-roll.md). */
+const JUDGE_LANDS_MS = 9000;
 
 /** 擲骰說服 on a fill-in question (dnd design R6): the answer box shows once the check's beat ends. The e2e
  * worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a room's DC and never wins outright. */
@@ -121,6 +122,14 @@ export async function revealLock(host: Page) {
 /** How long a test waits for 下一題 to enable after 🍲 上菜: the server's hold (cooking and eating, eat-dish.md) plus margin. */
 export const NEXT_WAIT_MS = SERVE_HOLD_MS + 5_000;
 
+/** 🍲 上菜 when the reveal has a dish: 飽足感 shows only once the dish is served (#364). */
+export async function serveDish(host: Page) {
+  const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
+  const next = host.getByRole("button", { name: "下一題", exact: true });
+  await expect(serve.or(next)).toBeVisible();
+  if (await serve.isVisible()) await serve.click();
+}
+
 export async function nextQuestion(host: Page) {
   const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
   const next = host.getByRole("button", { name: "下一題", exact: true });
@@ -136,9 +145,7 @@ export type HostState = { type: string; phase: string; hold?: { id: number }; po
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
 export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTurn?: (team: HostState["view"]["teams"][number]) => Promise<void>) {
   for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
-    const t = cur().view.teams[0];
-    await onTurn?.(t);
-    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
+    await onTurn?.(cur().view.teams[0]);
     const before = cur().eventId;
     // Close the previous answer reveal (D7); no-op if none. A cooked monster is served first, and 下一題 waits out its cooking.
     if (cur().reveal?.dish && !cur().reveal?.served) {
@@ -146,6 +153,10 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
       await new Promise((r) => setTimeout(r, SERVE_HOLD_MS + 300));
     }
     host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
+    // A team walks into the boss room only once 下一題 closes its dish (#364), so read its question after the reveal closes.
+    await expect.poll(() => cur().reveal ?? null, { timeout: JUDGE_LANDS_MS }).toBeNull();
+    const t = cur().view.teams[0];
+    const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
     await expect.poll(() => cur().eventId, { timeout: JUDGE_LANDS_MS }).toBeGreaterThan(before);
   }

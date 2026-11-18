@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, startGame, nextQuestion, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { answerCorrectly, serveDish, startGame, nextQuestion, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { readFile } from "node:fs/promises";
 
 closeLeftoverContexts();
@@ -53,6 +53,7 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(team.getByText(/\/ 15/)).toHaveCount(0);
 
   await answerCorrectly(host); // room 1 pays 10 reward (15 on a natural 20) and 1 progress
+  await serveDish(host); // 飽足感 counts once the dish is served (#364)
   await expect(team.getByText(/^1[05] 飽足感$/)).toBeVisible();
   await expect(host.getByText("1/15")).toBeVisible();
 

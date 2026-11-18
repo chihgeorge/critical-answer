@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -129,10 +129,13 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   await revealLock(host);
   // Judged after the reveal beat and the crit die (2 s each); a natural 20 adds half the reward.
   await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
-  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
+  await expect(team.getByText(/^答對了！/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
   await expect(question).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
+  // 飽足感 counts once the dish is served (#364).
+  await serveDish(host);
+  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
 });
 
 // Value: protects=the question strip never pushes 鎖定答案 or 下輪再答/逃跑 under the fold on an iPhone 12; fails_when=the strip or option tiles grow; why_new=the 375x667 assert uses a short 3-option question; seam=none; no_claim=custom banks with longer questions
