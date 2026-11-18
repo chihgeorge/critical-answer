@@ -114,7 +114,8 @@ export default function HostPage() {
   const [answer, setAnswer] = useState<Pick<Extract<ServerMessage, { type: "HOST_ANSWER" }>, "questionId" | "answer" | "typed" | "question" | "tap"> | null>(null);
   // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
-  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id ? { ...state, question: answer.question } : state), [state, answer]);
+  // And the buzzer question waiting for the winner's category (#370): STATE sends none, the host reads it here.
+  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) ? { ...state!, question: answer!.question! } : state, [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
   const [fxOpen, setFxOpen] = useState(false);
@@ -1256,9 +1257,9 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
-              {/* The next buzzer question's type (#321): the winner picks on its phone, the host may set it or the question itself. */}
+              {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">
@@ -1281,12 +1282,14 @@ export default function HostPage() {
                   {!timing && ((line) => line && <div>{line}</div>)(
                     buzz.teamId
                       ? `${teamName(buzz.teamId)} 搶到了：聽他們說答案，按下方答對／答錯`
-                      : hostBuzzWait(game.question?.content.kind === "youtube", !!buzz.open, !!game.clipError),
+                      : game.pickHold
+                        ? "大螢幕還沒出這題：等隊伍選類別，或按「下一步」"
+                        : hostBuzzWait(game.question?.content.kind === "youtube", !!buzz.open, !!game.clipError),
                   )}
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (
                     <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
-                      {/* Host-only (HOST_ANSWER): STATE hides it from the other teams (multi-field.md E4). */}
+                      {/* From HOST_ANSWER; STATE carries the same text to the big screen (#368), the fields stay host-only. */}
                       {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(answer?.typed?.teamId === buzz.teamId ? answer.typed.text : undefined)}
                     </div>
                   )}
@@ -1641,7 +1644,9 @@ export default function HostPage() {
       {picking === "buzz" && picks && game?.phase === "playing" && game.view.buzz && game.buzzTypes && (
         <QuestionPicker
           title="指定搶答下一題"
-          note="換成這題，主持人按 ▶（或揭曉結束）後開放搶答。隊伍選的題型不算了。只有你看得到這個清單。"
+          note="照類別分組，隊伍選的類別排最前面。換成這題，主持人按 ▶（或揭曉結束）後開放搶答。隊伍選的不算了。只有你看得到這個清單。"
+          grouped
+          first={game.view.buzz.category}
           questions={(picks.options.boss ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? [])}
           current={game.view.buzz.questionId}
           teamName={teamName}

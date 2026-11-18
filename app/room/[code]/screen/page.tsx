@@ -61,7 +61,7 @@ import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
 import { getScreenKey } from "@/lib/room-code";
-import { sortOrderOf } from "@/lib/sort-order";
+import { initialSortOrder, sortAnswer, sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
 import { HostAwayBanner } from "@/components/host-away-banner";
@@ -286,10 +286,11 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
   if (wrong?.questionId === question.id && wrong.optionIndex !== null && wrongSlots) {
     return inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" }));
   }
-  return items.map((text) => ({ text, look: "plain" }));
+  // A fresh phone's start order (A → B → C → D for listen-and-order items); a 重答 phone starts from its last order.
+  return initialSortOrder(items).map((i) => ({ text: items[i], look: "plain" }));
 }
 
-/** Numbered 1–4 like the phone's rows, before the lock too (the phone starts from the same order). */
+/** Numbered 1–4 like the phone's rows; after a lock, tiles follow the submitted order. */
 function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
   return (
     <>
@@ -321,7 +322,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -348,6 +349,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
   const raging = rage && bossScene && !card && !dish;
   const wrong = view.pendingWrong ?? null;
+  const wrongOrder = wrong?.questionId === question?.id && wrong?.optionIndex != null && question?.items ? sortAnswer(question.items, wrong.optionIndex) : null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // A buzzer boss phase (docs/designs/boss-buzzer.md D7): who buzzed, who is out, or the call to buzz.
   // Not while a memory question's media plays: nobody may buzz yet (memory-questions.md).
@@ -449,8 +451,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
-      {/* A buzzer phase's typed answer is for the host only (boss-music-buzzer.md M2): the others could still buzz. */}
-      {turn?.typedAnswer && !buzz && (
+      {turn?.typedAnswer && (
         <div data-testid="screen-typed-answer" className="text-[20px] [overflow-wrap:anywhere]">
           ⚔️ {turn.name}：{turn.typedAnswer}
         </div>
@@ -741,6 +742,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
             </span>
           ) :
           question.content.kind === "text" ? question.content.value : <div style={{ fontSize: "0.87em" }}>{question.prompt ?? ""}</div>
+        ) : pickHold && !reveal && !card ? (
+          // #370: the next question waits for the buzz winner's category, or the host's 下一步.
+          <span data-testid="screen-pick-hold" role="status">{nameOf(view.buzz?.picker)} 正在選下一題的類別……</span>
         ) : paused ? <span data-testid="screen-paused" role="status">{PAUSED_OFFLINE}</span> : "……"}
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
@@ -786,13 +790,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
+        {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[0.8em] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
         {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!asking && !reveal && !card && !buzz && question && !question.options && !question.items && turn?.typedAnswer && (
+        {!asking && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
@@ -2160,7 +2165,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

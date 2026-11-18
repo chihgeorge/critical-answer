@@ -803,28 +803,18 @@
     },
     {
       "monster": "bat-hanging",
-      "difficulty": 4,
-      "reward": 40
+      "difficulty": 3,
+      "reward": 30
     },
     {
       "monster": "ghost-cry",
       "difficulty": 4,
       "reward": 40
-    },
-    {
-      "monster": "mimic",
-      "difficulty": 5,
-      "reward": 50
-    },
-    {
-      "monster": "skeleton-rattle",
-      "difficulty": 5,
-      "reward": 50
     }
   ],
   "boss": {
     "monster": "dragon",
-    "maxHp": 5,
+    "maxHp": 8,
     "hitReward": 10,
     "questions": [
       {

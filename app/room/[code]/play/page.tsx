@@ -1,7 +1,6 @@
 "use client";
 
 import { AnswerClock } from "@/components/answer-clock";
-import { TypePickPanel } from "@/components/buzz-type-pick";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
@@ -28,7 +27,7 @@ import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
-import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
+import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
@@ -285,8 +284,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
   const [mine, setMine] = useState<{ qid: string; order: number[] } | null>(null);
   const sorting = !!q.items;
   // A reload mid-question starts from the team's pick, else its last wrong order (so a 重答 keeps its ✓ places).
-  const seed = sorting ? sortOrderOf(pick ?? gone.at(-1) ?? -1) : undefined;
-  const myOrder = mine?.qid === q.id ? mine.order : (seed ?? Array.from({ length: SORT_ITEMS }, (_, i) => i));
+  const myOrder = mine?.qid === q.id ? mine.order : sorting ? initialSortOrder(q.items ?? [], pick ?? gone.at(-1)) : [];
   const shownOrder = (lock && sortOrderOf(lock.optionIndex)) || (wrong?.optionIndex != null && sortOrderOf(wrong.optionIndex)) || myOrder;
   const myCode = sortCode(myOrder);
   const pickable = sorting ? !gone.includes(myCode) : pick !== null && !gone.includes(pick);
@@ -597,7 +595,6 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </>
       ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
-          {/* A buzzer phase hides the text from STATE (multi-field.md E4): "" only says it was sent. */}
           {sent ? `已送出：${sent}` : "已送出"}・等主持人判
         </div>
       ) : (
@@ -645,7 +642,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             type="text"
             className="px-input text-[20px]"
             aria-label="你們的答案"
-            placeholder={buzzed ? "也可以打字給主持人看（選填）" : "打你們的答案"}
+            placeholder={buzzed ? "打字送出會顯示在大螢幕（選填）" : "打你們的答案"}
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_TYPED_ANSWER}
@@ -843,12 +840,13 @@ function BuzzButton({ game, buzz, teamId, send }: { game: StateMessage; buzz: No
   );
 }
 
-/** The buzz winner picks the next song's category (boss-music-buzzer.md M5), and may change it until the host's ▶. */
+/** The buzz winner picks the next question's category (boss-music-buzzer.md M5; 卡點題 is one, #370): the next question
+ * waits for it, or for the host's 下一步. A video question may still be changed until the host's ▶. */
 function CategoryPanel({ categories, chosen, send }: { categories: string[]; chosen?: string; send: (m: ClientMessage) => void }) {
   return (
     <div data-testid="pick-category">
     <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[20px]">答對了！選下一首的類別</div>
+      <div className="text-[20px]">答對了！選下一題的類別</div>
       <div className="grid grid-cols-2 gap-2">
         {categories.map((c) => (
           <PixelButton key={c} aria-pressed={c === chosen} className="!m-0 !min-h-[56px] !text-[20px] [overflow-wrap:anywhere]" style={{ background: c === chosen ? "var(--ok)" : "var(--cream)" }} onClick={() => send({ type: "TEAM_PICK_CATEGORY", category: c })}>
@@ -856,7 +854,7 @@ function CategoryPanel({ categories, chosen, send }: { categories: string[]; cho
           </PixelButton>
         ))}
       </div>
-      <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人按 ▶ 前都能改` : "不選就照順序出下一首"}</div>
+      <div className="text-[13px]">{chosen ? `已選：${chosen}・主持人按 ▶ 前都能改` : "選完才出下一題；主持人也可以直接出題"}</div>
     </Panel>
     </div>
   );
@@ -1349,8 +1347,6 @@ export default function PlayPage() {
           <TextAnswerPanel key={`${game.question.id}:${game.eventId}`} game={game} teamId={teamId} send={send} offline={disconnected} noHint buzzed />
         )}
 
-        {/* #321: the winner picks the next question's type, until the host's ▶ or the host's own pick. */}
-        {game && buzz?.picker === teamId && !buzz.hostPicked && game.buzzTypes && <TypePickPanel types={game.buzzTypes} chosen={buzz.qtype} send={send} />}
         {game && buzz?.picker === teamId && game.buzzCategories && <CategoryPanel categories={game.buzzCategories} chosen={buzz.category} send={send} />}
 
         {game && !finished && !buzz && !held && isMyTurn && !game.question?.memorize && (game.question?.options || game.question?.items) && <MyChoicePanel game={game} teamId={teamId} send={send} drops={lockDrops} />}
