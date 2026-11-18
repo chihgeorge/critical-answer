@@ -183,7 +183,7 @@ scripted lines and the AI's description all speak of the statue, not a fairy.
   another (or its own) fortune's `matchIds` with a blessing or a curse. 詛咒磁鐵 still counts the old 凶. A save without
   `fortunes` reads as none.
 - The game log keeps each team's `fortunes`.
-- Deferred to after the event (TODOS.md): the podium title 「命運之子」.
+- 🔮 命運之子 (#287) counts every fortune whose `matchIds` held the team, any of the six effects, drawn by any team.
 
 ## Saves and rollback
 

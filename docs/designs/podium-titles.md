@@ -41,6 +41,7 @@ Mode: Builder
 | 🗺️ 探險家 | 開最多事件房（任何場景） | `team.events.length` |
 | ✨ 女神的寵兒 | 事件房祝福最多 | `events` 裡 `blessing` 的次數（`great` 只給飽足感、沒有祝福，不算） |
 | 💀 詛咒磁鐵 | 事件房詛咒最多 | `events` 裡 `curse` ＋ `bad`（算命「凶」也給詛咒，`openEvent` lib/game-state.ts:1258）的次數 |
+| 🔮 命運之子 | 被占卜師的效果選中最多次（#287） | 每一隊抽的 `fortunes` 裡，`matchIds` 有這隊的筆數，六種效果都算（沒效的藥水、全隊都中的進貢也算）；跟 ✨／💀 重複計也沒關係 |
 | 🤢 腐肉品嚐家 | 吃到腐肉最多 | `events` 裡的 `rotten` 次數 |
 | 🏃 逃跑大師 | 答錯逃跑最多 | 新欄位 `team.flees`，每次 `incorrect-flee` 都加一（一般房和魔王房都算） |
 | 🧪 藥水成癮 | 喝最多幸運藥水 | 藥水 PR 的 `potionsDrunk`。這一列的程式碼由後合併的那個 PR 加（見 Dependencies）；執行時缺值當 0 |
