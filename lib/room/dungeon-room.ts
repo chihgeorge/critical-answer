@@ -2136,9 +2136,14 @@ export class DungeonRoom {
     // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it. And a persuasion
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
+    // The team picking the next category went offline: stop waiting and serve the dealt question, as the host's 下一步.
+    // Its own try: a failed pick must still mark the team offline below.
     try {
-      // The team picking the next category went offline: stop waiting and serve the dealt question, as the host's 下一步.
       if (this.pickHold() && this.game.buzz?.picker === teamId) this.game = hostPickBuzzQuestion(this.game, this.game.buzz.questionId, false);
+    } catch {
+      // The pick is no longer due: nothing to end.
+    }
+    try {
       this.setOnline(teamId, false);
       this.broadcastState();
     } catch {

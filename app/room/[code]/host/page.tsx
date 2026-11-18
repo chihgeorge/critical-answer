@@ -37,7 +37,6 @@ import { BankHealthPanel, type BankHealth, type ScreenTest } from "@/components/
 import { FieldJudge } from "@/components/field-judge";
 import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
-import { isClip } from "@/lib/question-bank";
 import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
@@ -1285,7 +1284,7 @@ export default function HostPage() {
                       ? `${teamName(buzz.teamId)} 搶到了：聽他們說答案，按下方答對／答錯`
                       : game.pickHold
                         ? "大螢幕還沒出這題：等隊伍選類別，或按「下一步」"
-                        : hostBuzzWait(isClip(game.question?.content), !!buzz.open, !!game.clipError),
+                        : hostBuzzWait(game.question?.content.kind === "youtube", !!buzz.open, !!game.clipError),
                   )}
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (

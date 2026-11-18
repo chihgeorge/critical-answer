@@ -759,6 +759,19 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.teams.find((t: { id: string }) => t.id === IDS[1]).online).toBe(false);
   });
 
+  it("#362: the host's 指定題目 may pick the question queued for the boss room; playing it uses the queue up", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: "動漫" }));
+    send(g.room, g.host, { type: "HOST_QUEUE_QUESTION", target: "boss", questionId: "b-c" });
+    expect(g.room.game!.boss.queuedQuestionId).toBe("b-c");
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-c" });
+    expect(g.room.game!.boss).toMatchObject({ currentQuestionId: "b-c" });
+    expect(g.room.game!.boss.queuedQuestionId).toBeUndefined();
+  });
+
   it("#362: a wrong buzz ends the last winner's pick, so a pause cannot swap the question already heard", () => {
     const g = buzzerGame((id) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" }));
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
