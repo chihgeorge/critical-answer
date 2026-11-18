@@ -391,8 +391,8 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     g.buzz(1);
     g.judge(IDS[1], true);
-    // Both fields right: 2 HP, the whole 2-HP last phase (D2), so the kill's 4d20 rolls first.
-    expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
+    // Both fields right: the defeated boss is announced before the kill's 4d20.
+    expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
   });
 
   it("a partial answer that kills keeps its per-field verdicts through the 4d20 beat (multi-field.md D2, E1)", () => {
@@ -404,6 +404,8 @@ describe("buzzer boss phase in the room", () => {
     vi.useFakeTimers();
     try {
       send(g.room, g.host, { type: "HOST_JUDGE", teamId: IDS[1], questionId: "b-a", correct: true, fields: [true, false], eventId: g.state().eventId });
+      expect(g.state().stageBeat).toBe("kill-defeated");
+      vi.advanceTimersByTime(2000);
       expect(g.state().pendingRoll).toMatchObject({ kind: "kill" });
       vi.advanceTimersByTime(10000);
     } finally {

@@ -343,6 +343,7 @@ describe("review follow-ups", () => {
       const questionId = g.qid();
       send(g.room, g.phones[i], { type: "TEAM_ROLL_CHECK", questionId, eventId: g.state().eventId });
       vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000); // successful persuasion is announced before the question opens
       if (oracle) send(g.room, g.phones[i], { type: "TEAM_ORACLE", questionId });
       send(g.room, g.host, { type: "HOST_JUDGE", teamId, questionId, correct: false, fleeChoice: "flee", eventId: g.state().eventId });
       expect(g.state().undoWrong).toMatchObject({ teamId, questionId });

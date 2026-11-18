@@ -552,7 +552,7 @@ describe("restoring after a restart", () => {
     else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
     expect((second.room as any).pendingRoll).toMatchObject({ teamId: t0, kind: "kill" });
     expect(second.room.game!.phase).toBe("playing");
-    vi.advanceTimersByTime(4000);
+    vi.advanceTimersByTime(6000);
     expect(second.room.game!.phase).toBe("finished");
     expect(second.room.game!.boss.killedByTeamId).toBe(t0);
     vi.useRealTimers();

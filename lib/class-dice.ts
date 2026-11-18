@@ -33,6 +33,12 @@ export function answerEffect(reader: "chef" | "thief" | undefined, value: number
   return null;
 }
 
+/** The crit die always hits; only a natural 20 changes the base reward and boss damage. */
+export function critEffect(value: number, boss = false): string {
+  const tier = value === 1 ? "大失敗" : value <= 6 ? "小失敗" : value === 20 ? "大成功" : "小成功";
+  return `${value} ${tier}：${value === 20 ? `獎勵多一半${boss ? "、首領多扣 1 顆愛心" : ""}` : "照常答對，獎勵不變"}`;
+}
+
 /** The warrior's roll for the answer: 1 wrong and loses the question's reward, 2–6 wrong, 7–19 right for 80%, 20 double. */
 export function warriorEffect(value: number): string {
   const t = skillTier(value);

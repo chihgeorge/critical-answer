@@ -7,6 +7,10 @@ const ID = "00000000-0000-0000-0000-000000000001";
 const KEY = "team-key-0123456789abcdef";
 
 describe("parseClientMessage", () => {
+  it("accepts the host's hide-crit setting only as a boolean", () => {
+    expect(parseClientMessage({ type: "HOST_START", hideCritRoll: true })).toMatchObject({ type: "HOST_START", hideCritRoll: true });
+    expect(parseClientMessage({ type: "HOST_START", hideCritRoll: "true" })).toBeNull();
+  });
   it("HOST_UNDO_WRONG needs a team, a question and the eventId it was pressed under", () => {
     expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 })).toEqual({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 });
     expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1" })).toBeNull();

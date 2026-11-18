@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { answerEffect, answerReader, clericEffect, mageEffect, skillLine, warriorEffect } from "./class-dice";
+import { answerEffect, answerReader, clericEffect, critEffect, mageEffect, skillLine, warriorEffect } from "./class-dice";
 
 // Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰) and the right team reads the answer die;
 // fails_when=a tier boundary (1, 2–6, 7–19, 20) shows another tier's effect, or an unarmed thief reads the die; seam=none
 describe("class dice words", () => {
+  it("names every crit tier and its actual adjustment", () => {
+    expect([1, 2, 7, 20].map((v) => critEffect(v))).toEqual([
+      "1 大失敗：照常答對，獎勵不變",
+      "2 小失敗：照常答對，獎勵不變",
+      "7 小成功：照常答對，獎勵不變",
+      "20 大成功：獎勵多一半",
+    ]);
+    expect(critEffect(20, true)).toContain("首領多扣 1 顆愛心");
+  });
   it("names each tier's effect at its boundaries", () => {
     expect([1, 2, 6, 7, 19, 20].map((v) => mageEffect("multipleChoice", v))).toEqual([
       "法術沒效，次數照扣",

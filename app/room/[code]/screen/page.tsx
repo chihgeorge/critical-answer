@@ -322,7 +322,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; pickHold: boolean }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; pickHold: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -434,7 +434,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   const clipTime = (id: string) => (tapClip && id === reveal?.questionId ? revealTime : timing && !reveal && id === question?.id ? tapTime : undefined);
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
-  const dcChip = fillIn && !buzz && !turn?.sneakArmed ? turn?.checkTarget : undefined;
+  const dcChip = fillIn && !buzz && !inBoss && !turn?.sneakArmed ? turn?.checkTarget : undefined;
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
@@ -482,7 +482,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           🚨 抓包成立：{nameOf(reveal.caught.teamId)} 這題不算，{nameOf(reveal.caught.by)} +{CATCH_PAY.bounty}
         </div>
       )}
-      {reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
+      {reveal.scored && scorer && (!reveal.dish || reveal.served) && !tapReveal && !reveal.fields?.marks.some((f) => !f.right) && (
         <div data-testid="reveal-result" className={`${size} [overflow-wrap:anywhere]`}>
           ✅ {scorer.name} {reveal.persuaded ? "說服成功" : "答對"} +{reveal.scored.points} {scoreName(cuisine)}
         </div>
@@ -676,7 +676,11 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         </div>
         {/* The reveal takes the question's own slot until the host presses 下一題 (D7), so the
             next question never shows underneath (or behind) the previous answer. */}
-        {card ? (
+        {stageBeat ? (
+          <div data-testid={`screen-${stageBeat}`} className="px-title-boss px-title-sm text-center" style={{ fontSize: 34, lineHeight: 1.3 }}>
+            {stageBeat === "crit-intro" ? "答對了！接下來擲暴擊骰" : stageBeat === "check-success" ? "說服成功！準備看題目" : "首領被擊敗了！接下來擲尾刀骰"}
+          </div>
+        ) : card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">
             <div className="px-title-boss px-title-sm" style={{ fontSize: 34, lineHeight: 1.25 }}>
               第{ordinal(view.bossPhase)}階段：{card.name}
@@ -880,7 +884,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} value={pendingRoll.value} />
       ) : (
-        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} values={pendingRoll.values} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} bonus={pendingRoll.bonus} dc={pendingRoll.dc} castOn={question?.options ? "multipleChoice" : question?.items ? "sort" : "text"} reader={rollReader(pendingRoll, view.teams.find((t) => t.id === pendingRoll.teamId))} rejudge={!!pendingRoll.rejudge} />
+        pendingRoll && pendingRoll.kind !== "kill" && <RollOverlay key={`${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} value={pendingRoll.value} values={pendingRoll.values} kind={pendingRoll.kind ?? "warrior"} critable={!!(question?.options || question?.items)} boss={inBoss} bonus={pendingRoll.bonus} dc={pendingRoll.dc} castOn={question?.options ? "multipleChoice" : question?.items ? "sort" : "text"} reader={rollReader(pendingRoll, view.teams.find((t) => t.id === pendingRoll.teamId))} rejudge={!!pendingRoll.rejudge} />
       )}
     </>
   );
@@ -2104,7 +2108,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}
