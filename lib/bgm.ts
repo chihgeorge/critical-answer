@@ -66,32 +66,80 @@ export const DUNGEON_THEME: Song = {
 /** Bass for one bar of a swung song: root and fifth on the beats, short, so it bounces. */
 const bounce = (root: string, fifth: string) => `${root} - . ${fifth} - . ${root} - . ${fifth} - .`;
 
-/** 大廳等人曲: a bouncy sixteen-bar G-major shuffle at 132 bpm (triplet steps, long-short skips) while teams join. */
+/** A warm drone for one lobby bar: the root held half a bar, then its fifth. */
+const drone = (root: string, fifth: string) => `${root} - - - - - ${fifth} - - - - -`;
+
+/** 大廳曲, the tavern before the dungeon: D dorian in a lilting 6/8 (two 6/8 bars per 12 steps, dotted
+ * quarter = 70), plucked arpeggios over a drone and a light hand drum. Mysterious but welcoming, calmer than
+ * the dungeon it leads into. */
 export const LOBBY_THEME: Song = {
-  stepsPerMinute: 396,
+  stepsPerMinute: 210,
   melody: bars(
-    "G4 - B4 D5 - G5 F#5 - G5 D5 - .",
-    "E5 - G5 B4 - E5 D5 - B4 G4 - .",
-    "C5 - E5 G5 - E5 A5 - G5 E5 - C5",
-    "D5 - . F#5 - A5 G5 - F#5 E5 - D5",
-    "G4 - B4 D5 - G5 F#5 - G5 A5 - B5",
-    "G5 - E5 B4 - E5 G5 - . E5 - .",
-    "C5 - E5 A5 - G5 F#5 - E5 F#5 - A5",
-    "G5 - - D5 - B4 G4 - - . . .",
-    "E5 - E5 G5 - E5 C5 - E5 G5 - .",
-    "D5 - D5 G5 - D5 B4 - D5 G5 - .",
-    "C5 - E5 A5 - C6 B5 - A5 G5 - E5",
-    "F#5 - A5 D5 - F#5 A5 - - . . .",
-    "E5 - G5 C6 - B5 A5 - G5 E5 - C5",
-    "D5 - G5 B5 - A5 G5 - D5 B4 - G4",
-    "A4 - C5 E5 - A5 F#5 - E5 D5 - C5",
-    "B4 - G4 D5 - B4 G4 - . D4 - .",
+    "D4 A4 D5 F5 D5 A4 D4 A4 D5 E5 D5 A4",
+    "C4 G4 C5 E5 C5 G4 C4 G4 C5 D5 C5 G4",
+    "G4 B4 D5 G5 D5 B4 G4 B4 D5 E5 D5 B4",
+    "A4 C5 E5 A5 - E5 F5 - E5 D5 - C5",
+    "D5 - - F5 - E5 D5 - C5 A4 - -",
+    "G4 - - C5 - D5 E5 - D5 C5 - -",
+    "B4 - - D5 - E5 G5 - F5 E5 - D5",
+    "E5 - - - - - C#5 - - A4 - -",
+    "A5 - - G5 - F5 C5 - F5 A5 - -",
+    "G5 - - E5 - C5 G4 - C5 E5 - -",
+    "F5 - E5 D5 - A4 D5 - E5 F5 - G5",
+    "A5 - - G5 - D5 B4 - - . . .",
+    "D5 F5 A5 D6 A5 F5 D5 F5 A5 C6 A5 F5",
+    "C5 E5 G5 C6 G5 E5 C5 E5 G5 B5 G5 E5",
+    "B4 D5 G5 B5 G5 D5 C5 E5 A5 C6 A5 E5",
+    "D5 - - - - - A4 - - . . .",
   ),
   bass: bars(
-    bounce("G2", "D3"), bounce("E2", "B2"), bounce("C2", "G2"), bounce("D2", "A2"),
-    bounce("G2", "D3"), bounce("E2", "B2"), "A2 - . E2 - . D2 - . A2 - .", bounce("G2", "D3"),
-    bounce("C2", "G2"), bounce("G2", "D3"), bounce("A2", "E2"), bounce("D2", "A2"),
-    bounce("C2", "G2"), bounce("G2", "D3"), "A2 - . E2 - . D2 - . A2 - .", "G2 - . D3 - . G2 - . D2 - .",
+    drone("D2", "A2"), drone("C2", "G2"), drone("G2", "D2"), drone("A2", "E2"),
+    drone("D2", "A2"), drone("C2", "G2"), drone("G2", "D2"), drone("A1", "E2"),
+    drone("F2", "C2"), drone("C2", "G2"), drone("D2", "A2"), drone("G2", "D2"),
+    drone("D2", "A2"), drone("C2", "G2"), drone("G2", "A2"), drone("D2", "A1"),
+  ),
+  // A high pitch on the kick voice reads as a hand drum, not a kick.
+  drum: bars(
+    ...Array.from({ length: 16 }, (_, i) =>
+      i % 8 === 7 ? "D3 . . A3 . A3 D3 . A3 A3 . A3" : "D3 . . . . A3 D3 . . . . .",
+    ),
+  ),
+};
+
+/** Bass for one bar of the title theme: a marching root and octave on the beats. */
+const march = (low: string, high: string) => `${low} - ${high} - ${low} - ${high} -`;
+
+/** 首頁曲, the title screen: a D-major call to adventure at 112 bpm. A rising horn call answered twice, then a
+ * second phrase that climbs through ♭VII and ♭VI to the top D before turning back to the start. */
+export const TITLE_THEME: Song = {
+  stepsPerMinute: 224,
+  melody: bars(
+    "A4 - - D5 - - E5 F#5",
+    "A5 - - - - - . .",
+    "G5 - - E5 - - C5 E5",
+    "D5 - - - - - A4 -",
+    "B4 - - D5 - - F#5 -",
+    "G5 - F#5 - E5 - D5 E5",
+    "F#5 - - E5 - D5 E5 -",
+    "A5 - - - E5 - C#5 -",
+    "A4 - - D5 - - E5 F#5",
+    "A5 - - - B5 - A5 -",
+    "B5 - - G5 - - D5 G5",
+    "C6 - - - B5 - G5 -",
+    "Bb5 - - F5 - - D5 F5",
+    "C6 - - G5 - - E5 G5",
+    "D6 - - - - - A5 -",
+    "A5 - G5 - F#5 - E5 -",
+  ),
+  bass: bars(
+    march("D2", "D3"), march("D2", "D3"), march("C2", "C3"), march("D2", "D3"),
+    march("B1", "B2"), march("G1", "G2"), "E2 - E3 - A1 - A2 -", march("A1", "A2"),
+    march("D2", "D3"), march("D2", "D3"), march("G1", "G2"), march("C2", "C3"),
+    march("Bb1", "Bb2"), march("C2", "C3"), march("D2", "D3"), march("A1", "A2"),
+  ),
+  drum: bars(
+    ...Array.from({ length: 15 }, (_, i) => (i % 4 === 3 ? "C2 . . . C2 . C2 C2" : "C2 . . . C2 . . .")),
+    "C2 . C2 . C2 C2 C2 C2",
   ),
 };
 

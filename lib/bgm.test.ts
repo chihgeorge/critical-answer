@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOSS_RAGE_THEME, DUNGEON_THEME, LOBBY_THEME, VICTORY_THEME, introDuration, loopDuration, noteToFreq, songEvents } from "./bgm";
+import { BOSS_RAGE_THEME, DUNGEON_THEME, LOBBY_THEME, TITLE_THEME, VICTORY_THEME, introDuration, loopDuration, noteToFreq, songEvents } from "./bgm";
 
 describe("noteToFreq", () => {
   it("tunes A4 to 440 Hz and moves by octaves and semitones", () => {
@@ -61,8 +61,9 @@ describe("DUNGEON_THEME", () => {
   });
 });
 
-describe("LOBBY_THEME, BOSS_RAGE_THEME and VICTORY_THEME", () => {
+describe("TITLE_THEME, LOBBY_THEME, BOSS_RAGE_THEME and VICTORY_THEME", () => {
   it.each([
+    ["title", TITLE_THEME, 8],
     ["lobby", LOBBY_THEME, 12],
     ["boss", BOSS_RAGE_THEME, 8],
     ["victory", VICTORY_THEME, 12],
