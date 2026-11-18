@@ -61,7 +61,7 @@ import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
 import { getScreenKey } from "@/lib/room-code";
-import { sortOrderOf } from "@/lib/sort-order";
+import { sortAnswer, sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
 import { HostAwayBanner } from "@/components/host-away-banner";
@@ -289,7 +289,7 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
   return items.map((text) => ({ text, look: "plain" }));
 }
 
-/** Numbered 1–4 like the phone's rows, before the lock too (the phone starts from the same order). */
+/** Numbered 1–4 like the phone's rows; after a lock, tiles follow the submitted order. */
 function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
   return (
     <>
@@ -348,6 +348,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   /** ④ The boss's rage shows only while the boss itself is on screen; the music follows it game-wide. */
   const raging = rage && bossScene && !card && !dish;
   const wrong = view.pendingWrong ?? null;
+  const wrongOrder = wrong?.questionId === question?.id && wrong?.optionIndex != null && question?.items ? sortAnswer(question.items, wrong.optionIndex) : null;
   const nameOf = (id?: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   // A buzzer boss phase (docs/designs/boss-buzzer.md D7): who buzzed, who is out, or the call to buzz.
   // Not while a memory question's media plays: nobody may buzz yet (memory-questions.md).
@@ -449,8 +450,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
       {check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="block w-fit px-3 py-1 text-[20px]" />}
-      {/* A buzzer phase's typed answer is for the host only (boss-music-buzzer.md M2): the others could still buzz. */}
-      {turn?.typedAnswer && !buzz && (
+      {turn?.typedAnswer && (
         <div data-testid="screen-typed-answer" className="text-[20px] [overflow-wrap:anywhere]">
           ⚔️ {turn.name}：{turn.typedAnswer}
         </div>
@@ -784,13 +784,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
+        {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[22px] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
         {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!asking && !reveal && !card && !buzz && question && !question.options && !question.items && turn?.typedAnswer && (
+        {!asking && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
