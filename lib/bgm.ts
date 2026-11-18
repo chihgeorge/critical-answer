@@ -60,12 +60,30 @@ export const DUNGEON_THEME: Song = {
   ),
 };
 
-/** ④ 王低血暴走 (docs/designs/immersion.md): the same tune, faster, over a kick drum on every beat and a pickup
- * into the next bar. */
+/** ④ 王低血暴走: a separate, urgent boss motif with its own bass and kick pattern. */
 export const BOSS_RAGE_THEME: Song = {
-  ...DUNGEON_THEME,
-  stepsPerMinute: 300,
-  drum: bars(...Array.from({ length: 8 }, () => "C2 . C2 . C2 . C2 C2")),
+  stepsPerMinute: 288,
+  melody: bars(
+    "E5 . D#5 E5 B4 - G5 F#5",
+    "E5 - B4 C5 D5 . B4 .",
+    "G5 F#5 E5 . D5 E5 F#5 .",
+    "G5 - A5 G5 F#5 E5 D#5 .",
+    "C5 E5 G5 . F#5 E5 D5 .",
+    "B4 D5 F#5 . E5 D5 C5 .",
+    "E5 G5 B5 . A5 G5 F#5 E5",
+    "D#5 - B4 - E5 - . .",
+  ),
+  bass: bars(
+    "E2 . E2 B2 E2 . D2 B2",
+    "E2 . B2 . C3 . B2 .",
+    "C2 . C3 G2 C2 . D2 .",
+    "G2 . D3 . B2 . F#2 .",
+    "A2 . E3 . A2 . G2 .",
+    "B2 . F#3 . B2 . A2 .",
+    "C3 . G2 . D3 . B2 .",
+    "E2 . B2 . E2 . E2 .",
+  ),
+  drum: bars(...Array.from({ length: 8 }, (_, i) => i % 2 ? "C2 . . C2 C2 . C2 ." : "C2 . C2 . . C2 C2 .")),
 };
 
 /** Seconds one pass of the song lasts. */

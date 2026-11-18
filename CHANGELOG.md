@@ -2,6 +2,40 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.97.0.0] - 2026-11-19
+
+### Added
+- Give the boss rage phase its own chiptune melody and bass line.
+- Show a timing song's name and YouTube artwork on the big screen.
+- Let the host drag a timeline to play the big screen's video from any point.
+
+### Fixed
+- Let the host decide when to stop a YouTube answer reveal, instead of stopping at the question clip's end.
+- Stop the big screen's YouTube player just before the video ends, so YouTube's end screen of other videos never shows, and turn off annotation cards.
+- Allow longer complete AI narration lines (the prompt asks for 24 characters, lines may run to 34), so far fewer fall back to the scripted line, and guide the narrator away from gore and misleading retry or flee lines.
+- Keep the narrator from naming a next team while a boss phase card or buzzer phase takes over.
+- Keep answer reveals to a short result line and wait until the next step before speaking the narration.
+- Show the narration line the voice is reading, so the words on screen match the words heard.
+- Keep the big screen's narration up to date when its tab is in the background, and drop a stale voice line when the tab comes back.
+- Restore background music after a replayed answer video ends in a buzzer phase.
+
+## [0.96.0.0] - 2026-11-19
+
+### Added
+- The how-to-play intro grows from 4 to 7 pages: new pages teach the classes, the persuasion check (擲骰檢定) and the crit die, each with a small picture and a short owl line (#367).
+- The bank can pin this game's boss: the bank editor's boss menu has 「🎲 每場隨機」 plus each boss, and works while room monsters are drawn. A new optional `randomBoss` field stores it; banks without it keep following `randomMonsters` (#367).
+
+### Changed
+- Player and big-screen text says 「擲骰檢定」 instead of 「DC」: the screen's chip reads 「🗣️ 說服擲骰檢定 12（+3）」, and the die's result line matches (#367).
+
+### Fixed
+- The boss room on the big screen's map strip draws this game's actual boss (drawn or the bank's), not a fixed slime king (#367).
+
+## [0.95.0.0] - 2026-11-19
+
+### Changed
+- Multi-field music questions in the buzzer phase (for example song title and singer) now need every field right to count as a hit. A team that gets only part of it is out for the round, and the song stays open to the others until one team gets every field. If every team has answered and nobody got every field, all teams buzz again in a second round, which the big screen marks 「第二輪・最後一次搶」. If the second round also ends with nobody all right, the answer is revealed and the team with the most right fields over both rounds scores, the team that answered first on a tie. That team takes one heart per right field and a share of the reward. The other part-right teams take no hearts and score nothing. The host page shows the round and each part-right team's count. (#369)
+
 ## [0.94.0.0] - 2026-11-19
 
 ### Changed

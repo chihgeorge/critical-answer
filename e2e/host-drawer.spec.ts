@@ -125,6 +125,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await closeMore(host);
 
   await answerCorrectly(host);
+  await nextQuestion(host); // the big screen shows the narration once the reveal closes (#365)
   await expect(screen.locator(".px-say")).toContainText(queued, { timeout: 8000 });
 
   // The panel lives in ⚙ 更多 now, so it reopens collapsed (D12's close-on-new-narration is checked by narration-tts editLastLine).
@@ -144,8 +145,8 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await expect(host.getByText(/已排入：/)).toHaveCount(0);
   await closeMore(host);
 
-  await nextQuestion(host);
   await answerCorrectly(host);
+  await nextQuestion(host);
   await expect(screen.locator(".px-say")).not.toContainText(queued, { timeout: 8000 });
   await expect(screen.locator(".px-say")).not.toContainText(cancelled);
 });

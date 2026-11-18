@@ -1,8 +1,10 @@
 "use client";
 
-// The how-to-play slideshow (docs/designs/how-to-play.md D4–D11): four pages on the big screen, turned by the host.
+// The how-to-play slideshow (docs/designs/how-to-play.md D4–D11): INTRO_PAGES pages on the big screen, turned by the host.
+// Pages 3–5 teach the classes, the persuasion check and the crit die (#367).
 import type { ReactNode } from "react";
 import { DialogueBox, LabelChip, Panel, Sprite, TurnRibbon } from "@/components/pixel";
+import { CHECK_BONUS, CHECK_DC, CLASS_ICONS, CLASS_IDS, CLASS_LABELS } from "@/lib/game-state";
 import { INTRO_PAGES, scoreName } from "@/lib/protocol";
 
 /** Per page: the topic the host and phone show, the big text, the owl's line and the host's script (D4, D7). */
@@ -15,9 +17,27 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
   },
   {
     topic: "用手機作答",
-    big: "選擇題答對可擲暴擊；一般房填空題先擲說服骰",
-    owl: "一般房說服怪物前先擲骰，過了 DC 就送你答案第一個字。",
-    script: "選擇題點選後按「鎖定答案」，若本場開啟暴擊骰，答對後擲到 20 是大成功、多拿一半分數；填空題打字送出，由我來判對錯。一般房填空題作答前先擲骰加職業加值，過了怪物頭上的 DC 就給第一個字；首領房不用擲說服骰。",
+    big: "選擇題＝攻擊擲暴擊；一般房填空題＝說服先擲檢定",
+    owl: "選擇題點了要鎖定，填空題打字送出。擲骰的事，接下來三頁說給你聽。",
+    script: "選擇題點選後按「鎖定答案」；填空題打字送出，由我來判對錯。擲骰怎麼玩，接下來三頁說明。",
+  },
+  {
+    topic: "職業",
+    big: "每隊選一個職業，各有一招技能",
+    owl: "法師給提示、牧師答錯再來、盜賊偷襲加碼、廚師加分、戰士擲骰代答。",
+    script: "大廳時用手機選職業。法師施法給提示，牧師答錯可以祈禱再答，盜賊先偷襲、答對加碼，廚師答對自動加分，戰士可以擲骰代替答題。用技能都要擲骰，點數越高越好。",
+  },
+  {
+    topic: "說服擲骰檢定",
+    big: "一般房填空題先擲骰，達到擲骰檢定就送第一個字",
+    owl: "擲到 20 直接說服成功，免答！擲到 1，答對只拿一半。",
+    script: "填空題要先按手機上的「🎲 擲骰說服」：擲 d20，加上職業加值，達到怪物頭上的擲骰檢定，就送答案第一個字。擲到 20 怪物直接讓路，免答算答對；擲到 1，這題答對只拿一半。首領房不用擲說服骰。",
+  },
+  {
+    topic: "暴擊骰",
+    big: "選擇題答對擲暴擊骰，20 是大成功，多拿一半",
+    owl: "答對了就擲暴擊骰，祈禱擲到 20 吧！",
+    script: "選擇題和排序題答對，大螢幕先說明要擲暴擊骰，再擲一顆 d20；骰子停下後才公布結果：擲到 20 是大成功，這題多拿一半分數；其他點數照常拿分。主持人可以在大廳關掉暴擊骰。",
   },
   {
     topic: "答錯怎麼辦",
@@ -33,7 +53,7 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
   },
 ];
 
-/** 「第 n／4 頁：<topic>」, the phone's live status line (eng D7). */
+/** 「第 n／7 頁：<topic>」, the phone's live status line (eng D7). */
 export const introStatus = (page: number) => `第 ${page}／${INTRO_PAGES} 頁：${INTRO_PAGE_TEXT[page - 1]?.topic ?? ""}`;
 
 /** 「○ ● ○ ○」: which page is up, for the eye only (the host and phone pages mark it aria-hidden). */
@@ -85,6 +105,43 @@ function Picture({ page, cuisine }: { page: number; cuisine: boolean }) {
       </div>
     );
   if (page === 3)
+    return (
+      <div className="flex items-end gap-6">
+        {CLASS_IDS.map((c, i) => (
+          <div key={c} className="flex flex-col items-center gap-1 text-[18px]">
+            <Sprite kind="hero" variant={i} cls={c} scale={3} className={hop} />
+            <span>{CLASS_ICONS[c]} {CLASS_LABELS[c]}</span>
+          </div>
+        ))}
+      </div>
+    );
+  if (page === 4) {
+    const [die, bonus, dc] = [10, CHECK_BONUS.thief, CHECK_DC[2]];
+    return (
+      <div className="flex flex-col items-center gap-3 text-[20px]">
+        <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
+          🗣️ 說服擲骰檢定 {dc}（+{bonus}）
+        </div>
+        <div className="flex items-center gap-4">
+          <Sprite kind="dice" scale={2} className={hop} />
+          <span className="px-num text-[18px]">{die} + {bonus} = {die + bonus} ≥ {dc}</span>
+          <span>→ 🔮 第一個字：海</span>
+        </div>
+      </div>
+    );
+  }
+  if (page === 5)
+    return (
+      <div className="flex gap-6 text-[18px]">
+        {[["1", "還是打中了"], ["2–19", "答對！"], ["20", "大成功・多拿一半"]].map(([n, t], i) => (
+          <div key={n} className="flex flex-col items-center gap-1">
+            <div className="px-num text-[20px]" style={{ background: i === 2 ? "var(--turn)" : "var(--cream)", border: "3px solid var(--k)", padding: "6px 12px" }}>🎲 {n}</div>
+            {t}
+          </div>
+        ))}
+      </div>
+    );
+  if (page === 6)
     return (
       <div className="flex flex-col items-center gap-2">
         <Sprite kind="slime" scale={4} className={hop} />

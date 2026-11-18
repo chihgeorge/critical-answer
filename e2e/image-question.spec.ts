@@ -259,7 +259,7 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
 
   await host.getByRole("button", { name: "答對！" }).click();
   // Revealed explanations open with Chinese captions (youtube-questions.md): the embed carries the caption vars.
-  const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW$/;
+  const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?rel=0&iv_load_policy=3&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW$/;
   await expect(screen.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
   await expect(team.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
 });

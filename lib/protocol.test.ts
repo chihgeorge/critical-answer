@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { byCategory, cleanTypedAnswer, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
+import { byCategory, cleanTypedAnswer, INTRO_PAGES, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
 import { MAX_LINE } from "./narration/runner";
 
 const TOKEN = "host-token-0123456789abcdef";
@@ -183,10 +183,11 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_START", intro: "yes" })).toBeNull();
   });
 
-  it("HOST_INTRO: a whole page from 1 to 5 (5 ends the intro)", () => {
+  it("HOST_INTRO: a whole page from 1 to INTRO_PAGES + 1 (that one ends the intro)", () => {
+    expect(INTRO_PAGES).toBe(7);
     expect(parseClientMessage({ type: "HOST_INTRO", page: 1 })).toEqual({ type: "HOST_INTRO", page: 1 });
-    expect(parseClientMessage({ type: "HOST_INTRO", page: 5 })).toEqual({ type: "HOST_INTRO", page: 5 });
-    for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
+    expect(parseClientMessage({ type: "HOST_INTRO", page: 8 })).toEqual({ type: "HOST_INTRO", page: 8 });
+    for (const page of [0, 9, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
   });
 
   it("HOST_EPILOGUE_PAGE: a whole page from 0", () => {
@@ -369,6 +370,8 @@ describe("parseClientMessage", () => {
     }
     expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "stop" })).toBeNull();
     expect(parseClientMessage({ type: "HOST_MEDIA", action: "play" })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at: 83 })).toEqual({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at: 83 });
+    for (const at of [-1, 21601, 1.5, NaN, "83", undefined]) expect(parseClientMessage({ type: "HOST_MEDIA", questionId: "q1", action: "seek", at })).toBeNull();
   });
 
   it("TEAM_PICK_CLASS accepts a known class id or null, nothing else (class-abilities.md)", () => {

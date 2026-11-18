@@ -10,7 +10,7 @@
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, shouldSeek, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, clipStopAt, loadCaptions, playerSteps, shouldSeek, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
 interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
@@ -18,6 +18,7 @@ interface YTPlayer extends CaptionPlayer {
   mute(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  getDuration(): number;
   destroy(): void;
 }
 interface YTNamespace {
@@ -101,6 +102,8 @@ export function YoutubePlayer({
   onError,
   errorNote,
   title = "題目影片",
+  cardTitle,
+  thumbnailUrl,
   zhCaptions = false,
   timeRef,
   replay,
@@ -127,6 +130,8 @@ export function YoutubePlayer({
   /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
   errorNote?: string;
   title?: string;
+  cardTitle?: string;
+  thumbnailUrl?: string;
   /** After the reveal: Chinese captions, or YouTube's translation to Traditional Chinese. Never while answering. */
   zhCaptions?: boolean;
   /** Set to a reader of the video's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
@@ -181,13 +186,15 @@ export function YoutubePlayer({
           height,
           host: "https://www.youtube-nocookie.com",
           playerVars: {
+            // No `end` here: the poll below stops the clip, so the reveal lifting `end` keeps this player (screen D17, #365).
             start,
-            ...(end !== undefined ? { end } : {}),
             // Read once: the player is not rebuilt when the reveal turns captions on; the effect below does that.
             ...(zh.current ? ZH_CAPTION_VARS : {}),
             controls: controls ? 1 : 0,
             disablekb: controls ? 0 : 1,
             rel: 0,
+            iv_load_policy: 3,
+            // YouTube can still show same-channel related videos and its own overlays; the API has no share switch.
             playsinline: 1,
           },
           events: {
@@ -200,6 +207,7 @@ export function YoutubePlayer({
             onStateChange: (e) => {
               // YouTube can reach the end itself (its own `end`, or a clip with none) before the poll sees it.
               if (e.data === 0) ended.current = true;
+              if (e.data === 1) ended.current = false; // the viewer may replay inside YouTube's own frame
               if (e.data === 1) captions(e.target);
               show(clipStatusFromYoutube(e.data, ended.current));
             },
@@ -222,7 +230,7 @@ export function YoutubePlayer({
       setReady(false);
       report.current?.(false);
     };
-  }, [videoId, start, end, width, height, controls, attempt]);
+  }, [videoId, start, width, height, controls, attempt]);
 
   // The question turns into its reveal on the same player (screen D17): captions come on without a rebuild.
   useEffect(() => {
@@ -250,8 +258,15 @@ export function YoutubePlayer({
     const p = player.current;
     if (!ready || !p) return;
     const next = { state: want.state, seq: want.seq };
-    const steps = playerSteps(applied.current, next, ended.current);
+    const seek = want.seek !== undefined && applied.current?.seq !== next.seq;
+    const steps = seek ? [] : playerSteps(applied.current, next, ended.current);
     applied.current = next;
+    if (seek) {
+      ended.current = false;
+      p.seekTo(want.seek!, true);
+      if (want.state === "playing") p.playVideo();
+      else p.pauseVideo();
+    }
     for (const step of steps) {
       if (step === "pause") p.pauseVideo();
       else {
@@ -262,7 +277,7 @@ export function YoutubePlayer({
         p.playVideo();
       }
     }
-  }, [ready, want.state, want.seq, want.press, start]);
+  }, [ready, want.state, want.seq, want.press, want.seek, start]);
 
   // The reveal's replay: one seek per key and player build (a retry starts the clip over, so it seeks again), on the
   // ready player. Clearing `ended` lets a clip that already stopped at its end play again (and stop there again by the
@@ -290,10 +305,11 @@ export function YoutubePlayer({
 
   // The clip ends by the video's own clock, not a timer, so buffering never cuts it short (eng review).
   useEffect(() => {
-    if (status !== "playing" || end === undefined) return;
+    if (status !== "playing") return;
     const timer = setInterval(() => {
       const p = player.current;
-      if (!p || p.getCurrentTime() < end) return;
+      const stop = p ? clipStopAt(end, p.getDuration()) : undefined;
+      if (!p || stop === undefined || p.getCurrentTime() < stop) return;
       ended.current = true;
       p.pauseVideo();
       setStatus("ended");
@@ -306,7 +322,7 @@ export function YoutubePlayer({
   return (
     <div data-testid="youtube-player" data-status={status} className="relative" style={{ width, height, boxShadow: "0 0 0 4px var(--k)" }}>
       <div ref={host} aria-label={title} style={{ width, height }} />
-      {cover && status !== "error" && <MusicCard status={status} start={start} end={end} />}
+      {cover && status !== "error" && <MusicCard status={status} start={start} end={end} title={cardTitle} thumbnailUrl={thumbnailUrl} />}
       {status === "error" && (
         <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--k)] text-[24px] text-[var(--cream)]">
           {CLIP_STATUS_TEXT.error}
@@ -331,19 +347,20 @@ export function YoutubePlayer({
 
 /** The music question's card over the hidden video (D15): a pixel note, 聽歌猜題, an equalizer that moves only
  * while the song plays, the state in words, and the clip's length. */
-export function MusicCard({ status, start, end, title = "聽歌猜題" }: { status: ClipStatus; start: number; end?: number; title?: string }) {
+export function MusicCard({ status, start, end, title = "聽歌猜題", thumbnailUrl }: { status: ClipStatus; start: number; end?: number; title?: string; thumbnailUrl?: string }) {
   const playing = status === "playing";
   return (
     <div data-testid="music-card" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--lav)] text-[var(--k)]">
-      {end !== undefined && <div className="absolute right-3 top-2 text-[16px]">{end - start} 秒</div>}
-      <PixelNote />
-      <div className="text-[32px] leading-none">{title}</div>
-      <div className="flex h-[28px] items-end gap-[6px]" aria-hidden>
+      {thumbnailUrl && <div role="img" aria-label="歌曲圖片" className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `linear-gradient(#2a153399, #2a1533bb), url(${thumbnailUrl})` }} />}
+      {end !== undefined && <div className="absolute right-3 top-2 text-[16px]" style={thumbnailUrl ? { color: "white" } : undefined}>{end - start} 秒</div>}
+      {!thumbnailUrl && <PixelNote />}
+      <div className="relative text-[32px] leading-none" style={thumbnailUrl ? { color: "white" } : undefined}>{title}</div>
+      <div className="relative flex h-[28px] items-end gap-[6px]" aria-hidden>
         {[0, 1, 2, 3, 4].map((i) => (
           <i key={i} className={playing ? (i % 2 ? "px-eq px-eq2" : "px-eq") : undefined} style={{ display: "block", width: 8, height: playing ? 28 : 6, background: "var(--k)", transformOrigin: "bottom" }} />
         ))}
       </div>
-      <div className="text-[20px]" role="status">
+      <div className="relative text-[20px]" role="status" style={thumbnailUrl ? { color: "white" } : undefined}>
         {CLIP_STATUS_TEXT[status]}
       </div>
     </div>

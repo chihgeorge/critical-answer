@@ -40,7 +40,7 @@ import { QuestionPicker } from "@/components/question-picker";
 import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
-import { hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
+import { formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
@@ -1300,6 +1300,9 @@ export default function HostPage() {
                   )}
                   {buzz.category && <div className="text-[14px]">{teamName(buzz.picker ?? "")} 選的類別：{buzz.category}</div>}
                   {buzz.out.length > 0 && <div className="text-[14px]">已鎖住：{buzz.out.map(teamName).join("、")}</div>}
+                  {/* A music question with fields (#369): round 2 and the part-right answers kept for its end. */}
+                  {buzz.second && <div data-testid="host-buzz-second" className="p-1 text-[14px]" style={{ background: "var(--warn)" }}>第二輪（最後一輪）：再沒人全對，就由答對最多欄的隊伍得分（同分算先答的）</div>}
+                  {!!buzz.partials?.length && <div className="text-[14px]">部分答對：{buzz.partials.map((p) => `${teamName(p.teamId)} ${p.marks.filter(Boolean).length}/${p.marks.length}`).join("、")}</div>}
                   {!buzz.teamId && (
                     <PixelButton className="!m-0 min-h-[44px] text-[15px]" disabled={!ready} onClick={() => send({ type: "HOST_BUZZ_SKIP", questionId: buzz.questionId })}>
                       沒人答對，換下一題
@@ -1776,7 +1779,19 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 function MediaControls({ questionId, media, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
-  const press = (action: MediaAction) => send({ type: "HOST_MEDIA", questionId, action });
+  const [picked, setPicked] = useState<{ questionId: string; seq: number; at: number } | null>(null);
+  const press = (action: MediaAction) => {
+    send({ type: "HOST_MEDIA", questionId, action });
+    setPicked(null);
+  };
+  const at = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0;
+  // Only a value the host moved since the last command: a stray tap must not seek (and clear a timing round's taps).
+  const moved = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0);
+  const seek = (value: string) => {
+    if (!moved) return;
+    send({ type: "HOST_MEDIA", questionId, action: "seek", at: Number(value) });
+    setPicked(null);
+  };
   const look = (lit: boolean) => ({ minHeight: 48, background: lit ? "var(--ok)" : "var(--cream)" });
   // An Instagram embed has no player API: ▶ asks someone at the screen to click it, ⏸ and ⟲ reload it (instagram-explanations.md).
   return (
@@ -1784,6 +1799,18 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
       <div className="text-[14px]" role="status">
         {instagram ? `大螢幕（IG 詳解）：${playing ? "請旁邊的人點影片" : "已停止"}` : `大螢幕：${hostMediaStatus(playing, liveOpen)}`}
       </div>
+      {!instagram && (
+        <label className="mt-2 block text-[14px]">
+          <span>選擇播放段落：{formatClipTime(at)}</span>
+          {/* shortcut: the host page does not know the clip's bounds or the video's length, so 10 minutes; the room clamps a question clip's seek to it. */}
+          <input type="range" aria-label="選擇播放段落" min={0} max={600} step={1} value={at} disabled={disabled}
+            onChange={(e) => setPicked({ questionId, seq: media?.seq ?? 0, at: Number(e.currentTarget.value) })}
+            onPointerUp={(e) => seek(e.currentTarget.value)}
+            // Only the keys that move a range: 1, Enter or Space released here must not seek (and clear a timing round's taps).
+            onKeyUp={(e) => { if (/^(Arrow|Home$|End$|Page)/.test(e.key)) seek(e.currentTarget.value); }}
+            className="block w-full" />
+        </label>
+      )}
       <div className="flex">
         <PixelButton aria-label="播放" aria-pressed={playing} disabled={disabled} className="flex-1 text-[18px]" style={look(playing)} onClick={() => press("play")}>
           {instagram ? "▶ 請點影片" : "▶ 播放"}

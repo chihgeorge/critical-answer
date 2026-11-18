@@ -18,7 +18,7 @@ import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
 import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
-import { MONSTERS, monsterById } from "@/lib/monster-catalog";
+import { MONSTERS, drawsBoss, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
@@ -431,7 +431,7 @@ export default function BankEditorPage() {
   const dirty = bank !== saved;
   /** Tabs with edits since the last load or save (each edit replaces only what it touched). */
   const tabDirty = (t: Tab) =>
-    !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.boss.monster !== saved.boss.monster : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
+    !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.randomBoss !== saved.randomBoss || bank.boss.monster !== saved.boss.monster : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
 
   const withPhase = (b: Bank, phase: number, patch: Partial<BossPhase>): Bank => ({
     ...b,
@@ -804,13 +804,13 @@ export default function BankEditorPage() {
             <RoomsEditor
               bank={bank}
               onRoom={updateRoom}
-              onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
+              onBossMonster={(monster) => setBank((prev) => (prev ? (monster === RANDOM_BOSS ? { ...prev, randomBoss: true } : { ...prev, randomBoss: false, boss: { ...prev.boss, monster } }) : prev))}
               onRandomMonsters={(randomMonsters) => setBank((prev) => (prev ? { ...prev, randomMonsters } : prev))}
             />
           ) : tab === "boss" ? (
             <>
               <Panel className="p-4 text-[16px]">
-                首領 · {monsterById(bank.boss.monster)?.name ?? ""} · {bank.boss.phases.length} 個階段 · {bossQuestions(bank).length} 題
+                首領 · {drawsBoss(bank) ? "每場隨機" : monsterById(bank.boss.monster)?.name ?? ""} · {bank.boss.phases.length} 個階段 · {bossQuestions(bank).length} 題
                 <div className="text-[13px]">首領房的隊伍輪流回答目前階段的題目。打空一個階段的血（或它的題目都出完）就換下一階段，大螢幕這時才揭曉它的名稱和規則；玩家不會知道總共有幾個階段。</div>
               </Panel>
               {bank.boss.phases.map((p, i) => {
@@ -974,7 +974,7 @@ function RoomsEditor({
         <div className="text-[13px]">難度決定從哪個題庫抽題、答對拿幾點進度分；{score}決定冠軍。打倒怪物會端上牠的菜。同一隻怪物可以放在好幾房，再次登場時會換顏色、戴配件。</div>
         <label className="flex items-center gap-2 text-[15px]">
           <input type="checkbox" data-testid="bank-random-monsters" checked={!!bank.randomMonsters} onChange={(e) => onRandomMonsters(e.target.checked)} />
-          每場隨機抽怪（每間房換一隻不重複的小怪、首領也隨機；下面選的怪物這時不用）
+          每場隨機抽小怪（每間房換一隻不重複的小怪；下面選的房間怪物這時不用）
         </label>
         {bank.rooms.map((r, i) => (
           <div key={i} data-testid={`bank-room-${i}`} className="flex flex-wrap items-center gap-2 text-[15px]">
@@ -1002,7 +1002,7 @@ function RoomsEditor({
         ))}
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
-          <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss disabled={bank.randomMonsters} onChange={onBossMonster} />
+          <MonsterPicker testId="bank-boss-monster" label="首領" value={drawsBoss(bank) ? RANDOM_BOSS : bank.boss.monster} boss onChange={onBossMonster} />
         </div>
         <div className="text-[13px]">首領題打中一下照題目難度得分：難度 1–5 各 5／10／15／20／25 分（沒設難度算 {DEFAULT_BOSS_DIFFICULTY}）。最後一擊另外加 4 顆 D20（4～80 分）。</div>
       </div>
@@ -1011,11 +1011,15 @@ function RoomsEditor({
 }
 
 /** A catalog monster picker: room monsters for a room, bosses for the boss, with the monster, its dish and the dish's name. */
+/** The boss picker's 「每場隨機」: no catalog id, so it sets the bank's randomBoss instead (#367). */
+const RANDOM_BOSS = "";
+
 function MonsterPicker({ testId, label, value, boss, onChange, disabled }: { testId: string; label: string; value: string; boss: boolean; onChange: (id: string) => void; disabled?: boolean }) {
   const m = monsterById(value);
   return (
     <span data-testid={testId} className={`flex min-w-0 flex-1 flex-wrap items-center gap-2${disabled ? " opacity-50" : ""}`}>
       <select aria-label={label} className="px-input !w-auto !py-1" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)}>
+        {boss && <option value={RANDOM_BOSS}>🎲 每場隨機</option>}
         {MONSTERS.filter((x) => x.boss === boss).map((x) => (
           <option key={x.id} value={x.id}>
             {x.name}
@@ -1192,7 +1196,7 @@ function RoomEditor({
             難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題
             {categories ? "。" : (
               <>
-                ，也決定說服檢定的 <span className="whitespace-nowrap">DC（8～16）</span>。
+                ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>。
               </>
             )}
           </div>

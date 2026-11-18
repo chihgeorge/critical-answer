@@ -87,8 +87,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // answer channel checked above — and stays up until the host moves on.
   await expect(screen.getByText(`正解：${answer}`)).toBeVisible();
   await expect(players[0].page.getByText(`正解：${answer}`)).toBeVisible();
-  // Before 上菜 (which shows 「上菜！」 on the screen): one narration line about 甲隊's answer reaches the big screen and the other phone alike.
-  await expect(screen.locator(".px-say")).toContainText("甲隊");
+  // Before 上菜 (which shows 「上菜！」 on the screen): the big screen's narrator only says 答對！ until 下一題 (#365); the
+  // narration line about 甲隊's answer reaches the other phone.
+  await expect(screen.locator(".px-say")).toContainText("答對！");
   await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
 
   // The line naming the next team waits for 下一題: the screen still shows 甲隊's room.

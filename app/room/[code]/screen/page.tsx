@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -24,12 +24,12 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
+import { firstChange, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
-import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
+import { createBgmPlayer, holdBgmForBuzz, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
 import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
@@ -56,7 +56,7 @@ import { ScreenMediaTest } from "@/components/screen-media-test";
 import { useClockPings, useRoomClock } from "@/components/room-clock";
 import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
 import { replayFromS } from "@/lib/tap-clock";
-import { resendClipError, type ClipErrorSeen } from "@/lib/youtube";
+import { clipEndForStage, resendClipError, youtubeThumbnailUrl, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
@@ -322,7 +322,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; pickHold: boolean }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -357,12 +357,17 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // A timing question (timing-tap.md 畫面): the rule beside the music card, never who tapped.
   const timing = question?.timing;
   const buzzBox = buzz && timing ? (
-    <TimingRoundPanel label={timing.label} open={!!buzz.open} />
+    <TimingRoundPanel title={question?.prompt} label={timing.label} open={!!buzz.open} />
   ) : buzz && (
     <div data-testid="screen-buzz" className="flex flex-col items-center gap-2">
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
         {buzz.teamId ? `${nameOf(buzz.teamId)} 搶到了！` : question?.content.kind === "youtube" && !buzz.open ? "等主持人按 ▶" : "♪ 快搶！"}
       </div>
+      {buzz.second && !buzz.teamId && (
+        <div data-testid="screen-buzz-second" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
+          第二輪・最後一次搶
+        </div>
+      )}
       {/* The category or type (#321) the last winner or the host picked (boss-music-buzzer.md M5). */}
       {(buzz.category ?? buzz.qtype) && question?.content.kind === "youtube" && !buzz.open && !buzz.teamId && (
         <div data-testid="screen-buzz-category" className="px-chip" style={{ ...CHIP, fontSize: 20, background: "var(--warn)" }}>
@@ -446,7 +451,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
       {dcChip && (
         <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, background: "var(--warn)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
+          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
@@ -527,7 +532,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         width={width}
         height={height}
         cover={!!v.content.audioOnly}
-        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : "聽歌猜題"}
+        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : timing ? question?.prompt || "聽歌猜題" : "聽歌猜題"}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
@@ -542,11 +547,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <YoutubePlayer
         videoId={v.content.videoId}
         start={v.content.start}
-        end={v.content.end}
+        end={clipEndForStage(v.content.end, !!reveal)}
         command={media?.questionId === v.id ? media : null}
         width={width}
         height={height}
-        cover={!reveal && !!v.content.audioOnly}
+        cover={!reveal && (!!v.content.audioOnly || !!timing)}
+        cardTitle={timing ? question?.prompt || undefined : undefined}
+        thumbnailUrl={timing && !reveal ? youtubeThumbnailUrl(v.content.videoId) : undefined}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
@@ -581,7 +588,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line. Not over an
   // answer, a card or a held line on show: the host's 下一題 or ruling still moves those on.
   const paused = pausedOffline(view) && !reveal && !card && !held;
-  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
+  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : reveal ? [revealDialogue(!!reveal.scored)] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "var(--boss)" : undefined }}>
       {/* A very long custom name ends in … at 360 px (16 characters at 22 px), so the plate stays on the stage and clear of
@@ -827,7 +834,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
       {dcChip && !asking && (
         <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
+          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: classic ? "#0007" : "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
@@ -874,10 +881,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <DialogueBox
         className="relative"
         accent={bossScene ? "var(--boss)" : undefined}
-        loading={!served && !paused && !held && isPending(eventId, narration)}
+        loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -1320,6 +1327,8 @@ export default function ScreenPage() {
    * spoken) would never update it, and a correction to it would have nothing to compare against
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
+  const deferredNarration = useRef<{ eventId: number; lines: string[] } | null>(null);
+  const latestSceneId = useRef(0);
 
   useEffect(() => {
     if (!ttsSupported()) return;
@@ -1343,6 +1352,8 @@ export default function ScreenPage() {
    * (not all queued at once) so a host edit can swap a later line, or restart from the edited one (D13).
    * `eventId` is the narration's, or null for any other line (intro, 上菜, epilogue). */
   const speech = useRef<{ lines: string[]; at: number; eventId: number | null; utter: SpeechSynthesisUtterance | null } | null>(null);
+  /** The narration line the voice is reading, for the dialogue box to show the same line (#365). */
+  const [voiceAt, setVoiceAt] = useState<{ eventId: number; at: number } | null>(null);
 
   function speakAt(q: NonNullable<typeof speech.current>) {
     if (speech.current !== q || !ttsVoice) return;
@@ -1350,6 +1361,7 @@ export default function ScreenPage() {
       speech.current = null;
       return;
     }
+    setVoiceAt(q.eventId === null ? null : { eventId: q.eventId, at: q.at });
     const utter = new SpeechSynthesisUtterance(q.lines[q.at]);
     utter.voice = ttsVoice;
     utter.lang = ttsVoice.lang;
@@ -1377,7 +1389,9 @@ export default function ScreenPage() {
   function speak(lines: string[], eventId: number | null = null, from = 0) {
     if (!ttsOn || !ttsSupported()) return;
     if (!ttsVoice) {
-      pendingLines.current = { lines, eventId, from };
+      // The handoff added to a narration still waiting here must not drop its earlier lines.
+      const p0 = pendingLines.current;
+      pendingLines.current = { lines, eventId, from: p0 && eventId !== null && p0.eventId === eventId ? Math.min(from, p0.from) : from };
       return;
     }
     const p = progress.current;
@@ -1390,6 +1404,27 @@ export default function ScreenPage() {
     speech.current = q;
     speakAt(q);
   }
+
+  /** The tab is in front again (#365): a hidden tab's throttled timers can leave the voice on a line the room has moved
+   * past (dropped), or stalled on one that never ended (read again from there). */
+  const onTabShown = useEffectEvent(() => {
+    const q = speech.current;
+    if (document.hidden || !q || !ttsSupported()) return;
+    if (q.eventId !== null && q.eventId < latestSceneId.current) {
+      speech.current = null; // before cancel(): see speakAt's guard
+      setVoiceAt(null);
+      window.speechSynthesis.cancel();
+    } else if (!window.speechSynthesis.speaking) {
+      q.utter = null;
+      window.speechSynthesis.cancel();
+      speakAt(q);
+    }
+  });
+  useEffect(() => {
+    const on = () => onTabShown();
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
 
   // --- How far this screen has read the narration (host-narration-edit.md D3, D11, D14) ---
   /** typed: lines finished typing. spoken: lines finished speaking, or null when the voice isn't reading it.
@@ -1483,7 +1518,7 @@ export default function ScreenPage() {
   // The music stays silent from a buzz until the host judges it, and while the host plays the song from their own
   // device (boss-music-buzzer.md M3, M4): the room must hear the answer, and the song.
   const buzzView = game?.phase === "playing" ? game.view.buzz : undefined;
-  const held = !!buzzView?.teamId || (!!game?.clipError && !!buzzView?.open);
+  const held = holdBgmForBuzz(!!game?.reveal, buzzView?.teamId, !!game?.clipError, !!buzzView?.open);
   /** 🎯 校正喇叭 (docs/designs/tap-calibrate.md): LOBBY's `calibrate` shows the card on every screen; SCREEN_CALIBRATE
    * comes to the one screen that beeps. The music and the ambience stay quiet meanwhile. */
   const [calibCard, setCalibCard] = useState(false);
@@ -1561,6 +1596,15 @@ export default function ScreenPage() {
     if (playing && ttsSupported()) {
       window.speechSynthesis.cancel();
       pendingLines.current = null;
+      speech.current = null;
+      setVoiceAt(null);
+    } else if (!playing && !(revealUp.current && lastPhase.current === "playing") && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
+      // Not on a buzz's pause: an earlier line must not be read over the team answering.
+      const waiting = deferredNarration.current;
+      if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
+        deferredNarration.current = null;
+        speak(waiting.lines, waiting.eventId);
+      }
     }
   }
 
@@ -1668,6 +1712,7 @@ export default function ScreenPage() {
     }
     if (!voiceWasOn || next.voice || !ttsSupported()) return; // only when 🔊 turns off, not on every STATE
     speech.current = null; // before cancel(): see speakAt's guard
+    setVoiceAt(null);
     window.speechSynthesis.cancel();
     pendingLines.current = null;
     if (progress.current) progress.current.spoken = null;
@@ -1848,6 +1893,7 @@ export default function ScreenPage() {
       // The room drops a test run when its screen reconnects: the host presses again.
       setScreenTest(null);
       narrationBaseline.current = null;
+      deferredNarration.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
@@ -1901,9 +1947,11 @@ export default function ScreenPage() {
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
+          deferredNarration.current = null;
           sfxSeen.current = null;
           pendingLines.current = null;
           speech.current = null;
+          setVoiceAt(null);
           progress.current = null;
           window.speechSynthesis?.cancel();
           break;
@@ -1924,6 +1972,19 @@ export default function ScreenPage() {
           setCalibCard(false);
           setBeepRun(null);
           setGame(msg);
+          latestSceneId.current = msg.eventId;
+          if (deferredNarration.current && deferredNarration.current.eventId < msg.eventId) deferredNarration.current = null;
+          if (msg.reveal && !revealUp.current) {
+            speech.current = null;
+            setVoiceAt(null);
+            pendingLines.current = null;
+            if (ttsSupported()) window.speechSynthesis.cancel();
+          }
+          if (!msg.reveal && revealUp.current && !videoPlaying.current) {
+            const waiting = deferredNarration.current;
+            deferredNarration.current = null;
+            if (waiting && narrationCanSpeak(msg.eventId, waiting.eventId, false, false) && !msg.phaseCard) speak(waiting.lines, waiting.eventId);
+          }
           applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
           if (clipResendDue.current) {
@@ -2009,6 +2070,7 @@ export default function ScreenPage() {
           }
           break;
         case "NARRATION":
+          if (msg.eventId < latestSceneId.current) break;
           setNarration((n) => keepLatest(n, msg));
           {
             let speakIt = false;
@@ -2018,7 +2080,11 @@ export default function ScreenPage() {
             }
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
             const added = !revealUp.current && progress.current?.eventId === msg.eventId;
-            trackNarration(msg, speakIt && (msg.eventId !== servedEvent.current || added));
+            const voice = speakIt && (msg.eventId !== servedEvent.current || added);
+            // A finished game keeps its last reveal for good: the kill shot's line is read then, not held for a 下一題.
+            const holding = revealUp.current && lastPhase.current === "playing";
+            if (voice && (holding || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
+            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, holding, videoPlaying.current));
           }
           break;
         case "EPILOGUE":
@@ -2108,7 +2174,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

@@ -341,7 +341,7 @@ export type ClientMessage =
   /** Host: reveal a team's locked multiple-choice answer (docs/designs/host-reveal.md). The room judges it after the beat. */
   | { type: "HOST_REVEAL"; teamId: string; questionId: string }
   /** Host: ▶ ⏸ ⟲ for the YouTube video on the big screen (docs/designs/youtube-questions.md). */
-  | { type: "HOST_MEDIA"; questionId: string; action: MediaAction }
+  | { type: "HOST_MEDIA"; questionId: string; action: MediaAction; at?: number }
   /** ⏭ 直接出題: a memory question's media ends now (docs/designs/memory-questions.md). */
   | { type: "HOST_MEMORY_DONE"; questionId: string }
   /** 結束冒險: end the game now, ranked by each team's reward. */
@@ -494,16 +494,18 @@ export type ServerErrorCode =
 /** One per kind of event: the big screen's sound effect for it (lib/sfx.ts). */
 export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "boss-phase" | "boss-kill" | "roll" | "crit" | "fumble" | "check-pass" | "check-fail" | "cook" | "buzz" | "warrior-roll" | "memory-ready";
 
-export const MEDIA_ACTIONS = ["play", "pause", "restart"] as const;
+export const MEDIA_ACTIONS = ["play", "pause", "restart", "seek"] as const;
 export type MediaAction = (typeof MEDIA_ACTIONS)[number];
 /** What the host last asked the big screen's video to do. `seq` goes up on each ⟲ 從頭, so the screen
- * plays from `start` again; `press` on every button. In memory only: absent after a restart, and from older servers (paused). */
+ * plays from `start` again, and on each timeline seek, so it plays from `seek`; `press` on every button. In memory only: absent after a restart, and from older servers (paused). */
 export interface MediaCommand {
   questionId: string;
   state: "playing" | "paused";
   seq: number;
   /** Goes up on every press, so a ▶ after the clip stopped itself at its end reaches the player (it replays). */
   press: number;
+  /** The host picked this point on the timeline; kept with the command for reconnecting screens. */
+  seek?: number;
 }
 
 export type ServerMessage =
@@ -827,7 +829,7 @@ export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as con
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
-export const INTRO_PAGES = 4;
+export const INTRO_PAGES = 7;
 /** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
 export const HANDOFF_MS = 5 * 60 * 1000;
 
@@ -1060,7 +1062,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "HOST_MEDIA": {
       const questionId = str(m.questionId, MAX_ID);
       const action = MEDIA_ACTIONS.find((a) => a === m.action);
-      return questionId === null || !action ? null : { type: "HOST_MEDIA", questionId, action };
+      if (questionId === null || !action) return null;
+      if (action !== "seek") return { type: "HOST_MEDIA", questionId, action };
+      const at = m.at;
+      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= 21600 ? { type: "HOST_MEDIA", questionId, action, at } : null;
     }
     case "HOST_MEMORY_DONE": {
       const questionId = str(m.questionId, MAX_ID);

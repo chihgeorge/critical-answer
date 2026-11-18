@@ -92,6 +92,17 @@ describe("gameMonsters", () => {
     expect(catalogMonster(boss).boss).toBe(true);
   });
 
+  // Value: protects=a bank can pin its boss while rooms are drawn, or draw the boss while rooms stay (#367);
+  // fails_when=randomBoss is ignored, or a bank without it stops following randomMonsters.
+  it("draws the boss by randomBoss, and without it as randomMonsters says", () => {
+    const bosses = (bank: Parameters<typeof gameMonsters>[0]) => new Set(Array.from({ length: 200 }, (_, g) => gameMonsters(bank, seq(g + 1)).boss));
+    expect(bosses({ rooms: rooms(3), boss: { monster: "kraken" }, randomMonsters: true, randomBoss: false })).toEqual(new Set(["kraken"]));
+    expect(bosses({ rooms: rooms(3), boss: { monster: "kraken" }, randomMonsters: true }).size).toBe(MONSTERS.filter((m) => m.boss).length);
+    const pinnedRooms = gameMonsters({ rooms: [{ monster: "bat-hanging" }], boss: { monster: "kraken" }, randomBoss: true }, seq(3));
+    expect(pinnedRooms.rooms).toEqual(["bat-hanging"]);
+    expect(bosses({ rooms: rooms(1), boss: { monster: "kraken" }, randomBoss: true }).size).toBe(MONSTERS.filter((m) => m.boss).length);
+  });
+
   it("uses every monster about equally over many games", () => {
     const count = new Map<string, number>();
     const rng = seq(42);

@@ -26,7 +26,7 @@
 // Turn order never changes with room progress — this avoids the "arrival
 // order" snowball fairness risk flagged in /plan-eng-review's Outside Voice.
 import { rankTeams, type TieRoll } from "./podium";
-import { MONSTERS, monsterById } from "./monster-catalog";
+import { MONSTERS, monsterById, type CatalogMonster } from "./monster-catalog";
 
 export type Difficulty = 1 | 2 | 3 | 4 | 5;
 
@@ -353,6 +353,11 @@ export interface BuzzState {
    * question. Set by latchStun on any open buzz and by a stunned team's tap (tapIn), but only stunLifted reads it, for
    * timing questions (tapEligible and the phone's tap button); buzzIn clears the stun flags on the press instead. */
   allStunned?: true;
+  /** A music question with fields (#369): each team's verdicts that were right on some fields but not all, in the order
+   * judged. Such a team is out like a wrong buzz; once two rounds pass with nobody all right, the most right fields score. */
+  partials?: { teamId: string; marks: boolean[] }[];
+  /** A music question with fields (#369): every team was out once, so this is the second and last round. */
+  second?: true;
 }
 
 export interface GameConfig {
@@ -1033,6 +1038,31 @@ export function buzzIn(game: GameState, teamId: string, questionId: string, open
   return { ...game, teams, buzz: { ...buzz, teamId }, currentTurnIndex: game.turnOrder.indexOf(teamId) };
 }
 
+/** Every online boss-room team is out of this buzz question (a stunned team sits it out, R5). */
+function everyoneOut(game: GameState, out: readonly string[]): boolean {
+  return game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id) || t.stunned);
+}
+
+/** #369: the host's verdicts (`marks`, not all right) on the buzzing team's music question with fields end the second
+ * round: the online team with the most right fields over both rounds scores them, the one judged first on a tie. Returns
+ * the game with the buzz handed to that team (answerQuestion then judges it right with `marks`), or null: the round goes
+ * on, or nobody got any field. */
+export function settleBuzz(game: GameState, teamId: string, marks: boolean[]): { game: GameState; teamId: string; marks: boolean[] } | null {
+  const buzz = game.buzz;
+  if (!isBuzzPhase(game) || buzz?.teamId !== teamId || buzz.questionId !== game.boss.currentQuestionId || !buzz.second || marks.every(Boolean)) return null;
+  if (!everyoneOut(game, [...buzz.out, teamId])) return null;
+  const right = (m: boolean[]) => m.filter(Boolean).length;
+  const partials = right(marks) > 0 ? [...(buzz.partials ?? []), { teamId, marks }] : (buzz.partials ?? []);
+  const best = partials
+    .filter((p) => right(p.marks) > 0 && game.teams.some((t) => t.id === p.teamId && t.online && t.inBoss))
+    .reduce<{ teamId: string; marks: boolean[] } | null>((a, p) => (!a || right(p.marks) > right(a.marks) ? p : a), null);
+  if (!best) return null;
+  const teams = patchTeam(game.teams, teamId, () => ({ typedAnswer: undefined, typedFields: undefined }));
+  // The judged team is out with its verdicts kept, so judging the winner again (a restart during a kill's 4d20) settles the same way.
+  const handed = { ...buzz, teamId: best.teamId, out: [...buzz.out, teamId], partials };
+  return { game: { ...game, teams, buzz: handed, currentTurnIndex: game.turnOrder.indexOf(best.teamId) }, teamId: best.teamId, marks: best.marks };
+}
+
 /** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
  * question came round again) starts over, everyone in, still open if its music was (adversarial review). */
 function rotatedBuzz(game: GameState, nextQuestionId: string): BuzzState | undefined {
@@ -1287,8 +1317,8 @@ export function answerQuestion(
   killDice?: number[],
   /** A music question's fields judged right out of how many (docs/designs/multi-field.md D2, E1): a correct boss hit
    * deals one HP per right field (the base HP of a plain hit), and its reward (not the kill's 4d20) is scaled by
-   * right / total, rounded half up. */
-  fields?: { right: number; total: number },
+   * right / total, rounded half up. On a wrong buzz, `marks` with any right field is kept for settleBuzz (#369). */
+  fields?: { right: number; total: number; marks?: boolean[] },
   /** A warrior's missed roll: nothing was judged or shown, so a turn-based boss question stays (class-abilities.md). */
   warriorMiss = false,
   /** A fill-in's answer die (class dice): what the chef and an armed thief read on a correct answer, with no crit effect
@@ -1451,8 +1481,10 @@ export function answerQuestion(
       // A wrong buzz shuts this team out of the question (D4); once every online team is out, they all buzz on the same
       // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
       const out = buzzing ? [...game.buzz!.out, teamId] : [];
-      // A stunned team sits the question out, so it counts as out (R5).
-      const allOut = buzzing && game.teams.every((t) => !t.online || !t.inBoss || out.includes(t.id) || t.stunned);
+      const allOut = buzzing && everyoneOut(game, out);
+      // A music question with fields (#369): a part-right answer is kept for settleBuzz, and everyone out opens round 2.
+      const partial = buzzing && fields?.marks && fields.right > 0 ? { partials: [...(game.buzz!.partials ?? []), { teamId, marks: fields.marks }] } : {};
+      const second = buzzing && fields && allOut ? { second: true as const } : {};
       const rotated = !phasePending && (fleeChoice !== "retry" || shownWrong || (!buzzing && !warriorMiss && !prayed)) ? rotateBoss(boss, revealed) : { currentQuestionId: boss.currentQuestionId };
       const rotatedBossQuestionId = rotated.currentQuestionId;
       // Same shared-question reasoning as the correct-hit branch above: a rotation changes
@@ -1466,7 +1498,7 @@ export function answerQuestion(
         revealedQuestionIds: revealed,
         teams: moved ? resetBossSelections(settled) : settled,
         boss: { ...boss, ...rotated, ...(phasePending ? { phasePending } : {}) },
-        ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out } } : {}),
+        ...(buzzing ? { buzz: { ...game.buzz!, teamId: undefined, out: allOut ? [] : out, ...partial, ...second } } : {}),
       };
       outcome =
         fleeChoice !== "retry"
@@ -2608,6 +2640,8 @@ export interface SpectatorView {
   hideCritRoll?: true;
   bossHp: number;
   bossMaxHp: number;
+  /** This game's boss as the map strip draws it (the room's bossLook: drawn, or the bank's). Absent from an older server. */
+  bossLook?: { sprite: CatalogMonster["sprite"]; hue: number };
   /** The boss phase being fought, from 1. Only phases already reached: never the total (boss-phases.md). */
   bossPhase: number;
   bossCurrentQuestionId: string;
