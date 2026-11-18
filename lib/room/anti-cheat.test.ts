@@ -404,6 +404,19 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
     expect(g.state().undoRuling).toEqual({ upheld: false });
   });
 
+  // Value: protects=undoing 成立 forgets the handoff its narration held (#352); fails_when=handleHostUndoRuling keeps
+  // heldHandoff and the next 下一題 names the turn the undo took back.
+  it("takes 成立 back and drops the held handoff naming the next team", async () => {
+    const g = started();
+    g.catchBy(1);
+    g.rule(true);
+    await vi.advanceTimersByTimeAsync(5_000); // the ruling's narration lands and holds its handoff under the reveal
+    const room = g.room as unknown as { heldHandoff: unknown };
+    expect(room.heldHandoff).not.toBeNull();
+    undo(g);
+    expect(room.heldHandoff).toBeNull();
+  });
+
   it("takes 冤枉 back: the potion and the −10 go back, the countdown stops again", () => {
     const g = started({ start: { answerSeconds: 30 } });
     send(g.room, g.host, { type: "HOST_SET_SCORE", teamId: B, score: 30 });

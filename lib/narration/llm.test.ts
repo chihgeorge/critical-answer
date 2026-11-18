@@ -106,13 +106,27 @@ describe("prompt", () => {
   // Value: protects=the AI line says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); fails_when=describeRoll ignores warriorRoll
   it("tells the model the warrior's roll and whether it hit", () => {
     const hit = buildPrompt({ ...event, warriorRoll: 14 } as NarrationEvent, []).user;
-    expect(hit).toMatch(/擲出 14 點（\d+ 點以上算命中），命中。/);
+    expect(hit).toMatch(/擲出 14 點（\d+ 點以上算命中），命中，/);
     expect(hit).not.toContain("沒打中");
     // A check's 1 is the persuasion die, whose line says 答對: the warrior's roll is told instead.
     const both = buildPrompt({ ...event, warriorRoll: 9, roll: { kind: "check", value: 1 } } as NarrationEvent, []).user;
     expect(both).toContain("擲出 9 點");
     expect(both).not.toContain("說服");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 4 }, []).user).toMatch(/擲出 4 點（\d+ 點以上算命中），沒打中/);
+  });
+
+  // Value: protects=the AI line tells #305's warrior rules (#344); fails_when=warriorFacts drops 八成, the 1's penalty or the 20's double
+  it("tells the model a warrior's hit pays 八成, a 20 doubles, and a 1 takes the whole question's reward", () => {
+    expect(buildPrompt({ ...event, warriorRoll: 14 } as NarrationEvent, []).user).toContain("八成");
+    const one = buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, penalty: 10 }, []).user;
+    expect(one).toContain("扣掉整題的獎勵 10 分");
+    expect(one).toContain("說出點數和扣分");
+    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 }, []).user).toContain("沒分可扣");
+    expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 4 }, []).user).not.toContain("扣");
+    // A warrior's 20 is a crit too: its 大成功 doubles the reward instead of adding half.
+    const twenty = buildPrompt({ ...event, warriorRoll: 20, roll: { kind: "crit", value: 20 } } as NarrationEvent, []).user;
+    expect(twenty).toContain("獎勵加倍");
+    expect(twenty).not.toContain("多拿一半");
   });
 
   // Value: protects=a check's 20 or 1 is told as 說服, not as an attack (dnd design R7, R8); fails_when=describeRoll ignores kind

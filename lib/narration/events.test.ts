@@ -61,6 +61,8 @@ describe("toNarrationEvent", () => {
   it("marks a retry as a boss miss only when the boss brought a new question (D2=B)", () => {
     expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a", newBossQuestion: true }, "小黑龍")).toEqual({ type: "retry", team: "紅隊", monster: "小黑龍", boss: true });
     expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a" }, "小黑龍")).toEqual({ type: "retry", team: "紅隊", monster: "小黑龍" });
+    // A warrior's 1 took the question's reward (#344): the narrator is told how much.
+    expect(toNarrationEvent(game, { type: "incorrect-retry", teamId: "a", penalty: 10 }, "小黑龍")).toMatchObject({ type: "retry", penalty: 10 });
   });
 
   // Value: protects=a cleric's prayed miss is told as "answer again now", never "next round" (owner, 2026-11-09)

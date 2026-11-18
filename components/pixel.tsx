@@ -10,7 +10,7 @@ import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/spri
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
 import { loadYoutubeApi } from "@/components/youtube-player";
-import { boxLine, firstChange, resumeFrom } from "@/lib/narration/client";
+import { boxLine, firstChange, resumeFrom, sequenceStart } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -393,9 +393,10 @@ const subscribeVisibility = (cb: () => void) => {
   return () => document.removeEventListener("visibilitychange", cb);
 };
 
-function Sequence({ lines, onRead, voiceLine }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number }) {
-  const [i, setI] = useState(0);
-  const [typed, setTyped] = useState(false);
+function Sequence({ lines, onRead, voiceLine, readTo = 0 }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number; readTo?: number }) {
+  const [start] = useState(() => sequenceStart(readTo, lines.length));
+  const [i, setI] = useState(start.line);
+  const [typed, setTyped] = useState(start.typed);
   const [seen, setSeen] = useState(lines);
   const hidden = useSyncExternalStore(subscribeVisibility, () => document.hidden, () => false);
   if (firstChange(seen, lines) !== -1) {
@@ -443,6 +444,7 @@ export function DialogueBox({
   id,
   onRead,
   voiceLine,
+  read,
 }: {
   /** Played in order with a ▼ between them. Ignored while `loading`. */
   lines: string[];
@@ -461,6 +463,8 @@ export function DialogueBox({
   onRead?: (count: number) => void;
   /** The line the voice is reading now: the box shows it, and waits for the voice before the next (#365). */
   voiceLine?: number;
+  /** Lines of `id` already read when the box starts on it: it starts after them (#351). */
+  read?: number;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
   const shown = lines.length > 0 ? lines : [""];
@@ -487,7 +491,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} />
+        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} readTo={read} />
       )}
     </Panel>
   );

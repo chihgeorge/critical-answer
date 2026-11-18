@@ -129,10 +129,17 @@ function describeRoll(e: NarrationEvent): string {
   const crit = "roll" in e && e.roll?.kind === "crit";
   const warrior =
     "warriorRoll" in e && e.warriorRoll !== undefined && !crit
-      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${e.type === "retry" ? "沒打中" : "命中"}。第一行要說出點數。`
+      ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${warriorFacts(e)}。第一行要說出點數${e.type === "retry" && e.warriorRoll === 1 ? "和扣分" : ""}。`
       : "";
   // A check's line says 答對, but a warrior rolled instead: its own line stands alone.
   return warrior || describeDie(e);
+}
+
+/** What the warrior's die did under #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles. */
+function warriorFacts(e: NarrationEvent): string {
+  if (e.type === "retry") return e.warriorRoll !== 1 ? "沒打中" : `大失敗，沒打中，還${e.penalty ? `扣掉整題的獎勵 ${e.penalty} 分` : "要扣整題的獎勵，但這隊沒分可扣"}`;
+  if (e.type === "boss-kill") return "命中";
+  return "warriorRoll" in e && e.warriorRoll === 20 ? "命中，獎勵加倍" : "命中，但戰士擲骰只拿這題八成的獎勵";
 }
 
 /** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
@@ -143,7 +150,7 @@ function describeDie(e: NarrationEvent): string {
       ? "\n這隊說服檢定擲出 20，不用答題就說服了怪物，算答對。第一行要提到說服成功。"
       : "\n這隊說服檢定擲出 1，講錯話了，雖然答對，獎勵只拿一半。第一行用好笑的方式說他們講錯話。";
   return e.roll.value === 20
-    ? "\n這一擊擲出 20，是大成功，獎勵多拿一半。第一行要提到大成功。"
+    ? `\n這一擊擲出 20，是大成功，獎勵${"warriorRoll" in e && e.warriorRoll === 20 ? "加倍" : "多拿一半"}。第一行要提到大成功。`
     : "\n這一擊擲出 1，是大失敗，但還是打中了，分數照拿。第一行用好笑的方式說手滑了，但還是打中。";
 }
 

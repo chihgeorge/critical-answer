@@ -30,7 +30,8 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 type ByClass<T> = T & { classId?: ClassId };
 
 /** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
- * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits).
+ * A retry's `penalty`: the points a warrior's 1 took away (the question's whole reward, #305). */
 type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
 
 export type NarrationEvent =
@@ -49,7 +50,7 @@ export type NarrationEvent =
    * `buzzOut`: a wrong buzz in a buzzer phase (boss-buzzer.md): this team is out of the question, the others may still buzz.
    * `buzzAgain`: that wrong buzz was the last online team's, so everyone buzzes on the same song again (boss-music-buzzer.md M1).
    * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
-  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; prayed?: true; warriorRoll?: number }>>
+  | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; prayed?: true; warriorRoll?: number; penalty?: number }>>
   /** `to`: 逃跑・換房 put this new monster in the team's room.
    * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */
   | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string }>
@@ -151,7 +152,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
       };
     }
     case "incorrect-retry":
-      return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}), ...(prev.pendingWrong?.prayed && prev.pendingWrong.teamId === outcome.teamId ? { prayed: true as const } : {}) };
+      return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}), ...(prev.pendingWrong?.prayed && prev.pendingWrong.teamId === outcome.teamId ? { prayed: true as const } : {}), ...(outcome.penalty ? { penalty: outcome.penalty } : {}) };
     case "incorrect-flee":
       return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}) };
     case "correct-boss-hit":
