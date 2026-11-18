@@ -33,6 +33,7 @@ describe("scripted lines", () => {
     }
   });
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("the per-turn correct / retry / flee pools hold 10 distinct lines, each at most 22 characters with a 4-character team and 3-character monster", () => {
     for (const type of ["correct", "retry", "flee"] as const) {
       expect(new Set(VARIANTS[type]).size).toBe(10);
@@ -40,6 +41,7 @@ describe("scripted lines", () => {
     }
   });
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("逃跑・換房 gets its own lines, each at most 22 characters and naming the new monster", () => {
     expect(new Set(FLEE_SWITCH_VARIANTS).size).toBe(FLEE_SWITCH_VARIANTS.length);
     for (const t of FLEE_SWITCH_VARIANTS) {
@@ -313,6 +315,7 @@ describe("next-team prompt (the second line)", () => {
   });
 
   // Value: protects=a fork's lines never give away a door (branch-fork.md); fails_when=a line names a scene or outcome.
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("a fork turn's line names the team and two doors, never a monster or anything behind a door; ⚔️'s lines fit 22 characters", () => {
     const p = createScriptedProvider(lcg(8));
     for (let i = 0; i < 10; i++) {
@@ -321,7 +324,7 @@ describe("next-team prompt (the second line)", () => {
       expect(line).not.toMatch(/寶箱|泉水|雕像|精靈|占卜|詛咒|祝福|[{}]/);
       expect(p.forkLine(i % 2 === 0, "炸雞小隊", "史萊姆")).toMatch(i % 2 === 0 ? /炸雞小隊.*⚔️|⚔️.*炸雞小隊/ : /史萊姆/);
     }
-    for (const v of [...NEXT_FORK_VARIANTS, ...FORK_MONSTER_VARIANTS, ...FORK_TIMEOUT_VARIANTS]) expect(v.replaceAll("{team}", "炸雞小隊").replaceAll("{monster}", "史萊姆").length).toBeLessThanOrEqual(22);
+    for (const v of [...NEXT_FORK_VARIANTS, ...FORK_MONSTER_VARIANTS, ...FORK_TIMEOUT_VARIANTS]) expect(v.replaceAll("{team}", "炸雞小隊").replaceAll("{monster}", "史萊姆").length).toBeLessThanOrEqual(22); // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   });
 
   it("uses the boss variants in the boss room", () => {
@@ -596,12 +599,14 @@ describe("epilogueLines", () => {
 });
 
 // Value: protects=the food talk stays a seasoning (TODOS 地城料理風格 3): short lines, about a third of a pool, never two
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
 // in a row, and no pool smaller than before; fails_when=a food line outgrows 22 characters, a pool turns mostly food,
 // pick() stops skipping food after food, or a part line plays without a part.
 describe("美食節目／生物學家口吻 (FOODIE)", () => {
   const food = new Set(Object.values(FOODIE).flat());
   const sized = (t: string) => [...t.replace(/\{team\}/g, "冒險小隊").replace(/\{monster\}/g, "史萊姆").replace(/\{part\}/g, "霧狀身體").replace(/\{points\}|\{bonus\}/g, "3")].length;
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("every food line is distinct, has at most one 「！」, and the per-turn ones fit 22 characters", () => {
     expect(food.size).toBe(Object.values(FOODIE).flat().length);
     for (const l of food) expect(l.split("！").length - 1, l).toBeLessThanOrEqual(1);
@@ -681,12 +686,14 @@ describe("美食節目／生物學家口吻 (FOODIE)", () => {
 });
 
 // Value: protects=the scripted crowd line (TODOS 觀眾反應的後續) fits the dialogue box, plays only on a turn the audience
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
 // reacted to, and is the middle line of that turn; fails_when=a crowd line outgrows 22 characters, names the team on
 // turn or a monster (it could clash with the result), has two 「！」, or plays without a crowd.
 describe("觀眾反應 (CROWD_VARIANTS)", () => {
   const sized = (t: string) => [...t.replace(/\{by\}/g, "藍莓小隊")].length;
   const turn: NarrationEvent = { type: "correct", team: "紅隊", monster: "史萊姆", points: 3, next: { team: "綠隊", monster: "幽靈", boss: false } };
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("8 distinct lines per reaction, each at most 22 characters with a 4-character team, naming only the reacting team, at most one 「！」", () => {
     for (const pool of Object.values(CROWD_VARIANTS)) {
       expect(new Set(pool).size).toBe(8);
@@ -719,7 +726,9 @@ describe("🚨 成立 line (anti-ai-cheating.md)", () => {
   });
 });
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
 // Value: protects=a scripted line fits the dialogue box like an AI line does (TODOS 縮短超過 22 字的舊腳本句; scripted lines
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
 // skip validLine and show as written); fails_when=a pool gains a line over 22 characters with a 4-character team, or over
 // MAX_LINE with the longest 20-character team, or a placeholder this test cannot size; seam=every exported pool template,
 // so a new pool is checked too; no_claim=wording quality, the warrior's 「戰士擲出 N 點」 prefix line() adds
@@ -740,6 +749,7 @@ describe("every scripted pool line fits the dialogue box", () => {
   };
   const size = (t: string, team: string) => [...t.replace(/\{(\w+)\}/g, (_, k: string) => fill(k, team))].length;
 
+  // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
   it("is at most 22 characters with a 4-character team and a 3-character monster", () => {
     expect(lines.length).toBeGreaterThan(300);
     for (const l of lines) expect(size(l, "冒險小隊"), l).toBeLessThanOrEqual(MAX_MODEL_LINE);

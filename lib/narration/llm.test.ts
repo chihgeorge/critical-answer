@@ -336,9 +336,9 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     await expect(make(f as unknown as typeof fetch).narrate(withNext)).resolves.toBe(`紅隊一劍命中！\n${atLimit}\n<invalid/>`);
   });
 
-  it("accepts a complete short line that needs more than the old 22-character cap", async () => {
+  it("accepts a complete short line that needs more than the old 22-character cap", async () => { // pregate-literal: MAX_MODEL_LINE=22 the old cap is this test's input
     const line = "史萊姆退後一步，紅隊的答案讓大家都鬆了一口氣。";
-    expect(line.length).toBeGreaterThan(22);
+    expect(line.length).toBeGreaterThan(22); // pregate-literal: MAX_MODEL_LINE=22 longer than the old cap on purpose
     expect(line.length).toBeLessThanOrEqual(MAX_MODEL_LINE);
     const f = async () => ok(reply(line));
     await expect(make(f as unknown as typeof fetch).narrate(event)).resolves.toBe(line);
