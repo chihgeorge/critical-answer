@@ -3,7 +3,7 @@ import { TITLE_THEME } from "./bgm";
 import { TITLE_MUSIC_KEY, titleMusic } from "./title-music";
 
 function setup(stored: string | null) {
-  const p = { setSong: vi.fn(), start: vi.fn(async () => {}), stop: vi.fn() };
+  const p = { setSong: vi.fn(), start: vi.fn(async () => {}), stop: vi.fn(), unlock: vi.fn(async () => {}), running: vi.fn(() => true) };
   const store = new Map<string, string>(stored ? [[TITLE_MUSIC_KEY, stored]] : []);
   const player = vi.fn(() => p);
   const m = titleMusic(player, (k) => store.get(k) ?? null, (k, v) => void store.set(k, v));
@@ -19,6 +19,15 @@ describe("titleMusic: the home page's title song", () => {
     m.gesture();
     expect(p.setSong).toHaveBeenCalledWith(TITLE_THEME);
     expect(p.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("a first tap the browser refused to count: the next tap wakes the sound again", () => {
+    const { m, p } = setup(null);
+    p.running.mockReturnValue(false);
+    m.gesture();
+    m.gesture();
+    expect(p.start).toHaveBeenCalledTimes(1);
+    expect(p.unlock).toHaveBeenCalledTimes(1);
   });
 
   it("remembered off: taps play nothing, and the switch turns it on at once and remembers that", () => {

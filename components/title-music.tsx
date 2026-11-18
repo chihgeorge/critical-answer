@@ -2,6 +2,7 @@
 
 // The home page's title song and its 🎵 switch (lib/title-music.ts). Self-contained: mount it anywhere on the page.
 import { useEffect, useRef, useState } from "react";
+import { PixelButton } from "@/components/pixel";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
 import { readStored, writeStored } from "@/lib/stored";
 import { titleMusic } from "@/lib/title-music";
@@ -36,16 +37,15 @@ export function TitleMusic() {
   if (on === null) return null;
   const label = on ? "關閉首頁音樂" : "開啟首頁音樂";
   return (
-    <button
-      type="button"
+    <PixelButton
       data-title-music
       aria-pressed={on}
       aria-label={label}
       title={label}
       onClick={() => setOn(ctl.current!.toggle())}
-      className="fixed right-3 top-3 z-20 flex h-11 w-11 items-center justify-center border-2 border-[var(--k)] bg-white/90 text-[20px]"
+      className="!m-0 fixed right-3 top-3 z-20 !min-h-0 h-11 w-11 !p-0 text-[20px]"
     >
       {on ? "🎵" : "🔇"}
-    </button>
+    </PixelButton>
   );
 }

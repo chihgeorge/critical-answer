@@ -73,6 +73,18 @@ describe("TITLE_THEME, LOBBY_THEME, BOSS_RAGE_THEME and VICTORY_THEME", () => {
     expect(() => songEvents(song)).not.toThrow();
   });
 
+  // An intro as long as its song makes every later pass 0 s long: the player's scheduler would never leave its loop.
+  it.each([
+    ["title", TITLE_THEME],
+    ["lobby", LOBBY_THEME],
+    ["dungeon", DUNGEON_THEME],
+    ["boss", BOSS_RAGE_THEME],
+    ["victory", VICTORY_THEME],
+  ] as const)("%s: a note starts after any intro, so the loop has something to repeat", (_, song) => {
+    expect(songEvents(song).some((e) => e.start >= introDuration(song) - 1e-9)).toBe(true);
+    expect(introDuration(song)).toBeLessThan(loopDuration(song));
+  });
+
   it("the victory fanfare plays once: its intro is whole bars, and the loop after it is shorter than the song", () => {
     expect(VICTORY_THEME.introSteps! % 12).toBe(0);
     expect(introDuration(VICTORY_THEME)).toBe(8); // 60 triplet steps at 150 bpm

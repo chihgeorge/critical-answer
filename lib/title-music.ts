@@ -8,23 +8,29 @@ interface Player {
   setSong(song: Song): void;
   start(): Promise<void>;
   stop(): void;
+  unlock(): Promise<void>;
+  running(): boolean;
 }
 
 /** `player` is called only inside a gesture, so the AudioContext is never created before one. */
 export function titleMusic(player: () => Player, read: (key: string) => string | null, write: (key: string, value: string) => void) {
   let on = read(TITLE_MUSIC_KEY) !== "off";
   let started = false;
+  let made: Player | null = null;
   function play() {
     started = true;
-    const p = player();
+    const p = (made = player());
     p.setSong(TITLE_THEME);
     void p.start();
   }
   return {
     on: () => on,
-    /** Any tap or key press on the page: the first one starts the song, unless 🎵 is off. */
+    /** Any tap or key press on the page: the first one starts the song, unless 🎵 is off. A later one wakes the
+     * sound again if the browser refused the first (a key it does not count as a gesture). */
     gesture() {
-      if (on && !started) play();
+      if (!on) return;
+      if (!started) play();
+      else if (made && !made.running()) void made.unlock();
     },
     /** The 🎵 switch, itself a gesture: on plays at once, off stops. Returns the new state. */
     toggle(): boolean {

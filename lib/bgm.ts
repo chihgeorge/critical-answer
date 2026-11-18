@@ -1,4 +1,4 @@
-// Background music for the big screen, generated in code like the rest of the art (DESIGN.md: no
+// Background music for the big screen and the home page, generated in code like the rest of the art (DESIGN.md: no
 // image or sound assets, so nothing to license). This file is the pure part: the song as data and
 // its conversion to timed notes, unit-tested. lib/bgm-player.ts plays it with the Web Audio API.
 

@@ -31,7 +31,7 @@ import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, holdBgmForBuzz, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
-import { DUNGEON_THEME, LOBBY_THEME, songFor, type Song } from "@/lib/bgm";
+import { DUNGEON_THEME, songFor, type Song } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
 import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, DIM_ALPHA, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
 import { dimVisible, playHostEffect, type HostFxLook } from "@/lib/host-fx";
@@ -1930,8 +1930,8 @@ export default function ScreenPage() {
           cheatSeen.current = null;
           stopTransitions();
           prevState.current = null;
-          music.current = LOBBY_THEME;
-          player().setSong(LOBBY_THEME);
+          music.current = songFor("lobby", false);
+          player().setSong(music.current);
           parryKey.current = null;
           parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();

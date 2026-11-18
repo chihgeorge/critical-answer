@@ -1,5 +1,5 @@
-// Plays lib/bgm.ts's song on a loop with the Web Audio API (browser only: /screen imports it, and
-// nothing here touches the question bank). A short lookahead scheduler queues each note on the
+// Plays lib/bgm.ts's song on a loop with the Web Audio API (browser only: /screen and the home
+// page's title music import it, and nothing here touches the question bank). A short lookahead scheduler queues each note on the
 // AudioContext clock a little ahead of time, the standard way to get steady timing out of timers
 // that themselves jitter.
 //
