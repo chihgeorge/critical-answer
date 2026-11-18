@@ -804,7 +804,7 @@ function PredictBar({ game, teamId, waiting, send, sent, setSent }: { game: Stat
           <div className="grid grid-cols-2 gap-[6px]">
             {[true, false].map((correct) => (
               <PixelButton
-                key={String(correct)}
+                key={correct ? "yes" : "no"}
                 aria-disabled={pressed}
                 className="!m-0 !min-h-[56px] !p-1 !text-[18px] leading-tight"
                 // Locked: the D5 grey (phone-answering.md D12), drawn, not :disabled opacity.
