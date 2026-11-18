@@ -9,7 +9,7 @@ import type { SpectatorView } from "@/lib/game-state";
 import { layoutMap, nameTags, PAWN, BOSS_SPRITE, CORRIDOR, DOOR_W, type Pawn } from "@/lib/map-layout";
 import { LabelChip, Sprite, useClassicArt } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
-import type { SceneTheme } from "@/lib/pixel-art";
+import { SPRITE_SIZE, type SceneTheme } from "@/lib/pixel-art";
 import { roomTheme } from "@/lib/turn-info";
 
 const ROOM_STYLE = { background: "#7a6496", boxShadow: "inset 0 -5px 0 #5d4a79, inset 0 4px 0 #9a84b8" };
@@ -44,6 +44,8 @@ export function MapStrip({ view }: { view: SpectatorView }) {
   }, []);
 
   const map = layoutMap(view.teams, budget);
+  // An older server sends no bossLook: the slime king it always drew.
+  const boss = view.bossLook ?? { sprite: "slime-king" as const, hue: 0 };
   const tags = nameTags(view.teams.map((t) => t.name));
   const byId = new Map(view.teams.map((t, i) => [t.id, { t, i }]));
   // The key changes when a team moves, so its pawn remounts and plays its arrival (D13): a hop in,
@@ -146,7 +148,8 @@ export function MapStrip({ view }: { view: SpectatorView }) {
           )}
           {map.boss.open ? (
             <div key="boss-open" data-testid="boss-room" className="absolute border-4" style={{ ...BOSS_STYLE, left: map.boss.x, width: map.boss.w, top: BOSS_BOX.top, height: BOSS_BOX.h, borderColor: "var(--k)" }}>
-              <Sprite kind="slime-king" scale={1} className="absolute" style={{ left: 6, top: 22 }} />
+              {/* This game's boss (#367), centred in the BOSS_SPRITE slot (a 52px boss reaches 4px past it, into the first pawn tag's empty margin) and on the box's 64px inner floor. */}
+              <Sprite kind={boss.sprite} hue={boss.hue} scale={1} className="absolute" style={{ left: Math.max(0, (BOSS_SPRITE - 4 - SPRITE_SIZE[boss.sprite][0]) / 2), top: Math.min(22, 64 - SPRITE_SIZE[boss.sprite][1]) }} />
               <div className="absolute border-[3px]" style={{ left: BOSS_SPRITE - 4, right: 4, top: 2, height: 10, background: "#2a0a14", borderColor: "var(--k)" }}>
                 <div style={{ width: `${(100 * view.bossHp) / view.bossMaxHp}%`, height: "100%", background: "var(--boss)" }} />
               </div>

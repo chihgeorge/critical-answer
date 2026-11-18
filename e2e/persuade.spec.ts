@@ -28,7 +28,7 @@ test("a team rolls 擲骰說服, passes the DC, sees the first character, then t
 
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await expect(box).toHaveCount(0);
-  await expect(screen.getByTestId("screen-check-dc")).toContainText("說服 DC 8");
+  await expect(screen.getByTestId("screen-check-dc")).toContainText("說服擲骰檢定 8");
   // Check first, question after: only the host has the question; the TV says who rolls, the phone has only the button.
   const question = (await host.getByTestId("host-question").textContent())!;
   expect(question.length).toBeGreaterThan(0);

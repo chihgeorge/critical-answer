@@ -3,6 +3,7 @@ import { NARRATION_MAX_LINES, parseSavedBank, parseSnapshot, SCHEMA_VERSION, typ
 import { BANK } from "../question-bank-data";
 import { spendAbility, createGame, DEFAULT_GAME_CONFIG } from "../game-state";
 import { bossPhaseStates, poolQuestionIds, roomTemplates } from "../question-bank";
+import { INTRO_PAGES } from "../protocol";
 
 const valid = (): RoomSnapshot => ({
   schemaVersion: SCHEMA_VERSION,
@@ -191,7 +192,7 @@ describe("parseSnapshot", () => {
       ["phaseCard", "yes"],
       // The intro page must be one the screen can draw (how-to-play.md); restoring a valid one is in how-to-play.test.ts.
       ["intro", 0],
-      ["intro", 5],
+      ["intro", INTRO_PAGES + 1],
       ["intro", "2"],
     ];
     for (const [field, value] of fields) {

@@ -70,26 +70,31 @@ export function catalogMonster(id: string): CatalogMonster {
   return m;
 }
 
-/** This game's monsters. A bank with `randomMonsters` draws fresh ones each game so every catalog
+/** Whether each game draws its own boss: `randomBoss` when the bank says, else whatever `randomMonsters` says. */
+export const drawsBoss = (bank: { randomMonsters?: boolean; randomBoss?: boolean }) => bank.randomBoss ?? !!bank.randomMonsters;
+
+/** This game's monsters. A bank with `randomMonsters` draws fresh room monsters each game so every catalog
  * monster comes up about as often: rooms deal from a shuffled deck of room monsters (no repeat until
- * the deck runs out), the boss is any boss. Without it, the bank's own picks. */
+ * the deck runs out). The boss is any boss when drawsBoss. Otherwise, the bank's own picks. */
 export function gameMonsters(
-  bank: { rooms: { monster: string }[]; boss: { monster: string }; randomMonsters?: boolean },
+  bank: { rooms: { monster: string }[]; boss: { monster: string }; randomMonsters?: boolean; randomBoss?: boolean },
   rng: () => number,
 ): { rooms: string[]; boss: string } {
-  if (!bank.randomMonsters) return { rooms: bank.rooms.map((r) => r.monster), boss: bank.boss.monster };
   const ids = (boss: boolean) => MONSTERS.filter((m) => m.boss === boss).map((m) => m.id);
   const deck: string[] = [];
-  const rooms = bank.rooms.map(() => {
-    if (deck.length === 0) {
-      deck.push(...ids(false));
-      for (let i = deck.length - 1; i > 0; i--) {
-        const j = Math.floor(rng() * (i + 1));
-        [deck[i], deck[j]] = [deck[j], deck[i]];
-      }
-    }
-    return deck.pop()!;
-  });
+  const rooms = !bank.randomMonsters
+    ? bank.rooms.map((r) => r.monster)
+    : bank.rooms.map(() => {
+        if (deck.length === 0) {
+          deck.push(...ids(false));
+          for (let i = deck.length - 1; i > 0; i--) {
+            const j = Math.floor(rng() * (i + 1));
+            [deck[i], deck[j]] = [deck[j], deck[i]];
+          }
+        }
+        return deck.pop()!;
+      });
+  if (!drawsBoss(bank)) return { rooms, boss: bank.boss.monster };
   const bosses = ids(true);
   return { rooms, boss: bosses[Math.floor(rng() * bosses.length)] };
 }

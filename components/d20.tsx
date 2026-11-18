@@ -74,7 +74,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
       ? "20！說服成功，免答"
       : value === 1
         ? "1……說服失敗，答對只拿一半"
-        : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} DC ${dc}${hit ? " 過了！" : " 沒過"}`
+        : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} 擲骰檢定 ${dc}${hit ? " 過了！" : " 沒過"}`
     : crit
     ? (value === 20 ? "20 大成功！多拿一半" : value === 1 ? "1 大失敗……還是打中了" : `${value}，答對！`)
     : warriorEffect(value);
@@ -87,7 +87,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
           ? `↩ ${teamName} 改判答對！擲答對骰`
           : `✨ ${teamName} 答對！擲答對骰`
     : check
-      ? `🗣️ ${teamName} 說服檢定：d20 + ${bonus}，DC ${dc}`
+      ? `🗣️ ${teamName} 說服：d20 + ${bonus}，擲骰檢定 ${dc}`
       : crit
         ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功`
         : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就算答對`;
