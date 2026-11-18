@@ -866,10 +866,11 @@ export default function BankEditorPage() {
           )}
           {(() => {
             const gaps = textQuestionGaps(bank);
-            const lines = [...gaps.difficulties.map((d) => `難度 ${d} 沒有填空題，這一房只會出選擇題`), ...(gaps.boss ? ["首領沒有填空題，首領戰只會出選擇題"] : [])];
+            // The boss room rolls no check anyway (#364): only a room line names it.
+            const lines = [...gaps.difficulties.map((d) => `難度 ${d} 沒有填空題，這一房只會出選擇題（不會擲說服檢定）`), ...(gaps.boss ? ["首領沒有填空題，首領戰只會出選擇題"] : [])];
             return lines.length > 0 && (
               <div data-testid="bank-text-gaps" role="status" className="text-[15px]" style={{ color: "var(--warn)" }}>
-                {lines.map((l) => <div key={l}>⚠ {l}（不會擲說服檢定）</div>)}
+                {lines.map((l) => <div key={l}>⚠ {l}</div>)}
               </div>
             );
           })()}

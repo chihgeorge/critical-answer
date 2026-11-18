@@ -2,6 +2,33 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.1.0] - 2026-11-19
+
+### Changed
+- `scripts/balance-sim.ts` (tooling only, no game change) now models 抓包與神諭 (oracle use, a cheating team, catches upheld or dismissed, with the `CATCH_PAY` values as knobs), rates boss questions the way the game does (unset = difficulty 3, plus `BOSSD` / `BUZZD` for a bank's ratings), takes the room layout as `ROOMS`, and prints a 95% interval next to each win share.
+
+## [0.103.0.1] - 2026-11-19
+
+### Added
+- Tests for the lucky potion on a mage's fill-in: refused once the skill is cast or the answer is in (#345).
+
+### Fixed
+- The host page's 「選擇播放段落」 timeline now reaches the end of a long video: the big screen reports the video's length, so after the answer reveal the whole video can be scrubbed (before it, the timeline covers only the question clip). It used to stop at 10 minutes.
+
+## [0.103.0.0] - 2026-11-19
+
+### Added
+- The host can hide the crit die for a whole game from the lobby (隱藏暴擊骰); a right choice or sort answer then scores at once.
+
+### Changed
+- 擲先攻 shows every team's die together once the last team has rolled; until then the screen and phones show only who has rolled.
+- After a right answer the big screen first says the crit die comes next and waits for the host's 下一步; the crit result names its tier (大失敗, 小失敗, 小成功, 大成功) and what it changes, with no "20 是大成功" hint while it rolls.
+- A passed persuasion check pauses on 「說服成功」 with a narrated line before the question shows.
+- The 飽足感 an answer earns shows once its dish is served.
+- A team that walks into the boss room eats the last room's dish first; the boss room and its announcement come after 下一題.
+- The boss room never rolls a persuasion check, in any phase: boss fill-ins are typed and judged at once, and class abilities work without a check.
+- The final blow first shows the defeated boss and the narrator's line, then the four kill dice roll.
+
 ## [0.102.0.0] - 2026-11-19
 
 ### Added

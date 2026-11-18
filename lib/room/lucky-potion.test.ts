@@ -57,6 +57,7 @@ function started(first: object = mc("m1"), classes: (string | null)[] = [null, n
     send(room, phones[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     send(room, host, { type: "HOST_REVEAL", teamId: A, questionId: q });
     vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // correct answer introduction before the crit die
   };
   return { room, io, host, phones, dice, all, state, team, lastTo, give, drink, lockRight };
 }
@@ -155,6 +156,34 @@ describe("🧪 lucky potion in the room", () => {
     c.dice.push(15, 3); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
     send(c.room, c.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
     expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
+  });
+
+  it("refuses a mage's drink on a fill-in once its skill is cast or its answer is in (#345)", () => {
+    const failedCheck = () => {
+      const m = started(text("t1"), ["mage", null]);
+      m.give(A);
+      m.dice.push(2); // a failed check: no hint, the skill die is still to come
+      send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
+      vi.advanceTimersByTime(2000);
+      return m;
+    };
+    const cast = failedCheck();
+    cast.dice.push(9);
+    send(cast.room, cast.phones[0], { type: "TEAM_USE_ABILITY", questionId: "t1" });
+    vi.advanceTimersByTime(2000);
+    expect(cast.room.game!.mageCasts?.[checkKey("t1", A)]).toBeTruthy();
+    cast.drink();
+    expect(cast.lastTo(cast.phones[0])).toMatchObject({ detail: "check_done" });
+    expect(cast.team(A).itemArmedFor).toBeUndefined();
+    expect(cast.team(A).item).toBe("luckyPotion");
+
+    const typed = failedCheck();
+    send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });
+    typed.drink();
+    expect(typed.team(A).typedAnswer).toBe("答");
+    expect(typed.lastTo(typed.phones[0])).toMatchObject({ detail: "check_done" });
+    expect(typed.team(A).itemArmedFor).toBeUndefined();
+    expect(typed.team(A).item).toBe("luckyPotion");
   });
 
   it("a wrong answer with no roll keeps the potion, no longer armed", () => {
