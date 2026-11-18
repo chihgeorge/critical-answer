@@ -441,6 +441,9 @@ export class DungeonRoom {
   private hostToken = "";
   // shortcut: in-memory Map. If hibernation is ever enabled it must move to conn.setState.
   private hostConns = new Map<string, Conn>();
+  /** The buzz winner whose last phone closed in this instance (memory only: after a restart every team reads offline
+   * until it reconnects, and that must not end its pick). */
+  private pickerLeft: string | null = null;
   /** The last HOST_PICKS sent to the host pages, so an unchanged picker is not sent again. */
   private lastPicks: string | null = null;
   /** Changes whenever the room instance restarts, so clients can show "game reset". */
@@ -1849,6 +1852,7 @@ export class DungeonRoom {
 
   private broadcastState() {
     if (this.lostCrit && this.applyLostCrit()) return;
+    this.endPickIfPickerGone();
     const forkOpened = this.syncFork();
     this.sayStunSkips();
     // Every state change passes here, so the timing round's close timer always follows the latest state.
@@ -2136,13 +2140,8 @@ export class DungeonRoom {
     // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it. And a persuasion
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
-    // The team picking the next category went offline: stop waiting and serve the dealt question, as the host's 下一步.
-    // Its own try: a failed pick must still mark the team offline below.
-    try {
-      if (this.pickHold() && this.game.buzz?.picker === teamId) this.game = hostPickBuzzQuestion(this.game, this.game.buzz.questionId, false);
-    } catch {
-      // The pick is no longer due: nothing to end.
-    }
+    // A buzz winner's phone left: its category pick will not come (endPickIfPickerGone).
+    if (this.game.buzz?.picker === teamId) this.pickerLeft = teamId;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -4223,6 +4222,20 @@ export class DungeonRoom {
     const b = game.buzz;
     if (!b?.picker || b.questionId !== game.boss.currentQuestionId || b.category || b.qtype || b.hostPicked) return false;
     return pickableCategories(game, this.categoryOf(), false).length > 0;
+  }
+
+  /** The team picking the next category dropped (during the hold, the reveal or a pause) and is still offline: stop
+   * waiting and serve the dealt question, as the host's 下一步. Checked on every broadcast, so a hold that starts or
+   * resumes with the picker gone ends at once. */
+  private endPickIfPickerGone() {
+    const game = this.game;
+    const picker = game?.buzz?.picker;
+    if (!game || !picker || picker !== this.pickerLeft || !this.pickHold() || game.teams.find((t) => t.id === picker)?.online !== false) return;
+    try {
+      this.game = hostPickBuzzQuestion(game, game.buzz!.questionId, false);
+    } catch {
+      // The pick is no longer due: nothing to end.
+    }
   }
 
   private buzzCategories(): { buzzCategories?: string[] } {

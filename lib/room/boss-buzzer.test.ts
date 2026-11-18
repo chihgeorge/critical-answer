@@ -759,6 +759,17 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.teams.find((t: { id: string }) => t.id === IDS[1]).online).toBe(false);
   });
 
+  it("the picking team dropping during the reveal: the hold ends as soon as the reveal closes", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: id === "b-c" ? "遊戲" : "動漫" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.room.onClose(g.phones[1]);
+    g.next();
+    expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { hostPicked: true } } });
+    expect(g.state().pickHold).toBeUndefined();
+  });
+
   it("#362: the host's 指定題目 may pick the question queued for the boss room; playing it uses the queue up", () => {
     const g = buzzerGame((id) => ({ ...video(id), category: "動漫" }));
     send(g.room, g.host, { type: "HOST_QUEUE_QUESTION", target: "boss", questionId: "b-c" });
@@ -823,6 +834,12 @@ describe("buzzer boss phase in the room", () => {
     g.judge(IDS[1], true);
     const second = await restart(picking);
     expect(second.game!.buzz).toMatchObject({ picker: IDS[1] });
+    // Every team reads offline after a restart: the first connection must not end the winner's pick.
+    const phone0 = makeConn("phone-0b");
+    second.onConnect(phone0);
+    send(second, phone0, { type: "JOIN", teamId: IDS[0], teamKey: "team-key-0123456789abcde0", teamName: "隊0" });
+    expect(second.game!.teams[0].online).toBe(true);
+    expect(second.game!.buzz?.hostPicked).toBeUndefined();
     expect((second as unknown as { snapshot: () => { buzzCategories?: string[] } }).snapshot().buzzCategories).toEqual(["動漫", "遊戲"]);
 
     const missed = memoryStorage();
