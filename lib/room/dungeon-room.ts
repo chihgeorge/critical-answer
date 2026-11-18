@@ -3557,6 +3557,8 @@ export class DungeonRoom {
     const prev = this.game!;
     const holding = prev.buzz?.teamId === teamId;
     this.keepUndoOpen(setTeamOnline(prev, teamId, online));
+    // A team that sent its typed answer keeps the buzz while its phone sleeps (#368): the music stays stopped.
+    if (holding && this.game!.buzz?.teamId === teamId) return;
     if (online) return;
     // The last team still in dropped (holding the buzz or not) and the same song reopened to all: as after all-wrong,
     // the music waits for the host's ▶ and the owl says so (boss-music-buzzer.md M1).

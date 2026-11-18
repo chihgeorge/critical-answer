@@ -286,7 +286,7 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
   if (wrong?.questionId === question.id && wrong.optionIndex !== null && wrongSlots) {
     return inOrder(wrong.optionIndex).map((text, i) => (wrongSlots[i] ? { text, look: "ok", label: "✓" } : { text, look: "bad", label: "✕" }));
   }
-  // Same start order as the phone (A → B → C → D for listen-and-order items).
+  // A fresh phone's start order (A → B → C → D for listen-and-order items); a 重答 phone starts from its last order.
   return initialSortOrder(items).map((i) => ({ text: items[i], look: "plain" }));
 }
 
@@ -785,7 +785,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
           // once React reuses this node for the next media question (adversarial review).
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
         )}
-        {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[22px] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
+        {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[0.8em] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
         {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
         {!asking && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />

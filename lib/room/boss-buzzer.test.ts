@@ -138,6 +138,18 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.buzz).toMatchObject({ teamId: IDS[1], out: [] });
   });
 
+  it("a buzzing phone that drops after sending its answer keeps the buzz; the host still judges it (#368)", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "晴天", eventId: g.state().eventId });
+    g.room.onClose(g.phones[1]);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { teamId: IDS[1] } } });
+    expect(g.state().view.teams[1].typedAnswer).toBe("晴天");
+    g.judge(IDS[1], false);
+    expect(g.state().view.buzz.out).toContain(IDS[1]);
+  });
+
   it("the buzzing phone drops: the music it stopped plays on; a pause the host chose stays through a wrong buzz", () => {
     const g = buzzerGame();
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });

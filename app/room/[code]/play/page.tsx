@@ -285,7 +285,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
   const [mine, setMine] = useState<{ qid: string; order: number[] } | null>(null);
   const sorting = !!q.items;
   // A reload mid-question starts from the team's pick, else its last wrong order (so a 重答 keeps its ✓ places).
-  const myOrder = mine?.qid === q.id ? mine.order : initialSortOrder(q.items ?? [], pick ?? gone.at(-1));
+  const myOrder = mine?.qid === q.id ? mine.order : sorting ? initialSortOrder(q.items ?? [], pick ?? gone.at(-1)) : [];
   const shownOrder = (lock && sortOrderOf(lock.optionIndex)) || (wrong?.optionIndex != null && sortOrderOf(wrong.optionIndex)) || myOrder;
   const myCode = sortCode(myOrder);
   const pickable = sorting ? !gone.includes(myCode) : pick !== null && !gone.includes(pick);
