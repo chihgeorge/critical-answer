@@ -176,10 +176,10 @@ describe("BankStore.putBank", () => {
   // fails_when=assertSavable stops checking phase name or rule length, or the bound turns into >=; why_new=parseBank accepts any length; seam=none;
   // no_claim=banks stored before this check (they still load, see the test below)
   it.each([
-    ["name", { name: "名".repeat(13), rule: "規" }, /phase 2 name is over 12 characters/],
+    ["name", { name: "名".repeat(13), rule: "規" }, /phase 2 name is over 12 characters/], // pregate-literal: BANK_FORMAT=12 the phase-name cap, not the format
     ["rule", { name: "名", rule: "規".repeat(41) }, /phase 2 rule is over 40 characters/],
-    ["name and rule at the cap", { name: "名".repeat(12), rule: "規".repeat(40) }, null],
-  ])("boss phase %s: saves only within 12 / 40 characters, and keeps the stored bank on a refusal", async (_, text, refusal) => {
+    ["name and rule at the cap", { name: "名".repeat(12), rule: "規".repeat(40) }, null], // pregate-literal: BANK_FORMAT=12 the phase-name cap, not the format
+  ])("boss phase %s: saves only within 12 / 40 characters, and keeps the stored bank on a refusal", async (_, text, refusal) => { // pregate-literal: BANK_FORMAT=12 the phase-name cap, not the format
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     const store = new BankStore(storage);
     const p2 = { ...text, maxHp: 1, questions: [{ kind: "text" as const, id: "p2-q1", content: { kind: "text" as const, value: "?" }, answer: "x" }] };
@@ -192,9 +192,9 @@ describe("BankStore.putBank", () => {
   // Value: protects=assertSavable counts a phase name and rule after trimming, as the editor's check does (one count, not two);
   // fails_when=assertSavable counts untrimmed text; why_new=putBank trims first, so only a direct call reaches untrimmed text; seam=none; no_claim=the editor
   it("counts a boss phase name and rule after trimming, as the editor does", () => {
-    const p2 = { name: `  ${"名".repeat(12)}  `, rule: ` ${"規".repeat(40)} `, maxHp: 1, questions: [] };
+    const p2 = { name: `  ${"名".repeat(12)}  `, rule: ` ${"規".repeat(40)} `, maxHp: 1, questions: [] }; // pregate-literal: BANK_FORMAT=12 the phase-name cap, not the format
     expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], p2] } })).not.toThrow();
-    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], { ...p2, name: ` ${"名".repeat(13)} ` }] } })).toThrow(/name is over 12/);
+    expect(() => assertSavable({ ...validBank, boss: { ...validBank.boss, phases: [validBank.boss.phases[0], { ...p2, name: ` ${"名".repeat(13)} ` }] } })).toThrow(/name is over 12/); // pregate-literal: BANK_FORMAT=12 the phase-name cap, not the format
   });
 
   // Value: protects=a bank stored before the phase caps still loads (else rooms fall back to the bundled bank); fails_when=the cap moves into parseBank;
@@ -455,9 +455,9 @@ describe("BankStore: a stored bank from before the monster catalog (docs/designs
     // A memory question (memory-questions.md) is what format-10 code would drop: it stores at 11. // pregate-literal: BANK_FORMAT=10 names the older format on purpose
     expect(formatOf({ ...buzzer, pools: { ...buzzer.pools, 1: [{ kind: "text" as const, id: "m1", content: { kind: "youtube" as const, value: "dQw4w9WgXcQ" }, prompt: "誰？", answer: "A", memory: true as const }] } })).toBe(11); // pregate-literal: BANK_FORMAT=11 a memory-only bank stays at format 11
     // A timing question (timing-tap.md) is what format-11 code cannot parse: it stores at 12. // pregate-literal: BANK_FORMAT=11 names the older format on purpose
-    const tap = { kind: "timing" as const, id: "t1", content: { kind: "audio" as const, value: "11111111-1111-1111-1111-111111111111" }, target: 12.5 };
+    const tap = { kind: "timing" as const, id: "t1", content: { kind: "audio" as const, value: "11111111-1111-1111-1111-111111111111" }, target: 12.5 }; // pregate-literal: BANK_FORMAT=12 a 12.5 s target, not the format
     expect(formatOf({ ...buzzer, boss: { ...buzzer.boss, phases: [buzzer.boss.phases[0], { ...buzzer.boss.phases[1], questions: [tap] }] } })).toBe(12); // pregate-literal: BANK_FORMAT=12 a timing-only bank stays at format 12
-    // A room's placed fork (#286) is what format-12 code would drop: it stores at 13. // pregate-literal: BANK_FORMAT=12 names the older format on purpose
+    // A room's placed fork (#286) is what the timing format's code would drop: it stores at BANK_FORMAT.
     expect(formatOf({ ...buzzer, rooms: buzzer.rooms.map((r) => ({ ...r, fork: {} })) })).toBe(BANK_FORMAT);
     const storage = memoryStorage({ format: 3, bank: validBank, version: 1 }); // pregate-literal: BANK_FORMAT=3 a format-3 bank on purpose
     await new BankStore(storage).putBank(sorted, 1);
