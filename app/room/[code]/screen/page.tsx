@@ -327,7 +327,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   // 🎯 群眾預測's result (crowd-prediction.md): on the answer card until 下一題, else (a retry) for PREDICT_SHOW_MS.
   // shortcut: a card closed inside its first 6 s leaves the strip up for the rest of them; cards hold longer in play.
-  const freshPredicted = useFreshPrediction(predicted);
+  const freshPredicted = useFreshPrediction(predicted, eventId);
   const result = predicted && predicted.eventId === eventId && (reveal || freshPredicted) ? predicted : null;
   const rightNames = result ? view.teams.filter((t) => result.right.includes(t.id)).map((t) => t.name) : [];
   const predictLine = result && (rightNames.length ? `🎯 猜中：${rightNames.join("、")}` : "🎯 沒人猜中");

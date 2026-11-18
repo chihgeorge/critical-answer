@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
-import { checkKey, currentTurnTeamId } from "../game-state";
+import { checkKey, currentTurnTeamId, InvalidActionError } from "../game-state";
 import { parseClientMessage } from "../protocol";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003"];
@@ -291,8 +291,54 @@ describe("resolution", () => {
     const rejudge = (correct: boolean) => send(g.room, g.host, { type: "HOST_REJUDGE", index: 0, teamId: A, questionId: g.room.game!.judgments![0].questionId, correct });
     rejudge(false);
     expect(g.right()).toEqual([0, 0, 1]);
+    // The result on screen follows the flip at once.
+    expect(g.state().predicted).toMatchObject({ correct: false, right: [C], wrong: [B] });
     rejudge(true);
     expect(g.right()).toEqual([0, 1, 0]);
+    expect(g.state().predicted).toMatchObject({ correct: true, right: [B], wrong: [C] });
+  });
+
+  // Value: protects=a filed 🚨 catch closes locking | fails_when=teams can lock while a catch waits (an upheld one reveals the answer) | no_claim=-
+  it("an open 🚨 catch closes locking", () => {
+    const g = started();
+    send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
+    g.predict(1, true);
+    send(g.room, g.phones[1], { type: "TEAM_CATCH", questionId: g.qid() });
+    expect(g.state().predictions).toEqual({ open: false, locked: [B] });
+    g.predict(2, false);
+    expect(g.preds()).toHaveLength(1);
+  });
+
+  // Value: protects=改判答對 resolves the put-back round at once, and a refused one rolls it back | fails_when=a lock joins
+  // the put-back round, it stays open after, or a refused undo clears the shown result or moves the tally | no_claim=a
+  // music question with fields (buzzer phases only, never a round)
+  it("HOST_UNDO_WRONG leaves no open round to join; a refused undo changes nothing", () => {
+    const setup = () => {
+      const g = started({ qs: TEXTS });
+      g.shown();
+      g.predict(1, true);
+      const { q } = g.judgeText(false);
+      return { g, q };
+    };
+    const { g, q } = setup();
+    send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: q, eventId: g.state().eventId });
+    expect(g.state().predictions?.locked ?? []).toEqual([]);
+    g.predict(2, false);
+    expect(g.preds()).toHaveLength(1);
+    expect(g.right()).toEqual([0, 1, 0]);
+
+    // The re-judgment is refused (as when the team's phones all dropped): the 答錯's result and tally stay.
+    const r = setup();
+    const before = r.g.state().predicted;
+    expect(before).toMatchObject({ correct: false, wrong: [B] });
+    vi.spyOn(r.g.room as unknown as { judge: () => void }, "judge").mockImplementation(() => {
+      throw new InvalidActionError("not_your_turn");
+    });
+    send(r.g.room, r.g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: r.q, eventId: r.g.state().eventId });
+    expect(msgs(r.g.host.send.mock.calls).at(-1)).toMatchObject({ type: "ERROR" });
+    send(r.g.room, r.g.host, { type: "HOST_FIX", teamId: B, fix: "score+" }); // any change: a fresh STATE
+    expect(r.g.state().predicted).toEqual(before);
+    expect(r.g.right()).toEqual([0, 0, 0]);
   });
 
   // Value: protects=resolved counts survive a restart, an open round does not | fails_when=the tally is lost or old locks come back | no_claim=-

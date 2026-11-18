@@ -623,10 +623,11 @@ export class DungeonRoom {
   /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
   private crowd = createCrowdTally();
   /** 群眾預測 (docs/designs/crowd-prediction.md): the open round's locks (true = 會答對), live only while `key` is the
-   * turn's (roundKey). `closed`: put back by 改判答對, no new locks. In memory only. */
-  private predict: { key: string; locks: Map<string, boolean>; closed?: true } | null = null;
-  /** The last judgment's resolved predictions, for STATE. In memory only. */
-  private predicted: { eventId: number; correct: boolean; right: string[]; wrong: string[] } | null = null;
+   * turn's (roundKey). In memory only. */
+  private predict: { key: string; locks: Map<string, boolean> } | null = null;
+  /** The last judgment that resolved predictions: its eventId and ledger index. STATE reads the verdict and locks from
+   * the entry, so a 改判 on it shows at once. In memory only. */
+  private predicted: { eventId: number; index: number } | null = null;
   private clipEnded: string | null = null;
   /** 記憶題 (docs/designs/memory-questions.md): the memory questions whose media has ended (clip end, image seconds, or
    * the host's ⏭), per question so another clip ending never re-opens one; and the image on show with its deadline.
@@ -3822,11 +3823,12 @@ export class DungeonRoom {
     const previousReveal = this.reveal;
     const previousPredict = this.predict;
     const previousPredicted = this.predicted;
-    // 群眾預測: the undone 答錯's locks come back as this turn's round, closed, so the re-judgment resolves them as 答對
-    // (the restored game has the tally from before the 答錯).
+    // 群眾預測: the undone 答錯's locks come back as this turn's round, so the re-judgment just below resolves them as 答對
+    // (the restored game has the tally from before the 答錯). No STATE goes out between, so no lock can join. A music
+    // question with fields, judged field by field later, is buzzer-phase only (question-bank.ts), so it has no round.
     const undone = now.judgments?.slice(undo.prev.judgments?.length ?? 0).findLast((j) => j.teamId === teamId && j.questionId === questionId);
     this.game = this.undoneGame(undo, now);
-    this.predict = undone?.predictions ? { key: this.roundKey(teamId, questionId)!, locks: new Map(Object.entries(undone.predictions)), closed: true } : null;
+    this.predict = undone?.predictions ? { key: this.roundKey(teamId, questionId)!, locks: new Map(Object.entries(undone.predictions)) } : null;
     this.predicted = null;
     this.reveal = null;
     this.undo = null;
@@ -4064,8 +4066,7 @@ export class DungeonRoom {
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = ruledOut ? withCritDropped(game, ruledOut.teamId, ruledOut.questionId) : game;
     const eventId = ++this.eventSeq;
-    const verdict = locks && ledgered.judgments!.at(-1)!.correct;
-    this.predicted = locks ? { eventId, correct: !!verdict, right: Object.keys(locks).filter((id) => locks[id] === verdict), wrong: Object.keys(locks).filter((id) => locks[id] !== verdict) } : null;
+    this.predicted = locks ? { eventId, index: ledgered.judgments!.length - 1 } : null;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
     const before = prev.teams.find((t) => t.id === teamId);
@@ -4395,9 +4396,10 @@ export class DungeonRoom {
    * live in buzzer phases only, so they never open a round. */
   private predictOpen(): boolean {
     const g = this.game;
-    if (!g || this.opening() || isBuzzPhase(g) || !this.questionOnScreen() || this.liveRound()?.closed) return false;
+    if (!g || this.opening() || isBuzzPhase(g) || !this.questionOnScreen()) return false;
     const team = g.teams.find((t) => t.id === currentTurnTeamId(g));
-    return !!team && !team.inBoss && team.typedAnswer === undefined && !this.pendingLock && !this.pendingRoll && !g.pendingWrong;
+    // An open 🚨 catch closes it too: an upheld one reveals the answer, and 撤回裁決 brings the catch back, not the round.
+    return !!team && !team.inBoss && team.typedAnswer === undefined && !this.pendingLock && !this.pendingRoll && !g.pendingWrong && !g.antiCheat?.openCatch;
   }
 
   /** PREDICT: a waiting team's 會答對 / 會答錯, final. Dropped without a reply when it is not a joined team's, the team is
@@ -4421,7 +4423,10 @@ export class DungeonRoom {
     if (!this.liveRound()) this.predict = null;
     const open = this.predictOpen();
     const locked = [...(this.predict?.locks.keys() ?? [])];
-    return { ...(open || locked.length ? { predictions: { open, locked } } : {}), ...(this.predicted ? { predicted: this.predicted } : {}) };
+    const entry = this.predicted && this.game?.judgments?.[this.predicted.index];
+    const locks = entry?.predictions;
+    const predicted = entry && locks ? { eventId: this.predicted!.eventId, correct: entry.correct, right: Object.keys(locks).filter((id) => locks[id] === entry.correct), wrong: Object.keys(locks).filter((id) => locks[id] !== entry.correct) } : null;
+    return { ...(open || locked.length ? { predictions: { open, locked } } : {}), ...(predicted ? { predicted } : {}) };
   }
 
   /** 現場放歌，開放搶答 (boss-music-buzzer.md M4): the big screen's video failed, the host plays the song from their own

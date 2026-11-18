@@ -771,15 +771,18 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
   );
 }
 
-type PredictSent = { eventId: number; correct: boolean };
+/** `against`: STATE's `predictions` when pressed; a newer one that leaves the team out means the room dropped the round. */
+type PredictSent = { eventId: number; correct: boolean; against: StateMessage["predictions"] };
 /** 群眾預測 (docs/designs/crowd-prediction.md): a waiting team's 會答對 / 會答錯, above its reactions, while the room
  * lets it lock; then the side it locked (page state: after a reload just 「已鎖定預測」), and the result for 6 s. */
 function PredictBar({ game, teamId, waiting, send, sent, setSent }: { game: StateMessage; teamId: string; waiting: boolean; send: (m: ClientMessage) => void; sent: PredictSent | null; setSent: (s: PredictSent) => void }) {
-  const result = useFreshPrediction(game.predicted);
+  const result = useFreshPrediction(game.predicted, game.eventId);
   const p = game.predictions;
   const mine = !!p?.locked.includes(teamId);
-  // A press still on its way counts as locked, so a second tap never goes out.
-  const pressed = mine || sent?.eventId === game.eventId;
+  // Locked only by the room's word (`locked`), or a press still on its way: until the next STATE or PREDICTIONS, which
+  // lists the team if the lock landed. A round dropped meanwhile (a skip, a dropped phone) opens the buttons again.
+  // shortcut: a STATE sent before the room read the press reopens them for that moment; a second tap is dropped there.
+  const pressed = mine || (sent?.against === p && sent?.eventId === game.eventId);
   const side = pressed ? sent?.correct : undefined;
   const verdict = result?.right.includes(teamId) ? "🎯 猜中了！" : result?.wrong.includes(teamId) ? "🎯 沒猜中" : null;
   const row = waiting && !!p && (p.open || mine);
@@ -809,7 +812,7 @@ function PredictBar({ game, teamId, waiting, send, sent, setSent }: { game: Stat
                 onClick={() => {
                   if (pressed) return;
                   send({ type: "PREDICT", eventId: game.eventId, correct });
-                  setSent({ eventId: game.eventId, correct });
+                  setSent({ eventId: game.eventId, correct, against: p });
                 }}
               >
                 🎯 {correct ? "會答對" : "會答錯"}

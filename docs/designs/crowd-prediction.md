@@ -213,8 +213,18 @@ Where the code follows its own patterns instead of the plan above:
 - **STATE `predictions` is `{ open, locked }`.** The phone needs `open` to know when to show the buttons; the open
   predicate (`predictOpen()`) is the server's. Present while open or while the round has locks.
 - **`predicted` is replaced at the next judgment** (null when no team locked) and cleared on reset and 回到大廳; it is
-  not cleared when the next round opens. Clients show it only while its `eventId` is STATE's, on the reveal card, or
-  for `PREDICT_SHOW_MS` from first sight (`components/predictions.tsx`).
+  not cleared when the next round opens. The room keeps only `{ eventId, index }` and builds the verdict and the
+  right/wrong lists from that ledger entry for each STATE, so a 改判 on the entry just judged shows at once (it is
+  re-announced only in that sense: the strip or phone line already up changes). Phones and the big screen show it
+  only while its `eventId` is STATE's (`useFreshPrediction(predicted, eventId)`): the big screen on the reveal card or
+  for `PREDICT_SHOW_MS`, the phone for `PREDICT_SHOW_MS`, so a reload on a later question shows nothing old.
+- **A phone counts as locked only by the room's `locked` list**, or while its press is in flight (until the next
+  STATE or PREDICTIONS replaces the `predictions` it pressed against). A round the room dropped (skip, dropped phone)
+  opens the buttons again. An open 🚨 catch closes locking too: an upheld one reveals the answer, and 撤回裁決 brings
+  back the catch (still closed), not the dropped round.
+- **No closed flag.** 改判答對 puts the undone locks back and re-judges in the same call, so no STATE goes out between
+  and no lock can join. The plan's field-by-field undo never meets a round: music questions with fields are allowed
+  only in buzzer phases.
 - **No timing-question rule.** Timing questions are allowed only in buzzer phases (`noTiming` in
   `lib/question-bank.ts`), so they never open a round; the "song starting" cut-off is moot and not coded.
 - **Big screen chip** sits in the question card's chip row (with 🧪 and 🔮), not beside the countdown.
