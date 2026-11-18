@@ -1047,6 +1047,9 @@ export default function PlayPage() {
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
+        case "FORK_VOTES":
+          setGame((g) => (g ? { ...g, forkVotes: msg.votes } : g));
+          break;
       }
     },
   });
@@ -1321,7 +1324,7 @@ export default function PlayPage() {
         {game && !finished && !intro && game.fortune ? (
           <FortunePanel game={game} teamId={teamId} send={send} />
         ) : game && !finished && !intro && (game.forkBeat || (!eventRevealed && !revealed && !game.phaseCard && !game.phaseCardDue && turn?.team?.fork === "choosing")) ? (
-          <ForkPanel game={game} teamId={teamId} send={send} />
+          <ForkPanel game={game} teamId={teamId} send={send} canVote={!disconnected && !unreachable && !rested} />
         ) : game && !finished && !intro && eventRevealed ? (
           <EventPanel reveal={eventRevealed} game={game} teamId={teamId} />
         ) : null}
@@ -1561,7 +1564,7 @@ function FortunePanel({ game, teamId, send }: { game: StateMessage; teamId: stri
 
 /** 叉路 on a phone (branch-fork.md): the team on turn gets two big unmarked doors, 左門 and 右門, pinned to the bottom of
  * the screen so nothing pushes them away; a door opening locks them and names only the opened one. Every other phone reads that the team is at a fork. */
-function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void }) {
+function ForkPanel({ game, teamId, send, canVote }: { game: StateMessage; teamId: string; send: (msg: ClientMessage) => void; canVote: boolean }) {
   const beat = game.forkBeat;
   const team = game.view.teams.find((t) => t.id === (beat ? beat.teamId : game.view.currentTurnTeamId));
   // A press waiting for the room, keyed to the eventId; a refused one gives the doors back.
@@ -1572,10 +1575,31 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
     return () => clearTimeout(t);
   }, [pressed]);
   if (!team) return null;
+  const votes = Object.values(game.forkVotes ?? {});
   if (team.id !== teamId) {
+    // 觀眾投票 (#285): a waiting team advises; its own vote is the room's, never a local guess.
+    const mine = game.forkVotes?.[teamId];
+    const voting = !beat && canVote && game.view.teams.some((t) => t.id === teamId);
     return (
-      <Panel className="px-3 py-[10px] text-[17px]">
+      <Panel className="flex flex-col gap-2 px-3 py-[10px] text-[17px]">
         <span data-testid="phone-fork-watch">{beat ? `${team.name}推開了門……看大螢幕 📺` : `${team.name}在叉路口猶豫中……看大螢幕 📺`}</span>
+        {voting && (
+          <div data-testid="phone-fork-vote" className="flex flex-col gap-1">
+            <span>{mine ? `你們投了${FORK_SIDE_LABEL[mine]}，可以改` : `幫${team.name}投一票：走哪扇門？`}<span className="block text-[14px]">只是建議，{team.name}自己決定</span></span>
+            <div className="flex gap-3">
+              {(["left", "right"] as const).map((side) => (
+                <PixelButton
+                  key={side}
+                  data-testid={`phone-fork-vote-${side}`}
+                  aria-pressed={mine === side}
+                  onClick={() => send({ type: "FORK_VOTE", side })}
+                  className="!m-0 min-h-[56px] flex-1 text-[20px]"
+                  style={mine === side ? { background: "var(--turn2)" } : { background: "var(--cream)" }}
+                >{FORK_SIDE_LABEL[side]}</PixelButton>
+              ))}
+            </div>
+          </div>
+        )}
       </Panel>
     );
   }
@@ -1586,6 +1610,11 @@ function ForkPanel({ game, teamId, send }: { game: StateMessage; teamId: string;
         <span>🔀 叉路！走哪一扇門？</span>
         {beat?.timeout ? <span className="px-chip">⏳ 時間到</span> : typeof game.forkLeft === "number" && !beat ? <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" /> : null}
       </Panel>
+      {votes.length > 0 && !beat && (
+        <Panel className="px-3 py-[6px] text-[17px]">
+          <span data-testid="phone-fork-tally">觀眾建議：左門 {votes.filter((v) => v === "left").length} 票・右門 {votes.filter((v) => v === "right").length} 票</span>
+        </Panel>
+      )}
       {/* Sticky, so the doors stay in view however long the page gets (TODOS: the old event panel was pushed off screen). */}
       <div data-testid="phone-fork" className="sticky bottom-2 z-30 flex gap-3">
         {(["left", "right"] as const).map((side) => (

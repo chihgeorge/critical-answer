@@ -110,7 +110,25 @@ between two doors and lives with the result.
 - The first real games' logs shows how often teams take ❓, ⚔️ and time out; watch whether the room reacts at the doors.
 - Unit tests cover the choice, the timeout, reconnects, restarts and the opening; e2e on CI covers both doors.
 
+## Audience vote (Approach C, #285, 2026-11-18)
+
+- **Advice, not a decision.** While a team chooses, every other team in the game (not a waiting late team) votes 左門 or
+  右門 on its phone; the choosing team still presses its own door, and a timeout still opens ⚔️. A binding vote would
+  undo d2a (the team chooses) and stays with the owner. The doors stay unmarked, so the voters guess too: the vote never
+  reads `monsterSide`.
+- **One vote per team, switchable,** at most one counted change per `FORK_VOTE_GAP_MS` (300 ms) per team; a repeat of
+  the same side is dropped. Wrong timing (no fork choosing, a door opening, the choosing team itself) is dropped without
+  an ERROR, like a reaction; the phone shows the buttons only when a vote can land, and its lit button comes from the
+  room's tally, never local state.
+- **Memory only, off the save path.** `FORK_VOTE` skips `markActivity()` and `persist()`; a change goes straight to the
+  sockets as `FORK_VOTES { votes }` (teamId → side). STATE carries `forkVotes` while a fork is choosing, so a phone or
+  screen that reconnects sees the tally. `syncFork` clears the votes whenever a door clock starts (a new fork, or one an
+  undo or a skipped turn sent back to waiting); a restart loses them. The choice writes the tally into its
+  `ForkRecord.crowd` (`{ left, right }`, only when someone voted), so the game log shows whether teams followed the crowd.
+- **Screens.** A waiting phone: the vote under 「{隊名}在叉路口猶豫中」. The choosing phone: 「觀眾建議：左門 N 票・右門 M
+  票」 between its header and the doors. The big screen: 「👥 N 票」 on each door's face. All of it disappears with the
+  door opening. Not narrated; the host page is unchanged.
+
 ## Deferred (TODOS.md)
 
-- Audience vote on the door (Approach C).
 - Question-bank or editor-placed forks, and difficulty or category doors (Approach B; needs a bank format bump).

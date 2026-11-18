@@ -125,6 +125,7 @@ import {
   REACT_GAP_MS,
   REACT_JITTER_MS,
   REACT_ROOM_MAX,
+  FORK_VOTE_GAP_MS,
   type Reaction,
   type Hold,
   type Pacing,
@@ -595,6 +596,10 @@ export class DungeonRoom {
   private heldClockMs: number | null = null;
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
+  /** 觀眾投票 (#285): the waiting teams' door votes for the fork being chosen, and when each team's last one counted.
+   * Cleared when a fork starts choosing (syncFork); STATE shows them only while one is. In memory only. */
+  private forkVotes = new Map<string, ForkSide>();
+  private votedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
   private hostFxAt = -Infinity;
   /** 🌑 螢幕變暗 (immersion.md PR2) and the room clock at its last change. In memory only (a restart clears it, like `media`). */
@@ -1619,6 +1624,7 @@ export class DungeonRoom {
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
       ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
+      ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.forkVotes.size ? { forkVotes: Object.fromEntries(this.forkVotes) } : {}),
       ...this.fortuneView(),
       ...this.liveMedia(),
       ...this.liveDim(),
@@ -2528,13 +2534,16 @@ export class DungeonRoom {
         case "REACT":
           this.handleReact(sender, msg.reaction);
           break;
+        case "FORK_VOTE":
+          this.handleForkVote(sender, msg.side);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "FORK_VOTE" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -4221,6 +4230,24 @@ export class DungeonRoom {
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
   }
 
+  /** 觀眾投票 (#285): a waiting team advises the team choosing at a fork. Dropped without a reply, like a reaction,
+   * when it is not a joined team's, no team is choosing (or its door is opening), the team is the one choosing, or its
+   * last vote counted under FORK_VOTE_GAP_MS ago. A changed vote goes straight to the sockets: nothing to save. */
+  private handleForkVote(conn: Conn, side: ForkSide) {
+    const teamId = this.connTeam.get(conn.id);
+    const game = this.game;
+    // paused() covers the door opening (forkBeat) too.
+    if (!teamId || game?.phase !== "playing" || this.paused()) return;
+    if (!game.teams.some((t) => t.id === teamId)) return; // a waiting late team
+    const chooser = game.teams.find((t) => t.fork?.phase === "choosing");
+    if (!chooser || chooser.id === teamId) return;
+    const now = this.now();
+    if (now - (this.votedAt.get(teamId) ?? -Infinity) < FORK_VOTE_GAP_MS || this.forkVotes.get(teamId) === side) return;
+    this.votedAt.set(teamId, now);
+    this.forkVotes.set(teamId, side);
+    this.room.broadcast(JSON.stringify({ type: "FORK_VOTES", votes: Object.fromEntries(this.forkVotes) } satisfies ServerMessage));
+  }
+
   /** 現場放歌，開放搶答 (boss-music-buzzer.md M4): the big screen's video failed, the host plays the song from their own
    * device, so buzzing opens without the clip. */
   private handleHostBuzzOpen(conn: Conn, questionId: string) {
@@ -4693,6 +4720,8 @@ export class DungeonRoom {
     if (team?.fork?.phase !== "waiting") return false;
     // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
     this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right")));
+    // A fork entering choosing starts with no votes (#285), also after an undo or a skipped turn sent it back to waiting.
+    this.forkVotes.clear();
     this.armFork();
     // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older (the doors
     // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
@@ -4744,12 +4773,14 @@ export class DungeonRoom {
     const before = this.game!;
     let chosen: ReturnType<typeof chooseFork>;
     try {
-      chosen = chooseFork(before, teamId, choice, this.rng);
+      const votes = [...this.forkVotes.values()];
+      chosen = chooseFork(before, teamId, choice, this.rng, { left: votes.filter((v) => v === "left").length, right: votes.filter((v) => v === "right").length });
     } catch (err) {
       if (conn) return this.sendInvalid(conn, err);
       return console.error(JSON.stringify({ event: "fork_failed", error: String(err) }));
     }
     this.unpace("fork");
+    this.forkVotes.clear(); // recorded in chosen.record.crowd
     this.game = chosen.game;
     const name = before.teams.find((t) => t.id === teamId)?.name ?? "";
     const { result } = chosen;

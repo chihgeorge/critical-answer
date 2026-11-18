@@ -2208,7 +2208,9 @@ export type ForkSide = "left" | "right";
 /** A team's pick, or the clock running out (the room's only). */
 export type ForkChoice = ForkSide | "timeout";
 /** One fork in the game log: the side opened, what was behind it, and whether the clock picked it. */
-export type ForkRecord = { side: ForkSide; door: ForkDoor; timeout?: true };
+export type ForkRecord = { side: ForkSide; door: ForkDoor; timeout?: true; crowd?: ForkCrowd };
+/** The waiting teams' door votes when the fork was chosen (#285), only when at least one team voted. */
+export type ForkCrowd = { left: number; right: number };
 /** How long the team on turn has to pick a door; then the room takes ⚔️ for it. */
 export const FORK_MS = 15_000;
 
@@ -2237,14 +2239,14 @@ export function startForkChoice(game: GameState, teamId: string, deadline: numbe
  * as if there had been no fork (the question it holds, the same turn). ❓: the event is drawn now and opened at once, as
  * openEvent does (the effect lands, the team walks on, the turn passes).
  */
-export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random): { game: GameState; record: ForkRecord; result?: EventResult } {
+export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random, crowd?: ForkCrowd): { game: GameState; record: ForkRecord; result?: EventResult } {
   assertPlaying(game);
   assertTurn(game, teamId);
   const fork = getTeam(game, teamId).fork;
   if (fork?.phase !== "choosing") throw new InvalidActionError("no_fork");
   const side = choice === "timeout" ? fork.monsterSide : choice;
   const door: ForkDoor = side === fork.monsterSide ? "monster" : "mystery";
-  const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}) };
+  const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}), ...(crowd && crowd.left + crowd.right > 0 ? { crowd } : {}) };
   const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
   if (door === "monster") return { game: { ...game, teams: chose }, record };
   const event = drawEvent(game, teamId, rng);
