@@ -53,7 +53,7 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
   },
 ];
 
-/** 「第 n／4 頁：<topic>」, the phone's live status line (eng D7). */
+/** 「第 n／7 頁：<topic>」, the phone's live status line (eng D7). */
 export const introStatus = (page: number) => `第 ${page}／${INTRO_PAGES} 頁：${INTRO_PAGE_TEXT[page - 1]?.topic ?? ""}`;
 
 /** 「○ ● ○ ○」: which page is up, for the eye only (the host and phone pages mark it aria-hidden). */

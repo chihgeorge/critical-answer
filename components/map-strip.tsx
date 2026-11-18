@@ -148,7 +148,7 @@ export function MapStrip({ view }: { view: SpectatorView }) {
           )}
           {map.boss.open ? (
             <div key="boss-open" data-testid="boss-room" className="absolute border-4" style={{ ...BOSS_STYLE, left: map.boss.x, width: map.boss.w, top: BOSS_BOX.top, height: BOSS_BOX.h, borderColor: "var(--k)" }}>
-              {/* This game's boss (#367), centred in the BOSS_SPRITE slot (a 52px boss fills it) and on the box's 64px inner floor. */}
+              {/* This game's boss (#367), centred in the BOSS_SPRITE slot (a 52px boss reaches 4px past it, into the first pawn tag's empty margin) and on the box's 64px inner floor. */}
               <Sprite kind={boss.sprite} hue={boss.hue} scale={1} className="absolute" style={{ left: Math.max(0, (BOSS_SPRITE - 4 - SPRITE_SIZE[boss.sprite][0]) / 2), top: Math.min(22, 64 - SPRITE_SIZE[boss.sprite][1]) }} />
               <div className="absolute border-[3px]" style={{ left: BOSS_SPRITE - 4, right: 4, top: 2, height: 10, background: "#2a0a14", borderColor: "var(--k)" }}>
                 <div style={{ width: `${(100 * view.bossHp) / view.bossMaxHp}%`, height: "100%", background: "var(--boss)" }} />
