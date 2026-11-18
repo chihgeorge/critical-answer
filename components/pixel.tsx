@@ -10,7 +10,7 @@ import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/spri
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
 import { loadYoutubeApi } from "@/components/youtube-player";
-import { firstChange, resumeFrom } from "@/lib/narration/client";
+import { boxLine, firstChange, resumeFrom } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -368,7 +368,8 @@ function Typewriter({ text, onDone }: { text: string; onDone: () => void }) {
   useEffect(() => {
     let i = 0;
     const id = setInterval(() => {
-      i = prefersReducedMotion() ? text.length : i + 1;
+      // A hidden tab runs this at most once a second (or minute): the line is shown whole instead (#365).
+      i = prefersReducedMotion() || document.hidden ? text.length : i + 1;
       setN(i);
       if (i >= text.length) {
         clearInterval(id);
@@ -387,10 +388,16 @@ function Typewriter({ text, onDone }: { text: string; onDone: () => void }) {
  * When the host edits a line (same box, new `lines`), an edit at or before the line being read restarts from
  * the edited line; a later one is simply read when its turn comes (host-narration-edit.md D13).
  */
-function Sequence({ lines, onRead }: { lines: string[]; onRead?: (count: number) => void }) {
+const subscribeVisibility = (cb: () => void) => {
+  document.addEventListener("visibilitychange", cb);
+  return () => document.removeEventListener("visibilitychange", cb);
+};
+
+function Sequence({ lines, onRead, voiceLine }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number }) {
   const [i, setI] = useState(0);
   const [typed, setTyped] = useState(false);
   const [seen, setSeen] = useState(lines);
+  const hidden = useSyncExternalStore(subscribeVisibility, () => document.hidden, () => false);
   if (firstChange(seen, lines) !== -1) {
     const from = resumeFrom(seen, lines, i);
     setSeen(lines);
@@ -399,19 +406,25 @@ function Sequence({ lines, onRead }: { lines: string[]; onRead?: (count: number)
       setTyped(false);
     }
   }
+  const want = boxLine(i, lines.length, voiceLine, hidden);
+  if (want !== i || (hidden && !typed)) {
+    setI(want);
+    setTyped(hidden);
+  }
   const last = i >= lines.length - 1;
   const read = useEffectEvent((count: number) => onRead?.(count));
   useEffect(() => {
     if (typed) read(i + 1);
   }, [typed, i]);
   useEffect(() => {
-    if (!typed || last) return;
+    // The voice reading this narration moves the box on (voiceLine), so the words on screen are the words heard.
+    if (!typed || last || voiceLine !== undefined) return;
     const id = setTimeout(() => {
       setI((c) => c + 1);
       setTyped(false);
     }, LINE_PAUSE_MS);
     return () => clearTimeout(id);
-  }, [typed, last]);
+  }, [typed, last, voiceLine]);
   return (
     <>
       <Typewriter key={`${i}\n${lines[i]}`} text={lines[i] ?? ""} onDone={() => setTyped(true)} />
@@ -429,6 +442,7 @@ export function DialogueBox({
   compact = false,
   id,
   onRead,
+  voiceLine,
 }: {
   /** Played in order with a ▼ between them. Ignored while `loading`. */
   lines: string[];
@@ -445,6 +459,8 @@ export function DialogueBox({
   id?: number;
   /** Called with how many lines have finished typing. */
   onRead?: (count: number) => void;
+  /** The line the voice is reading now: the box shows it, and waits for the voice before the next (#365). */
+  voiceLine?: number;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
   const shown = lines.length > 0 ? lines : [""];
@@ -471,7 +487,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} />
+        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} />
       )}
     </Panel>
   );

@@ -91,8 +91,14 @@ export function FilePlayer({
     const v = el.current;
     if (!v) return;
     const next = { state: want.state, seq: want.seq };
-    const steps = playerSteps(applied.current, next, v.ended);
+    const seek = want.seek !== undefined && applied.current?.seq !== next.seq;
+    const steps = seek ? [] : playerSteps(applied.current, next, v.ended);
     applied.current = next;
+    if (seek) {
+      v.currentTime = want.seek!;
+      if (want.state === "playing") v.play().catch(() => {});
+      else v.pause();
+    }
     for (const step of steps) {
       if (step === "pause") v.pause();
       else {
@@ -101,7 +107,7 @@ export function FilePlayer({
         v.play().catch(() => {});
       }
     }
-  }, [want.state, want.seq, want.press, url, attempt]);
+  }, [want.state, want.seq, want.press, want.seek, url, attempt]);
   // The reveal's replay: one seek per key and mounted element (a retry plays from 0, so it seeks again). Seeking back
   // clears the element's own `ended`; before metadata loads it sets where playback starts. It waits for the host's ▶,
   // as YoutubePlayer's.

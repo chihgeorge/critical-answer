@@ -84,6 +84,30 @@ describe("check first, question after", () => {
 });
 
 describe("HOST_MEDIA", () => {
+  it("keeps a selected timeline position for the screen and preserves pause state", () => {
+    const g = game([video("v1"), video("v2")]);
+    g.media("pause");
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 12 });
+    expect(g.state().media).toMatchObject({ state: "paused", seq: 1, seek: 12 });
+    g.media("play");
+    expect(g.state().media).toMatchObject({ state: "playing", seq: 1, seek: 12 });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 16 });
+    expect(g.state().media).toMatchObject({ state: "playing", seq: 2, seek: 16 });
+  });
+
+  // Value: protects=⟲ plays from the clip start after a seek, and a seek stays inside the clip until the reveal (#365); fails_when=restart keeps seek or the clamp goes
+  it("restart after a seek drops it; a seek before the reveal is held to the clip", () => {
+    const g = game([video("v1"), video("v2")]);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 12 });
+    g.media("restart");
+    expect(g.state().media).toMatchObject({ seq: 2 });
+    expect(g.state().media.seek).toBeUndefined();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 300 });
+    expect(g.state().media).toMatchObject({ seek: 20 });
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "v1", action: "seek", at: 0 });
+    expect(g.state().media).toMatchObject({ seek: 5 });
+  });
+
   it("play, pause and restart become STATE media; restart bumps seq, every press bumps press", () => {
     const g = game([video("v1"), video("v2")]);
     const id = g.state().question.id;

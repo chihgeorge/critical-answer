@@ -27,11 +27,15 @@ export function extractYoutubeId(pasted: string): string | null {
 
 /** The link the editor shows for a stored id, so the host can open, copy or replace it (the bank keeps the bare id). */
 export const youtubeWatchUrl = (videoId: string): string => `https://www.youtube.com/watch?v=${videoId}`;
+export const youtubeThumbnailUrl = (videoId: string): string => `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
 /** The privacy-friendly embed domain — confirmed as 2026 best practice for a plain-iframe
  * embed (no library, no API key) via live web search during /plan-eng-review. */
 export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, zhCaptions = false): string {
   const clip = new URLSearchParams({
+    // Related videos only from the same channel (YouTube's floor), no annotation cards.
+    rel: "0",
+    iv_load_policy: "3",
     ...(start !== undefined ? { start: String(start) } : {}),
     ...(end !== undefined ? { end: String(end) } : {}),
     // enablejsapi lets the page pick the caption track itself (pickZhCaption); the rest is YouTube's own first guess.
@@ -46,6 +50,8 @@ export function youtubeEmbedUrl(videoId: string, start?: number, end?: number, z
 export interface MediaWant {
   state: "playing" | "paused";
   seq: number;
+  /** Host-selected position, in seconds, for this seq. */
+  seek?: number;
   /** A new press re-checks the steps even when state and seq are the same (▶ after the clip ended). */
   press?: number;
 }
@@ -62,6 +68,17 @@ export function playerSteps(prev: MediaWant | null, next: MediaWant, ended: bool
 
 /** A timing reveal's replay seeks once per key (timing-tap-timeline.md): a re-render with the same key does nothing. */
 export const shouldSeek = (doneKey: string | null, key: string): boolean => doneKey !== key;
+
+/** A question clip has a fixed end; its answer reveal stays available until the host advances. */
+export const clipEndForStage = (end: number | undefined, revealing: boolean): number | undefined => revealing ? undefined : end;
+
+/** Seconds before the video's own end that the player stops by itself: YouTube's end screen of other videos never
+ * shows (#365). The IFrame API has no switch for it, nor for the share button. */
+export const END_SCREEN_GUARD_S = 0.5;
+/** Where the big screen's player stops: the clip's end, and never later than just before the video's end (once its
+ * duration is known; 0 before that). shortcut: a live stream's duration grows as it plays, so one would stop at once; the bank has none. */
+export const clipStopAt = (end: number | undefined, duration: number): number | undefined =>
+  duration > END_SCREEN_GUARD_S ? Math.min(end ?? Infinity, duration - END_SCREEN_GUARD_S) : end;
 
 /** A clip error the big screen reported: the video, and the host's last press on it then (0 if none). */
 export interface ClipErrorSeen {

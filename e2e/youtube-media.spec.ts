@@ -32,6 +32,7 @@ window.YT = {
     pauseVideo() { window.__yt.push(["pause"]); this.opts.events.onStateChange({ data: 2, target: this }); }
     seekTo(s) { window.__yt.push(["seek", s]); this.t = s; }
     getCurrentTime() { return this.t; }
+    getDuration() { return 0; }
     destroy() { window.__yt.push(["destroy"]); }
   },
 };`;
@@ -105,7 +106,7 @@ test("music question: the lobby asks for a tap, the card hides the video, and th
   await expect(screen.getByText("這首歌是什麼的主題曲？")).toBeVisible();
   await expect(screen.getByTestId("music-card")).toBeVisible();
   await expect(screen.getByTestId("youtube-player")).toHaveAttribute("data-status", "paused");
-  expect(await calls(screen)).toContain(`new ${VIDEO} 65 80`);
+  expect(await calls(screen)).toContain(`new ${VIDEO} 65 `);
 
   // The phone: the prompt and where to listen, no embed (D7, D21).
   await expect(team.getByText("這首歌是什麼的主題曲？")).toBeVisible();
@@ -166,7 +167,7 @@ test("a reconnecting big screen picks a playing video up from the clip's start",
 
   await screen.reload();
   await expect(screen.getByTestId("youtube-player")).toHaveAttribute("data-status", "playing");
-  expect(await calls(screen)).toEqual([`new ${VIDEO} 65 80`, "seek 65", "play"]);
+  expect(await calls(screen)).toEqual([`new ${VIDEO} 65 `, "seek 65", "play"]);
 });
 
 test("a video question shows its picture, a video the API cannot load says so, and ▶ tries again", async ({ browser, request }) => {

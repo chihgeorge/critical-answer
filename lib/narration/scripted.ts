@@ -52,7 +52,7 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
     "{monster}被逼到牆角，{team}答對了！",
   ],
   retry: [
-    "{team}答錯了，{monster}還擋在原地，再試一次！",
+    "{team}答錯了，{monster}還擋在原地，下輪再答！",
     "{monster}冷笑一聲，{team}下一輪還能再答。",
     "差一點！{team}握緊武器，再戰{monster}。",
     "{team}答錯，{monster}紋絲不動。",
@@ -66,7 +66,7 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   flee: [
     "{team}轉身就跑，{monster}的怒吼追在後面！",
     "{team}狼狽逃開，換個角度再挑戰{monster}。",
-    "腳底抹油！{team}撤退，換一道簡單些的關卡。",
+    "腳底抹油！{team}撤退，換個方向再出發。",
     "{monster}嚇跑了{team}，但這不是結束。",
     "{team}喘著氣退出戰場，重新整隊。",
     "{team}見苗頭不對，先溜為妙！",
