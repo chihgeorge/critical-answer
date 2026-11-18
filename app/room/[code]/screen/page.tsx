@@ -444,7 +444,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {dcChip && (
         <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, background: "var(--warn)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
+          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
@@ -818,7 +818,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       )}
       {dcChip && !asking && (
         <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗣️ 說服 DC {dcChip.dc}（+{dcChip.bonus}）
+          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: classic ? "#0007" : "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />

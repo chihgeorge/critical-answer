@@ -1205,7 +1205,10 @@ test("a room's monster: picked from the catalog, saved as its id, and kept after
     await page.getByRole("button", { name: "載入題庫" }).click();
     await page.getByTestId("bank-tab-rooms").click();
     await expect(page.getByTestId("bank-rooms").getByRole("textbox")).toHaveCount(0);
-    await expect(page.getByLabel("首領").locator("option")).toHaveText(["深淵小黑龍", "深海大王烏賊", "不死火鳥"]);
+    await expect(page.getByLabel("首領").locator("option")).toHaveText(["🎲 每場隨機", "深淵小黑龍", "深海大王烏賊", "不死火鳥"]);
+    // The boss follows the draw until picked, and stays pickable while the rooms are drawn (#367).
+    await expect(page.getByLabel("首領")).toHaveValue("");
+    await page.getByLabel("首領").selectOption("kraken");
     const room0 = page.getByLabel("第 1 房的怪物");
     await expect(room0.locator("option", { hasText: "深淵小黑龍" })).toHaveCount(0);
     // The default bank draws its monsters each game, so the pickers are greyed out until the draw is off.
@@ -1221,12 +1224,15 @@ test("a room's monster: picked from the catalog, saved as its id, and kept after
     const saved = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank;
     expect(saved.rooms[0].monster).toBe("ghost-cry");
     expect(saved.randomMonsters).toBeUndefined();
+    expect(saved.boss.monster).toBe("kraken");
+    expect(saved.randomBoss).toBe(false);
 
     await page.reload();
     await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
     await page.getByRole("button", { name: "載入題庫" }).click();
     await page.getByTestId("bank-tab-rooms").click();
     await expect(page.getByLabel("第 1 房的怪物")).toHaveValue("ghost-cry");
+    await expect(page.getByLabel("首領")).toHaveValue("kraken");
   } finally {
     const { version } = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()) as { version: number };
     expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank: original, version } })).ok()).toBe(true);

@@ -1561,6 +1561,8 @@ export class DungeonRoom {
     // So does a fortune's lit slice: the effect shows on the card (fortune-teller.md).
     const shown = this.forkBeat?.before ?? this.fortuneBeat?.before ?? this.game;
     const view = getSpectatorView(shown);
+    const { sprite, hue } = this.bossLook();
+    view.bossLook = { sprite, hue };
     if (shown !== this.game) view.teams = view.teams.map((t) => ({ ...t, online: this.game!.teams.find((r) => r.id === t.id)?.online ?? t.online }));
     const choosing = this.forkBeat ? undefined : this.game.teams.find((t) => t.fork?.phase === "choosing")?.fork;
     // A check is written when its die is rolled, so a restart inside the beat cannot reroll it; it shows once the beat ends.

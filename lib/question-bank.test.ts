@@ -214,6 +214,13 @@ describe("parseBank", () => {
     expect(parseBank(valid())).not.toHaveProperty("randomMonsters");
   });
 
+  it("keeps randomBoss as given, and refuses a value that is not true or false (#367)", () => {
+    expect(parseBank({ ...valid(), randomBoss: true }).randomBoss).toBe(true);
+    expect(parseBank({ ...valid(), randomBoss: false }).randomBoss).toBe(false);
+    expect(parseBank(valid())).not.toHaveProperty("randomBoss");
+    expect(() => parseBank({ ...valid(), randomBoss: 1 })).toThrow(/randomBoss/);
+  });
+
   const pooled = () => ({
     pools: { "1": [q("a1"), q("a2")], "3": [q("c1")] },
     rooms: [

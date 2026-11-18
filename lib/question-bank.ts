@@ -145,6 +145,8 @@ export interface Bank {
   boss: { monster: string; hitReward: number; phases: BossPhase[] };
   /** Each game draws its own monsters instead of the ones named above (monster-catalog.ts gameMonsters). */
   randomMonsters?: boolean;
+  /** The boss alone: true draws any boss each game, false keeps `boss.monster`. Absent follows `randomMonsters`. */
+  randomBoss?: boolean;
 }
 /** One boss phase with its own HP bar and questions (docs/designs/boss-phases.md). Players learn a
  * phase's name and rule only when it starts, so both are required from the second phase on. */
@@ -440,6 +442,7 @@ export function parseBank(raw: unknown): Bank {
     if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
   });
   if (b!.randomMonsters !== undefined && typeof b!.randomMonsters !== "boolean") fail("randomMonsters is not true or false");
+  if (b!.randomBoss !== undefined && typeof b!.randomBoss !== "boolean") fail("randomBoss is not true or false");
   const boss = b!.boss as Record<string, unknown> | null;
   if (!boss) fail("no boss");
   // A bank from before phases holds one bar and one question list on the boss itself: that is phase 1.
@@ -472,6 +475,7 @@ export function parseBank(raw: unknown): Bank {
       phases,
     },
     ...(b!.randomMonsters === true ? { randomMonsters: true } : {}),
+    ...(typeof b!.randomBoss === "boolean" ? { randomBoss: b!.randomBoss } : {}),
   };
 }
 
