@@ -50,7 +50,7 @@ describe("DUNGEON_THEME", () => {
     expect(BOSS_RAGE_THEME.drum).toHaveLength(DUNGEON_THEME.melody.length);
     expect(loopDuration(BOSS_RAGE_THEME)).toBeLessThan(loopDuration(DUNGEON_THEME));
     const drums = songEvents(BOSS_RAGE_THEME).filter((e) => e.voice === "drum");
-    expect(drums.length).toBeGreaterThan(25);
+    expect(drums.length).toBe(32);
     expect(songEvents(DUNGEON_THEME).some((e) => e.voice === "drum")).toBe(false);
   });
 

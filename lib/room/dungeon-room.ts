@@ -539,7 +539,7 @@ export class DungeonRoom {
    * which its clip's video time 0 played (null while paused or buffering), for which question and ⟲ seq, and when it
    * last reported. In memory only, like `media`: after a restart the host's next ▶ brings it back (hosting.md). */
   private tapClock: { questionId: string; seq: number; screen: string; anchor: number | null; at: number } | null = null;
-  /** When the host's last ⟲ (a play from the clip's start) for this question and seq began. In memory only. */
+  /** When the host's last ⟲ or timeline seek for this question and seq began, and the video time it played from. In memory only. */
   private tapSeqStart: { questionId: string; seq: number; at: number; from: number } | null = null;
   /** Closes the timing round at its song time, or wakes when the clock goes stale. */
   private tapTimer: ReturnType<typeof setTimeout> | null = null;
@@ -4074,6 +4074,9 @@ export class DungeonRoom {
   private handleHostMedia(conn: Conn, questionId: string, action: MediaAction, at?: number) {
     if (!this.requireHost(conn)) return;
     if (questionId !== this.shownVideoId()) return;
+    // A seek stays inside a question's clip until the reveal: before it, the footage around the clip may give the answer away.
+    const clip = this.question(questionId)?.content;
+    if (action === "seek" && at !== undefined && !this.reveal && clip?.kind === "youtube") at = Math.min(Math.max(at, clip.start ?? 0), clip.end ?? at);
     // A skipped timing question that came round again starts over on ▶ (its song stopped past the target).
     // Never played (skipped before ▶): the plain ▶ starts at the clip start anyway, and either way the replay is used up.
     if (action !== "pause" && action !== "seek" && this.tapReplay === questionId) {
@@ -4083,9 +4086,8 @@ export class DungeonRoom {
     const same = this.media?.questionId === questionId ? this.media : null;
     const seq = same?.seq ?? 0;
     this.media = { questionId, state: action === "pause" ? "paused" : action === "seek" ? same?.state ?? "paused" : "playing", seq: action === "restart" || action === "seek" ? seq + 1 : seq, press: (same?.press ?? 0) + 1, ...(action === "seek" && at !== undefined ? { seek: at } : action !== "restart" && same?.seek !== undefined ? { seek: same.seek } : {}) };
-    // ⟲ plays from the clip's start: when it began, for handleTapClock's stale-anchor check.
+    // ⟲ plays from the clip's start, a seek from its point: when that began, for handleTapClock's stale-anchor check.
     if (action === "restart" || action === "seek") {
-      const clip = this.question(questionId)?.content;
       this.tapSeqStart = { questionId, seq: this.media.seq, at: this.now(), from: action === "seek" ? at ?? 0 : clip?.kind === "youtube" ? clip.start ?? 0 : 0 };
     }
     // The host took the controls after a buzz: a wrong answer or a drop leaves the music as the host set it (outside-voice review).

@@ -1582,7 +1582,8 @@ export default function ScreenPage() {
       pendingLines.current = null;
       speech.current = null;
       setVoiceAt(null);
-    } else if (!playing && !revealUp.current) {
+    } else if (!playing && !revealUp.current && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
+      // Not on a buzz's pause: an earlier line must not be read over the team answering.
       const waiting = deferredNarration.current;
       if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
         deferredNarration.current = null;

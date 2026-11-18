@@ -186,8 +186,8 @@ export function YoutubePlayer({
           height,
           host: "https://www.youtube-nocookie.com",
           playerVars: {
+            // No `end` here: the poll below stops the clip, so the reveal lifting `end` keeps this player (screen D17, #365).
             start,
-            ...(end !== undefined ? { end } : {}),
             // Read once: the player is not rebuilt when the reveal turns captions on; the effect below does that.
             ...(zh.current ? ZH_CAPTION_VARS : {}),
             controls: controls ? 1 : 0,
@@ -230,7 +230,7 @@ export function YoutubePlayer({
       setReady(false);
       report.current?.(false);
     };
-  }, [videoId, start, end, width, height, controls, attempt]);
+  }, [videoId, start, width, height, controls, attempt]);
 
   // The question turns into its reveal on the same player (screen D17): captions come on without a rebuild.
   useEffect(() => {

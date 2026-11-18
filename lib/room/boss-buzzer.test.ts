@@ -87,6 +87,13 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state()).toMatchObject({ question: { id: "b-a" }, view: { buzz: { questionId: "b-a", out: [] } } });
   });
 
+  // Value: protects=a timeline drag before ▶ never opens buzzing (#365); fails_when=handleHostMedia opens on every non-pause action
+  it("a timeline seek before the first ▶ keeps buzzing closed", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "seek", at: 3 });
+    expect(g.state().view.buzz?.open).toBeFalsy();
+  });
+
   it("a video question opens on the host's first ▶; the first buzz wins, stops the music and plays the buzz cue", () => {
     const g = buzzerGame();
     g.buzz(1);

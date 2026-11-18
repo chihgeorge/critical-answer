@@ -272,5 +272,7 @@ describe("clipStopAt (#365)", () => {
     expect(clipStopAt(30, 200)).toBe(30);
     expect(clipStopAt(undefined, 200)).toBe(200 - END_SCREEN_GUARD_S);
     expect(clipStopAt(undefined, 0)).toBeUndefined();
+    expect(clipStopAt(30, 0)).toBe(30);
+    expect(clipStopAt(500, 200)).toBe(200 - END_SCREEN_GUARD_S);
   });
 });

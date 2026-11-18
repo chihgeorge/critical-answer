@@ -75,9 +75,10 @@ export const clipEndForStage = (end: number | undefined, revealing: boolean): nu
 /** Seconds before the video's own end that the player stops by itself: YouTube's end screen of other videos never
  * shows (#365). The IFrame API has no switch for it, nor for the share button. */
 export const END_SCREEN_GUARD_S = 0.5;
-/** Where the big screen's player stops: the clip's end, else just before the video's end (once its duration is known). */
+/** Where the big screen's player stops: the clip's end, and never later than just before the video's end (once its
+ * duration is known; 0 before that). shortcut: a live stream's duration grows as it plays, so one would stop at once; the bank has none. */
 export const clipStopAt = (end: number | undefined, duration: number): number | undefined =>
-  end ?? (duration > END_SCREEN_GUARD_S ? duration - END_SCREEN_GUARD_S : undefined);
+  duration > END_SCREEN_GUARD_S ? Math.min(end ?? Infinity, duration - END_SCREEN_GUARD_S) : end;
 
 /** A clip error the big screen reported: the video, and the host's last press on it then (0 if none). */
 export interface ClipErrorSeen {

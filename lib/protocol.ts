@@ -499,7 +499,7 @@ export type SoundCue = "start" | "correct" | "retry" | "flee" | "boss-hit" | "bo
 export const MEDIA_ACTIONS = ["play", "pause", "restart", "seek"] as const;
 export type MediaAction = (typeof MEDIA_ACTIONS)[number];
 /** What the host last asked the big screen's video to do. `seq` goes up on each ⟲ 從頭, so the screen
- * plays from `start` again; `press` on every button. In memory only: absent after a restart, and from older servers (paused). */
+ * plays from `start` again, and on each timeline seek, so it plays from `seek`; `press` on every button. In memory only: absent after a restart, and from older servers (paused). */
 export interface MediaCommand {
   questionId: string;
   state: "playing" | "paused";

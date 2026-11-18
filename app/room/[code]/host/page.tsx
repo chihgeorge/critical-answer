@@ -1780,10 +1780,12 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
       {!instagram && (
         <label className="mt-2 block text-[14px]">
           <span>選擇播放段落：{formatClipTime(at)}</span>
+          {/* shortcut: the host page does not know the clip's bounds or the video's length, so 10 minutes; the room clamps a question clip's seek to it. */}
           <input type="range" aria-label="選擇播放段落" min={0} max={600} step={1} value={at} disabled={disabled}
             onChange={(e) => setPicked({ questionId, seq: media?.seq ?? 0, at: Number(e.currentTarget.value) })}
             onPointerUp={(e) => seek(e.currentTarget.value)}
-            onKeyUp={(e) => seek(e.currentTarget.value)}
+            // Only the keys that move a range: 1, Enter or Space released here must not seek (and clear a timing round's taps).
+            onKeyUp={(e) => { if (/^(Arrow|Home$|End$|Page)/.test(e.key)) seek(e.currentTarget.value); }}
             className="block w-full" />
         </label>
       )}
