@@ -522,6 +522,8 @@ export class DungeonRoom {
   private reveal: AnswerReveal | null = null;
   /** Short narrated cards before the next die or question. The step owns their duration. */
   private stageBeat: "crit-intro" | "check-success" | "kill-defeated" | null = null;
+  /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller. */
+  private checkBeatAt: { teamId: string; questionId: string } | null = null;
   /** Keep the map at the answered room until its dish has been eaten. */
   private bossEntryBefore: GameState | null = null;
   /** The judgment transcript keeps the entry fact even while its spoken announcement waits for the meal. */
@@ -1115,8 +1117,7 @@ export class DungeonRoom {
     const game = this.game;
     if (game?.phase !== "playing") return {};
     const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry"> = {};
-    const teamId = this.stageBeat === "check-success" ? currentTurnTeamId(game) : null;
-    if (teamId) out.checkBeat = { teamId, questionId: currentQuestionIdOf(game, teamId) };
+    if (this.stageBeat === "check-success" && this.checkBeatAt) out.checkBeat = this.checkBeatAt;
     const entered = this.bossEntryBefore && this.reveal?.scored?.teamId;
     if (entered) out.bossEntry = { eventId: this.eventSeq, teamId: entered, ...(game.sprint && !this.bossEntryBefore!.sprint ? { sprint: true as const } : {}) };
     return out;
@@ -1303,11 +1304,10 @@ export class DungeonRoom {
     const game = this.game;
     if (game?.phase !== "playing" || this.phaseCard) return;
     const c = s.checkBeat;
-    if (c && currentTurnTeamId(game) === c.teamId && currentQuestionIdOf(game, c.teamId) === c.questionId && game.checks?.[checkKey(c.questionId, c.teamId)]?.passed) this.checkSuccessBeat();
+    if (c && currentTurnTeamId(game) === c.teamId && currentQuestionIdOf(game, c.teamId) === c.questionId && game.checks?.[checkKey(c.questionId, c.teamId)]?.passed) this.checkSuccessBeat(c.teamId, c.questionId);
     const e = s.bossEntry;
-    const lines = e ? this.bossEntryLines(e.teamId, !!e.sprint) : [];
-    const n = this.lastNarration;
-    if (lines.length && n?.eventId === e!.eventId && n.lines.length + lines.length <= NARRATION_MAX_LINES) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
+    // Through appendLine, as closeReveal says them: the same length cut and line cap.
+    if (e && this.lastNarration?.eventId === e.eventId) for (const line of this.bossEntryLines(e.teamId, !!e.sprint)) this.appendLine(e.eventId, line);
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
@@ -4734,15 +4734,16 @@ export class DungeonRoom {
     if (passed) {
       const name = this.game!.teams.find((t) => t.id === teamId)?.name ?? "這隊";
       this.writeScripted([`${name}說服成功！怪物露出線索，接下來可以看題目了。`]);
-      this.checkSuccessBeat();
+      this.checkSuccessBeat(teamId, questionId);
       this.broadcastState();
       this.sendNarration();
     } else this.broadcastState();
   }
 
   /** The passed check's card before the question; restore() starts it again for a save made during it. */
-  private checkSuccessBeat() {
+  private checkSuccessBeat(teamId: string, questionId: string) {
     this.stageBeat = "check-success";
+    this.checkBeatAt = { teamId, questionId };
     this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
       this.stageBeat = null;
       this.broadcastState();

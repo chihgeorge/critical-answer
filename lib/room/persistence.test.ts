@@ -997,10 +997,14 @@ describe("restoring after a restart", () => {
     const teamId = currentTurnTeamId(g)!;
     const questionId = g.teams.find((t) => t.id === teamId)!.currentQuestionId;
     first.room.game = { ...g, checks: { ...g.checks, [checkKey(questionId, teamId)]: { value: 15, bonus: 0, dc: 8, passed: true } } };
-    (first.room as any).checkSuccessBeat();
+    (first.room as any).checkSuccessBeat(teamId, questionId);
     (first.room as any).persist();
     const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
     expect(saved.checkBeat).toEqual({ teamId, questionId });
+    // The turn is not pinned during the card: a save after it moved on still names the team that passed.
+    first.room.game = { ...first.room.game!, currentTurnIndex: (g.currentTurnIndex + 1) % g.turnOrder.length };
+    (first.room as any).persist();
+    expect((storage.data.get(SNAPSHOT_KEY) as any).checkBeat).toEqual({ teamId, questionId });
     vi.useFakeTimers();
     const room = await restoredFrom(storage, saved);
     expect(room.snapshot()).toMatchObject({ stageBeat: "check-success", question: null });
@@ -1027,6 +1031,10 @@ describe("restoring after a restart", () => {
     const lines = async (patch?: (s: any) => void) => (await restoredFrom(storage, saved, patch)).lastNarration.lines.join(" ");
     expect(saved.lastNarration.lines.join(" ")).not.toContain("吃飽後走進首領房");
     expect(await lines()).toContain("甲隊吃飽後走進首領房");
+    // A 最後衝刺 that started with this entry is said after it; one that was already on is not said again.
+    const sprinting = (sprint: boolean) => (s: any) => Object.assign(s, { game: { ...s.game, sprint: { teamIds: [T2] } }, bossEntry: { eventId: s.bossEntry.eventId, teamId: s.bossEntry.teamId, ...(sprint ? { sprint: true } : {}) } });
+    expect(await lines(sprinting(true))).toContain("乙隊獲得祝福");
+    expect(await lines(sprinting(false))).not.toContain("祝福");
     expect(await lines((s) => (s.bossEntry.eventId -= 1))).not.toContain("吃飽後走進首領房");
     expect(await lines((s) => (s.bossEntry = { teamId: T1 }))).not.toContain("吃飽後走進首領房");
   });
