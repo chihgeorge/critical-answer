@@ -101,6 +101,8 @@ export function YoutubePlayer({
   onError,
   errorNote,
   title = "題目影片",
+  cardTitle,
+  thumbnailUrl,
   zhCaptions = false,
   timeRef,
   replay,
@@ -127,6 +129,8 @@ export function YoutubePlayer({
   /** A line under 影片無法播放, e.g. that the host plays the song live instead. */
   errorNote?: string;
   title?: string;
+  cardTitle?: string;
+  thumbnailUrl?: string;
   /** After the reveal: Chinese captions, or YouTube's translation to Traditional Chinese. Never while answering. */
   zhCaptions?: boolean;
   /** Set to a reader of the video's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
@@ -306,7 +310,7 @@ export function YoutubePlayer({
   return (
     <div data-testid="youtube-player" data-status={status} className="relative" style={{ width, height, boxShadow: "0 0 0 4px var(--k)" }}>
       <div ref={host} aria-label={title} style={{ width, height }} />
-      {cover && status !== "error" && <MusicCard status={status} start={start} end={end} />}
+      {cover && status !== "error" && <MusicCard status={status} start={start} end={end} title={cardTitle} thumbnailUrl={thumbnailUrl} />}
       {status === "error" && (
         <div role="status" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--k)] text-[24px] text-[var(--cream)]">
           {CLIP_STATUS_TEXT.error}
@@ -331,19 +335,20 @@ export function YoutubePlayer({
 
 /** The music question's card over the hidden video (D15): a pixel note, 聽歌猜題, an equalizer that moves only
  * while the song plays, the state in words, and the clip's length. */
-export function MusicCard({ status, start, end, title = "聽歌猜題" }: { status: ClipStatus; start: number; end?: number; title?: string }) {
+export function MusicCard({ status, start, end, title = "聽歌猜題", thumbnailUrl }: { status: ClipStatus; start: number; end?: number; title?: string; thumbnailUrl?: string }) {
   const playing = status === "playing";
   return (
     <div data-testid="music-card" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-[var(--lav)] text-[var(--k)]">
-      {end !== undefined && <div className="absolute right-3 top-2 text-[16px]">{end - start} 秒</div>}
-      <PixelNote />
-      <div className="text-[32px] leading-none">{title}</div>
-      <div className="flex h-[28px] items-end gap-[6px]" aria-hidden>
+      {thumbnailUrl && <div role="img" aria-label="歌曲圖片" className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `linear-gradient(#2a153399, #2a1533bb), url(${thumbnailUrl})` }} />}
+      {end !== undefined && <div className="absolute right-3 top-2 text-[16px]" style={thumbnailUrl ? { color: "white" } : undefined}>{end - start} 秒</div>}
+      {!thumbnailUrl && <PixelNote />}
+      <div className="relative text-[32px] leading-none" style={thumbnailUrl ? { color: "white" } : undefined}>{title}</div>
+      <div className="relative flex h-[28px] items-end gap-[6px]" aria-hidden>
         {[0, 1, 2, 3, 4].map((i) => (
           <i key={i} className={playing ? (i % 2 ? "px-eq px-eq2" : "px-eq") : undefined} style={{ display: "block", width: 8, height: playing ? 28 : 6, background: "var(--k)", transformOrigin: "bottom" }} />
         ))}
       </div>
-      <div className="text-[20px]" role="status">
+      <div className="relative text-[20px]" role="status" style={thumbnailUrl ? { color: "white" } : undefined}>
         {CLIP_STATUS_TEXT[status]}
       </div>
     </div>

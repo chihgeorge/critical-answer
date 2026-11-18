@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TimingResult, timingLines, TimingTimeline } from "@/components/timing-screen";
+import { TimingResult, TimingRoundPanel, timingLines, TimingTimeline } from "@/components/timing-screen";
+import { MusicCard } from "@/components/youtube-player";
 import type { AnswerReveal } from "./protocol";
 import type { SpectatorView } from "./game-state";
 
@@ -19,6 +20,16 @@ const timing: NonNullable<AnswerReveal["timing"]> = {
   ],
   stunned: ["t6"],
 };
+
+it("uses the song name as the timing title and shows its YouTube artwork on the music card", () => {
+  const round = renderToStaticMarkup(createElement(TimingRoundPanel, { title: "夜空之歌", label: "蹬", open: true }));
+  expect(round).toContain("夜空之歌");
+  expect(round).not.toContain("♪ 卡點題");
+  const card = renderToStaticMarkup(createElement(MusicCard, { status: "paused", start: 5, end: 20, title: "夜空之歌", thumbnailUrl: "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg" }));
+  expect(card).toContain("夜空之歌");
+  expect(card).toContain('aria-label="歌曲圖片"');
+  expect(card).toContain("hqdefault.jpg");
+});
 
 describe("TimingResult", () => {
   it("names the winner, its error and the target, and keeps the timing-reveal testid", () => {

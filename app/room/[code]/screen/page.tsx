@@ -56,7 +56,7 @@ import { ScreenMediaTest } from "@/components/screen-media-test";
 import { useClockPings, useRoomClock } from "@/components/room-clock";
 import { TapClockReporter, TimingResult, TimingRoundPanel, TimingTimeline, useTimingReplay } from "@/components/timing-screen";
 import { replayFromS } from "@/lib/tap-clock";
-import { clipEndForStage, resendClipError, type ClipErrorSeen } from "@/lib/youtube";
+import { clipEndForStage, resendClipError, youtubeThumbnailUrl, type ClipErrorSeen } from "@/lib/youtube";
 import { HowToPlay, INTRO_PAGE_TEXT } from "@/components/how-to-play";
 import { CookFrame, dishLine, DishOnStage, dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { ambienceFor, FOG_REVEAL_DELAY_MS, FOG_REVEAL_MS, revealFor, screenAudioOf, type FogReveal } from "@/lib/ambience";
@@ -355,7 +355,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // A timing question (timing-tap.md 畫面): the rule beside the music card, never who tapped.
   const timing = question?.timing;
   const buzzBox = buzz && timing ? (
-    <TimingRoundPanel label={timing.label} open={!!buzz.open} />
+    <TimingRoundPanel title={question?.prompt} label={timing.label} open={!!buzz.open} />
   ) : buzz && (
     <div data-testid="screen-buzz" className="flex flex-col items-center gap-2">
       <div className="px-chip" style={{ ...CHIP, fontSize: buzz.teamId ? 30 : 22, background: buzz.teamId ? "var(--turn)" : "var(--lav)" }}>
@@ -526,7 +526,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         width={width}
         height={height}
         cover={!!v.content.audioOnly}
-        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : "聽歌猜題"}
+        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : timing ? question?.prompt : "聽歌猜題"}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
@@ -545,7 +545,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         command={media?.questionId === v.id ? media : null}
         width={width}
         height={height}
-        cover={!reveal && !!v.content.audioOnly}
+        cover={!reveal && (!!v.content.audioOnly || !!timing)}
+        cardTitle={timing ? question?.prompt : undefined}
+        thumbnailUrl={timing && !reveal ? youtubeThumbnailUrl(v.content.videoId) : undefined}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}

@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeThumbnailUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+
+it("uses the public YouTube thumbnail for a timing song", () => {
+  expect(youtubeThumbnailUrl("dQw4w9WgXcQ")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
+});
 
 it("keeps a question clip's end but lets the host end its answer reveal", () => {
   expect(clipEndForStage(42, false)).toBe(42);

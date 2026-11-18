@@ -3,6 +3,7 @@ bump: minor
 ---
 ### Added
 - Give the boss rage phase its own chiptune melody and bass line.
+- Show a timing song's name and YouTube artwork on the big screen.
 
 ### Fixed
 - Let the host decide when to stop a YouTube answer reveal, instead of stopping at the question clip's end.
