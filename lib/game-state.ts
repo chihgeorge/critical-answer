@@ -343,8 +343,6 @@ export interface BuzzState {
   partials?: { teamId: string; marks: boolean[] }[];
   /** A music question with fields (#369): every team was out once, so this is the second and last round. */
   second?: true;
-  /** settleBuzz handed the buzz to the round's best partial answer: it is judged right on the fields it got. */
-  settle?: true;
 }
 
 export interface GameConfig {
@@ -1036,12 +1034,15 @@ export function settleBuzz(game: GameState, teamId: string, marks: boolean[]): {
   if (!isBuzzPhase(game) || buzz?.teamId !== teamId || buzz.questionId !== game.boss.currentQuestionId || !buzz.second || marks.every(Boolean)) return null;
   if (!everyoneOut(game, [...buzz.out, teamId])) return null;
   const right = (m: boolean[]) => m.filter(Boolean).length;
-  const best = [...(buzz.partials ?? []), { teamId, marks }]
+  const partials = right(marks) > 0 ? [...(buzz.partials ?? []), { teamId, marks }] : (buzz.partials ?? []);
+  const best = partials
     .filter((p) => right(p.marks) > 0 && game.teams.some((t) => t.id === p.teamId && t.online && t.inBoss))
     .reduce<{ teamId: string; marks: boolean[] } | null>((a, p) => (!a || right(p.marks) > right(a.marks) ? p : a), null);
   if (!best) return null;
   const teams = patchTeam(game.teams, teamId, () => ({ typedAnswer: undefined, typedFields: undefined }));
-  return { game: { ...game, teams, buzz: { ...buzz, teamId: best.teamId, settle: true }, currentTurnIndex: game.turnOrder.indexOf(best.teamId) }, teamId: best.teamId, marks: best.marks };
+  // The judged team is out with its verdicts kept, so judging the winner again (a restart during a kill's 4d20) settles the same way.
+  const handed = { ...buzz, teamId: best.teamId, out: [...buzz.out, teamId], partials };
+  return { game: { ...game, teams, buzz: handed, currentTurnIndex: game.turnOrder.indexOf(best.teamId) }, teamId: best.teamId, marks: best.marks };
 }
 
 /** The buzz once the boss question moved on: none for a new question; the same one (the phase's last unrevealed
