@@ -542,6 +542,13 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     lastFoodKey = FOOD_LINES.has(line) ? key : undefined;
     return line;
   }
+  /** The warrior's die by #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles it. */
+  function warriorResult(event: NarrationEvent): string {
+    const value = "warriorRoll" in event ? event.warriorRoll : undefined;
+    if (event.type === "retry") return value !== 1 ? "沒打中。" : event.penalty ? `大失敗，扣 ${event.penalty} 分！` : "大失敗，沒打中！";
+    if (event.type === "boss-kill") return "命中！";
+    return value === 20 ? "命中！獎勵加倍！" : "命中！拿八成獎勵。";
+  }
   /** Set by plainLine when it picked a crit die's line, which says the number itself. */
   let saidDie = false;
   const provider = {
@@ -552,7 +559,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       const text = provider.plainLine(event);
       // A 大成功 / 手滑 line already says the warrior's die.
       const said = "warriorRoll" in event && event.warriorRoll !== undefined && !saidDie;
-      return said ? `戰士擲出 ${event.warriorRoll} 點，${event.type === "retry" ? "沒打中。" : "命中！"}${text}` : text;
+      return said ? `戰士擲出 ${event.warriorRoll} 點，${warriorResult(event)}${text}` : text;
     },
     /** line() without the warrior's number. */
     plainLine(event: NarrationEvent): string {
@@ -585,7 +592,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
           const twenty = event.roll.value === 20;
           const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : twenty ? "crit" : "fumble";
           saidDie = event.roll.kind === "crit";
-          return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
+          // A warrior's 20 doubles the reward instead of the crit's half (#305).
+          const pool = ROLL_VARIANTS[kind][event.type].filter((l) => event.warriorRoll !== 20 || !l.includes("多拿一半"));
+          return fill(pick(pool, `${kind}-${event.type}`), event);
         }
       }
       if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(namesPart(event.part) ? [...FOODIE.dishPart, ...DISH_VARIANTS] : DISH_VARIANTS, "dish"), event);

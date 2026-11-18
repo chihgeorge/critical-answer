@@ -1,6 +1,6 @@
 "use client";
 
-// The home page's title song and its 🎵 switch (lib/title-music.ts). Self-contained: mount it anywhere on the page.
+// The home page's title song and its 🎵 switch (lib/title-music.ts). Self-contained: the home page mounts it in the title plate's #title-theme-slot, which places it.
 import { useEffect, useRef, useState } from "react";
 import { PixelButton } from "@/components/pixel";
 import { createBgmPlayer, type BgmPlayer } from "@/lib/bgm-player";
@@ -43,7 +43,7 @@ export function TitleMusic() {
       aria-label={label}
       title={label}
       onClick={() => setOn(ctl.current!.toggle())}
-      className="!m-0 fixed right-3 top-3 z-20 !min-h-0 h-11 w-11 !p-0 text-[20px]"
+      className="!m-0 !min-h-0 h-11 w-11 !p-0 text-[20px]"
     >
       {on ? "🎵" : "🔇"}
     </PixelButton>

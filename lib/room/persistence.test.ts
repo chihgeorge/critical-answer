@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
-import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
+import { BANK_KEY, NARRATION_MAX_LINES, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
 import { FINISH_PODIUM_MS } from "../protocol";
@@ -760,6 +760,48 @@ describe("restoring after a restart", () => {
     expect(n).toMatchObject({ eventId: saved.eventId, rev: saved.rev + 1 });
     expect(n.lines.slice(0, -1)).toEqual(saved.lines);
     expect(n.lines.at(-1)).toContain("乙隊");
+  });
+
+  // Value: protects=restore() adds the held handoff only where closeReveal would (#352); fails_when=a guard is dropped
+  // and a restart appends a stale handoff to another narration, past the save limit, or before a boss phase card.
+  it("a restart skips the held handoff for another narration, a full one, or a boss phase card", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    expect(saved.heldHandoff.line).toContain("乙隊");
+    const restoredLines = async (patch: (s: any) => void) => {
+      const s = structuredClone(saved);
+      patch(s);
+      storage.data.set(SNAPSHOT_KEY, s);
+      const room = makeRoom(storage).room;
+      await room.restore();
+      return (room as unknown as { lastNarration: { lines: string[] } }).lastNarration.lines;
+    };
+    expect((await restoredLines(() => {})).at(-1)).toBe(saved.heldHandoff.line); // the control: it joins
+    expect(await restoredLines((s) => (s.heldHandoff.eventId -= 1))).toEqual(saved.lastNarration.lines);
+    const full = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`);
+    expect(await restoredLines((s) => (s.lastNarration.lines = full))).toEqual(full);
+    const pending = (s: any) => Object.assign(s.game.boss, { phasePending: "cleared", phases: [...s.game.boss.phases, s.game.boss.phases[0]] });
+    expect((await restoredLines(pending)).slice(0, saved.lastNarration.lines.length)).toEqual(saved.lastNarration.lines);
+    expect((await restoredLines(pending)).join("")).not.toContain(saved.heldHandoff.line);
+  });
+
+  // Value: protects=a handoff dropped at the line limit leaves a log line (#352); fails_when=appendLine drops it silently.
+  it("下一題 on a full narration drops the handoff and logs it", async () => {
+    const storage = memoryStorage();
+    const { room } = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(room);
+    judgeCorrect(room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const r = room as unknown as { lastNarration: { eventId: number; lines: string[] } };
+    const full = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`);
+    r.lastNarration = { ...r.lastNarration, lines: full };
+    serveNext(room, host, r.lastNarration.eventId);
+    expect(r.lastNarration.lines).toEqual(full);
+    expect(vi.mocked(console.log).mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining('"narration_line_dropped"'));
   });
 
   // Value: protects=a restart right after 送王房 during a reveal names the boss, not the room monster the team left;

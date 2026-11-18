@@ -77,7 +77,7 @@ describe("bank editor list: move, shift, copy, delete and undo (editor-ux #3)", 
     expect(questionsAt(toBoss, phase(0)).at(-1)).toMatchObject({ id: "p2-a", difficulty: 2 });
     expect(questionsAt(toBoss, pool(2)).map((q) => q.id)).toEqual(["p2-mc"]);
     // The default boss difficulty is stored as none.
-    expect(questionsAt(moveQuestion(b, pool(5), BANK.pools[5][0].id, phase(0)), phase(0)).at(-1)!.difficulty).toBeUndefined();
+    expect(questionsAt(moveQuestion(b, pool(3), BANK.pools[3][0].id, phase(0)), phase(0)).at(-1)!.difficulty).toBeUndefined();
     expect(moveQuestion(b, pool(2), "nope", pool(3))).toBe(b);
     // What a move makes, the server takes.
     const moved = moveQuestion(moveQuestion(b, phase(0), "boss-1", pool(4)), pool(2), "p2-mc", phase(0));
