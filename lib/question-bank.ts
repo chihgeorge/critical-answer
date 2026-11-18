@@ -548,7 +548,7 @@ export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: strin
   return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id), ...(p.buzzer ? { buzzer: true as const } : {}) }));
 }
 
-/** The boss questions that are not difficulty 5, the shape GameState.bossDifficulties keeps. */
+/** The boss questions not at DEFAULT_BOSS_DIFFICULTY, the shape GameState.bossDifficulties keeps. */
 export function bossDifficulties(bank: Bank): Record<string, Difficulty> {
   return Object.fromEntries(bossQuestions(bank).flatMap((q) => (bossDifficulty(q) === DEFAULT_BOSS_DIFFICULTY ? [] : [[q.id, bossDifficulty(q)]])));
 }
