@@ -27,6 +27,24 @@ export function narrationCanSpeak(sceneEventId: number, narrationEventId: number
   return sceneEventId === narrationEventId && !revealing && !videoPlaying;
 }
 
+/** A NARRATION for the narration this screen already tracks, after the reveal closed: a line the room added then (the
+ * handoff after 下一題, #350), read over the scene. Over a reveal, or for another narration, it is not. */
+export function handoffAdded(revealUp: boolean, trackedEventId: number | undefined, eventId: number): boolean {
+  return !revealUp && trackedEventId === eventId;
+}
+
+/** Whether to voice a NARRATION: every narration except the served dish's own (上菜 said it, cooking I1); for that one,
+ * only the lines the room added after 下一題. */
+export function voiceNarration(speakIt: boolean, eventId: number, servedEventId: number | null, added: boolean): boolean {
+  return speakIt && (eventId !== servedEventId || added);
+}
+
+/** Where the dialogue box starts when `read` of its `count` lines are already read (#351: the served reveal's narration
+ * after 下一題): on the first unread line, or on the last one already typed when none is unread yet. */
+export function sequenceStart(read: number, count: number): { line: number; typed: boolean } {
+  return { line: Math.max(0, Math.min(read, count - 1)), typed: read > 0 && read >= count };
+}
+
 /** The line the dialogue box shows: never behind the voice reading it (subtitles follow speech), and the last line at
  * once on a hidden tab, whose throttled timers would leave the typing (and the room's progress) far behind (#365). */
 export function boxLine(i: number, count: number, voiceLine: number | undefined, hidden: boolean): number {

@@ -247,7 +247,7 @@ describe("記憶題 with an image", () => {
     };
     vi.advanceTimersByTime(3000);
     g.room.onClose(g.phones[0]);
-    expect(g.state().view.currentTurnTeamId).not.toBe(A);
+    expect(g.state().view.currentTurnTeamId).toBe(A);
     const back = rejoin();
     expect(g.state().question).toMatchObject({ id: "i1", memorize: true, memoryLeft: 7000 });
     g.room.onClose(back);
@@ -261,6 +261,7 @@ describe("記憶題 with an image", () => {
     const g = started(bank(memImage("i1", 10), memImage("i2", 5)));
     vi.advanceTimersByTime(3000);
     g.room.onClose(g.phones[0]);
+    send(g.room, g.host, { type: "HOST_SKIP_TURN", teamId: A, eventId: g.state().eventId });
     expect(g.state().question).toMatchObject({ id: "i2", memorize: true, memoryLeft: 5000 });
     vi.advanceTimersByTime(5000);
     expect(g.state().question).toMatchObject({ id: "i2", content: { kind: "text" } });
@@ -340,7 +341,7 @@ describe("記憶題's memory-ready cue", () => {
     expect(new Set(chimes(g)).size).toBe(1);
   });
 
-  it("an image that ran out while its team was offline does not chime", () => {
+  it("an image that ran out while its team was offline still chimes for the screen", () => {
     const g = started(bank(memImage("i1", 5)));
     g.room.onClose(g.phones[0]);
     vi.advanceTimersByTime(10000);
@@ -348,6 +349,6 @@ describe("記憶題's memory-ready cue", () => {
     g.room.onConnect(back);
     send(g.room, back, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
     expect(g.state().question).toMatchObject({ id: "i1", content: { kind: "text" } });
-    expect(chimes(g)).toEqual([]);
+    expect(new Set(chimes(g)).size).toBe(1);
   });
 });

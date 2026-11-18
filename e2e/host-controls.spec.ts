@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
+import { advanceAwards, answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 closeLeftoverContexts();
@@ -56,7 +56,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定結束？" }).click();
 
-  // The titles come first, 2.5 s each (a lone team can take every data title: podium-titles.md), then the places.
+  await advanceAwards(host);
   await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 35_000 });
   await expect(screen.getByTestId("final-blow")).toHaveCount(0);
 });
@@ -74,7 +74,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await host.getByRole("button", { name: "⚙ 更多" }).click();
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
-  // The titles come first, 2.5 s each (a lone team can take every data title: podium-titles.md), then the places.
+  await advanceAwards(host);
   await expect(screen.getByText("甲隊奪得榜首！")).toBeVisible({ timeout: 35_000 });
 
   await host.screenshot({ path: ".gstack/tmp/host-back-to-lobby.png" });

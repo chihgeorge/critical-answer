@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { awardTitles } from "./podium";
 import {
+  addLateTeam,
   createGame,
   serveFeast,
   BOSS_HIT_REWARDS,
@@ -327,21 +328,21 @@ describe("answerQuestion — stale question rejection (T6 critical gap)", () => 
 });
 
 describe("nextTurnTeamId (the host's 指定下一題 target)", () => {
-  it("names the team after the one on turn, skipping offline teams and wrapping", () => {
+  it("names the team after the one on turn, including offline teams and wrapping", () => {
     let game = makeGame();
     expect(nextTurnTeamId(game)).toBe("T1");
     game = setTeamOnline(game, "T1", false);
-    expect(nextTurnTeamId(game)).toBe("T2");
-    expect(getSpectatorView(advanceTurn(game)).nextTurnTeamId).toBe("T0");
+    expect(nextTurnTeamId(game)).toBe("T1");
+    expect(getSpectatorView(advanceTurn(game)).nextTurnTeamId).toBe("T2");
   });
 
-  it("is the team itself when it is the only one online, and absent with nobody on turn", () => {
+  it("keeps the next team even when every phone is offline", () => {
     let game = makeGame();
     game = setTeamOnline(setTeamOnline(game, "T1", false), "T2", false);
-    expect(nextTurnTeamId(game)).toBe("T0");
+    expect(nextTurnTeamId(game)).toBe("T1");
     game = setTeamOnline(game, "T0", false);
-    expect(nextTurnTeamId(game)).toBeNull();
-    expect(getSpectatorView(game)).not.toHaveProperty("nextTurnTeamId");
+    expect(nextTurnTeamId(game)).toBe("T1");
+    expect(getSpectatorView(game).nextTurnTeamId).toBe("T1");
   });
 
   it("passes over a 💫 stunned team, as landTurn does", () => {
@@ -352,24 +353,24 @@ describe("nextTurnTeamId (the host's 指定下一題 target)", () => {
 });
 
 describe("advanceTurn — offline team handling (T7 critical gap)", () => {
-  it("skips an offline team and lands on the next online team", () => {
+  it("lands on an offline team and waits", () => {
     let game = makeGame();
     game = setTeamOnline(game, "T1", false);
     game = advanceTurn(game); // from T0
-    expect(currentTurnTeamId(game)).toBe("T2"); // T1 skipped
+    expect(currentTurnTeamId(game)).toBe("T1"); // T1 waits for the host
   });
 
-  it("answerQuestion also skips offline teams when passing the turn", () => {
+  it("answerQuestion includes offline teams when passing the turn", () => {
     let game = makeGame();
     game = setTeamOnline(game, "T1", false);
     const { game: g2 } = answerQuestion(game, "T0", "room0-q1", true, "retry", first);
-    expect(currentTurnTeamId(g2)).toBe("T2");
+    expect(currentTurnTeamId(g2)).toBe("T1");
   });
 
-  it("returns null from currentTurnTeamId when every team is offline", () => {
+  it("keeps the current turn when every team is offline", () => {
     let game = makeGame();
     for (const t of game.teams) game = setTeamOnline(game, t.id, false);
-    expect(currentTurnTeamId(game)).toBeNull();
+    expect(currentTurnTeamId(game)).toBe("T0");
   });
 
   it("does not infinite-loop or throw when advanceTurn is called with everyone offline", () => {
@@ -378,10 +379,10 @@ describe("advanceTurn — offline team handling (T7 critical gap)", () => {
     expect(() => advanceTurn(game)).not.toThrow();
   });
 
-  it("rejects an answer attempt when no online team can take a turn", () => {
+  it("lets the host judge when every phone is offline", () => {
     let game = makeGame();
     for (const t of game.teams) game = setTeamOnline(game, t.id, false);
-    expect(() => answerQuestion(game, "T0", "room0-q1", true, "retry", first)).toThrow(InvalidActionError);
+    expect(() => answerQuestion(game, "T0", "room0-q1", true, "retry", first)).not.toThrow();
   });
 });
 
@@ -409,6 +410,7 @@ describe("boss phase eligibility", () => {
 
   it("once one team is in, the others get in on their next correct answer, whatever their score (D9)", () => {
     let game = makeGame({ bossThreshold: 2, bossMaxHp: 1, teamCount: 2 });
+    game = { ...game, boss: { ...game.boss, questionIds: [...game.boss.questionIds, "boss-q4"] } };
     const q = (id: string) => game.teams.find((t) => t.id === id)!.currentQuestionId;
     let outcome;
     ({ game, outcome } = answerQuestion(game, "T0", q("T0"), true, "retry", first)); // T0 score 1
@@ -766,169 +768,62 @@ describe("question deck (T2)", () => {
     expect(game.teams[0].currentQuestionId).toBe("room0-q8");
   });
 
-  it("reshuffles an exhausted deck and never deals the question the team just answered", () => {
-    // One team stuck in the only (last) room with 3 questions: clamped, so it keeps drawing.
+  it.each(["flee", "switch", "correct"] as const)("retires %s questions permanently and enters the boss when the room pool runs out", (action) => {
     let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
-    let prev = game.teams[0].currentQuestionId;
-    for (let i = 0; i < 10; i++) {
-      ({ game } = answerQuestion(game, "T0", prev, true, "retry", first));
-      const next = game.teams[0].currentQuestionId;
-      expect(next).not.toBe(prev);
-      expect(next).toMatch(/^room0-q[1-3]$/);
-      prev = next;
-    }
-  });
-
-  it("does not hand two teams the same question while the deck has spares, even after a reshuffle", () => {
-    let game = createGame(seeds(2), ...deck(1, 1, 4), boss, cfg, 1, first);
-    for (let i = 0; i < 12; i++) { // pregate-literal: WARRIOR_TARGET=12 a loop count, not the warrior target
-      const [a, b] = game.teams;
-      expect(a.currentQuestionId).not.toBe(b.currentQuestionId);
-      const turn = currentTurnTeamId(game)!;
-      const q = game.teams.find((t) => t.id === turn)!.currentQuestionId;
-      ({ game } = answerQuestion(game, turn, q, true, "retry", first));
-    }
-  });
-
-  it("a correctly answered question is never redealt while an unrevealed one is available, even after a reshuffle (D4/D5)", () => {
-    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
-    const q1 = game.teams[0].currentQuestionId; // room0-q1
-    ({ game } = answerQuestion(game, "T0", q1, true, "retry", first));
-    expect(game.revealedQuestionIds).toEqual([q1]);
-    // Answer through the rest of the deck (q2, q3) and force a reshuffle — q1 must not come back
-    // until every other question has also been revealed.
-    for (let i = 0; i < 5; i++) {
+    const seen: string[] = [];
+    for (let i = 0; i < 3; i++) {
       const q = game.teams[0].currentQuestionId;
-      if (game.revealedQuestionIds.length < 3) expect(q).not.toBe(q1);
-      ({ game } = answerQuestion(game, "T0", q, true, "retry", first));
+      expect(seen).not.toContain(q);
+      seen.push(q);
+      const result = answerQuestion(game, "T0", q, action === "correct", action === "switch" ? "switch" : "flee", first);
+      game = result.game;
+      if (i === 2 && action === "correct") expect(result.outcome).toMatchObject({ entersBoss: true });
+      expect(game.revealedQuestionIds).toContain(q);
     }
-    // Once every question in the room has been revealed, reuse is the only option left.
-    expect(new Set(game.revealedQuestionIds)).toEqual(new Set(["room0-q1", "room0-q2", "room0-q3"]));
+    expect(game.teams[0].inBoss).toBe(true);
+    expect(game.revealedQuestionIds).toEqual(seen);
   });
 
-  // Value: protects=a flee that deals the same question back (one question left) starts it clean; fails_when=the flee
-  // counts the fleeing team as still facing it; why_new=TODO 手機答題的剩餘小風險 item 8
-  it("a flee that deals the same question back clears its eliminated options", () => {
-    let g = createGame(seeds(1), ...deck(1, 1, 1), boss, cfg, 1, first);
-    const q = g.teams[0].currentQuestionId;
-    g = recordWrongLock(g, "T0", q, 1);
-    const { game } = answerQuestion(g, "T0", q, false, "flee", first);
-    expect(game.teams[0].currentQuestionId).toBe(q);
-    expect(game.eliminated[q]).toBeUndefined();
+  it("retry keeps the same question unrevealed", () => {
+    const game = createGame(seeds(1), ...deck(1), boss, cfg, 1, first);
+    const q = game.teams[0].currentQuestionId;
+    const next = answerQuestion(game, "T0", q, false, "retry", first).game;
+    expect(next.revealedQuestionIds).toEqual([]);
+    expect(next.teams[0].currentQuestionId).toBe(q);
   });
 
-  it("fleeing never marks a question revealed, so it can come straight back", () => {
-    let game = createGame(seeds(1), ...deck(1, 1, 2), boss, cfg, 1, first);
-    const q1 = game.teams[0].currentQuestionId;
-    ({ game } = answerQuestion(game, "T0", q1, false, "flee", first));
-    expect(game.revealedQuestionIds).toEqual([]);
-    expect(game.teams[0].currentQuestionId).not.toBe(q1); // dealt the other question in the room
-  });
-
-  it("retrying never marks a question revealed", () => {
-    let game = createGame(seeds(1), ...deck(1), boss, cfg, 1, first);
-    const q1 = game.teams[0].currentQuestionId;
-    ({ game } = answerQuestion(game, "T0", q1, false, "retry", first));
-    expect(game.revealedQuestionIds).toEqual([]);
-  });
-
-  it("a reshuffle prefers an unrevealed question over a revealed one", () => {
-    // Flees exhaust the deck while q2 is still unrevealed, so the reshuffle pool {q1, q2} has a
-    // real choice to make — with `first` and no revealed filter it would redeal q1.
-    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
-    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first));
-    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
-    ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, false, "flee", first));
-    expect(game.revealedQuestionIds).toEqual(["room0-q1"]);
-    expect(game.teams[0].currentQuestionId).toBe("room0-q2");
-  });
-
-  it("a boss flee skips a revealed question in the ring, where plain rotation would land on it", () => {
-    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", true, "retry", first));
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, false, "flee", first));
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, false, "flee", first));
-    expect(game.revealedQuestionIds).toEqual(["boss-q1"]);
-    expect(game.boss.currentQuestionId).toBe("boss-q2");
-  });
-
-  it("a correct boss hit on the last unrevealed question never re-asks it (its answer is on screen)", () => {
-    // Ring b1,b2,b3: reveal b2 and b3 first, then answer b1 correctly. The old walk reached the
-    // current question itself (not yet in the revealed list) and dealt b1 right back.
-    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first)); // -> q2
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q2", true, "retry", first)); // -> q3
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q3", true, "retry", first)); // -> q1
-    expect(game.boss.currentQuestionId).toBe("boss-q1");
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", true, "retry", first));
-    expect(game.boss.currentQuestionId).not.toBe("boss-q1");
-  });
-
-  it("the fled-question fallback never hands a team the question another team is holding", () => {
-    // Two teams, room of 3. By T0's last deal, q2/q3 are revealed and q1 (the only unrevealed
-    // question) sits in T1's hand — T0 must get a revealed question, never T1's.
-    let game = createGame(seeds(2), ...deck(1, 1, 3), boss, cfg, 1, first); // T0 q1, T1 q2
-    ({ game } = answerQuestion(game, "T0", "room0-q1", false, "flee", first)); // T0 -> q3
-    ({ game } = answerQuestion(game, "T1", "room0-q2", true, "retry", first)); // q2 revealed, T1 -> q1
-    ({ game } = answerQuestion(game, "T0", "room0-q3", true, "retry", first)); // q3 revealed
-    expect(game.teams[1].currentQuestionId).toBe("room0-q1");
-    expect(game.teams[0].currentQuestionId).not.toBe("room0-q1");
-  });
-
-  it("a boss flee stays on the current question when it is the last unrevealed one", () => {
-    // b2 and b3 answered correctly; b1 is the only question whose answer nobody has seen, so
-    // fleeing it must not rotate the whole boss encounter onto a revealed question.
-    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first)); // -> q2
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q2", true, "retry", first)); // -> q3
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q3", true, "retry", first)); // -> q1
-    ({ game } = answerQuestion(game, currentTurnTeamId(game)!, "boss-q1", false, "flee", first));
-    expect(game.boss.currentQuestionId).toBe("boss-q1");
-  });
-
-  it("a boss question answered again after every one was revealed is not listed twice", () => {
-    let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
-    for (let i = 0; i < 5; i++) {
-      ({ game } = answerQuestion(game, currentTurnTeamId(game)!, game.boss.currentQuestionId, true, "retry", first));
-    }
-    expect(game.revealedQuestionIds.filter((id) => id.startsWith("boss")).sort()).toEqual(["boss-q1", "boss-q2", "boss-q3"]);
-  });
-
-  it("a room redeals a fled (unrevealed) question before re-showing a revealed one", () => {
-    // q1 answered (revealed); then q2/q3 keep getting fled. After the reshuffle the cycle's only
-    // unused question is q1 — but q2 was fled, never revealed, so it must win over re-showing q1.
-    let game = createGame(seeds(1), ...deck(1, 1, 3), boss, cfg, 1, first);
-    ({ game } = answerQuestion(game, "T0", "room0-q1", true, "retry", first)); // q1 revealed -> q2
-    ({ game } = answerQuestion(game, "T0", "room0-q2", false, "flee", first)); // -> q3
-    ({ game } = answerQuestion(game, "T0", "room0-q3", false, "flee", first)); // reshuffle -> q2
-    ({ game } = answerQuestion(game, "T0", "room0-q2", false, "flee", first)); // -> q3
-    ({ game } = answerQuestion(game, "T0", "room0-q3", false, "flee", first)); // unused left: only q1
-    expect(game.revealedQuestionIds).toEqual(["room0-q1"]);
-    expect(game.teams[0].currentQuestionId).toBe("room0-q2");
-  });
-
-  it("the boss ring skips an already-revealed question, falling back to reuse once every boss question has been revealed", () => {
+  it.each([true, false])("ends an exhausted final boss phase without asking a revealed question again (correct=%s)", (correct) => {
     let game = makeGame({ bossThreshold: 0, bossMaxHp: 10 });
     const seen: string[] = [];
     for (let i = 0; i < 3; i++) {
-      const turn = currentTurnTeamId(game)!;
       const q = game.boss.currentQuestionId;
+      expect(seen).not.toContain(q);
       seen.push(q);
-      if (i < 2) expect(game.revealedQuestionIds).not.toContain(q); // not yet reused
-      ({ game } = answerQuestion(game, turn, q, true, "retry", first));
+      game = answerQuestion(game, currentTurnTeamId(game)!, q, correct, "flee", first).game;
     }
-    // All 3 boss questions got hit once each before any repeat — the ring genuinely skipped revealed ones.
-    expect(new Set(seen).size).toBe(3);
-    expect(game.revealedQuestionIds.sort()).toEqual(["boss-q1", "boss-q2", "boss-q3"]);
+    expect(game.phase).toBe("finished");
+    expect(game.boss.hp).toBeGreaterThan(0);
+    expect(game.revealedQuestionIds).toEqual(seen);
   });
 
-  it("a team below the boss gate in the last room keeps getting questions and can still reach it", () => {
-    let game = createGame(seeds(1), ...deck(2, 1, 3), boss, { bossThreshold: 15 }, 1, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
-    for (let i = 0; i < 40 && !isInBossPhase(game, "T0"); i++) {
-      ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first));
-    }
-    expect(isInBossPhase(game, "T0")).toBe(true);
+  it("retires a shared revealed question for the other team too", () => {
+    let game = createGame(seeds(3), ...deck(1, 1, 2), boss, cfg, 1, first);
+    game = answerQuestion(game, "T0", "room0-q1", false, "flee", first).game;
+    expect(game.teams.filter((t) => !t.inBoss).every((t) => t.currentQuestionId !== "room0-q1")).toBe(true);
   });
+
+  it("a question a hint revealed earlier stays with its team through a 重答", () => {
+    const game = createGame(seeds(1), ...deck(1), boss, cfg, 1, first);
+    const q = game.teams[0].currentQuestionId;
+    const next = answerQuestion({ ...game, revealedQuestionIds: [q] }, "T0", q, false, "retry", first).game;
+    expect(next.teams[0].currentQuestionId).toBe(q);
+  });
+
+  it("refuses a late team when every room question has been revealed (#366)", () => {
+    const game = createGame(seeds(2), ...deck(1, 1, 2), boss, cfg, 1, first);
+    expect(() => addLateTeam({ ...game, revealedQuestionIds: game.pools.flat() }, { id: "late", name: "Late" }, first)).toThrow("late_closed");
+  });
+
 });
 
 describe("recordOptionSelection (multipleChoice pick)", () => {
@@ -1098,12 +993,13 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     const { game: after, outcome } = answerQuestion(g, "T0", q, false, "retry");
     expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0", newBossQuestion: true }); // narration says so
     expect(after.boss.currentQuestionId).not.toBe(q);
-    expect(after.revealedQuestionIds).not.toContain(q); // nothing of its answer was shown
+    expect(after.revealedQuestionIds).toContain(q); // nothing of its answer was shown
   });
 
   it("the turn moves on from the team that answered, not from an offline team the stale index points at", () => {
     let g = setTeamOnline(makeGame(), "T0", false);
     const q = g.teams[1].currentQuestionId;
+    g = advanceTurn(g); // Only the host advances past the offline team.
     g = recordWrongLock(g, "T1", q, 0);
     g = setTeamOnline(g, "T0", true);
     const { game } = answerQuestion(g, "T1", q, false, "retry");
@@ -1117,10 +1013,10 @@ describe("recordWrongLock (phone answering, phone-answering.md E6/E9)", () => {
     expect(game.eliminated[q]).toBeUndefined();
   });
 
-  it("a flee without a lock reveals nothing", () => {
+  it("a flee without a lock retires the question", () => {
     const g = makeGame();
     const q = g.teams[0].currentQuestionId;
-    expect(answerQuestion(g, "T0", q, false, "flee").game.revealedQuestionIds).not.toContain(q);
+    expect(answerQuestion(g, "T0", q, false, "flee").game.revealedQuestionIds).toContain(q);
   });
 
   it("a correct answer clears the question's eliminated set", () => {
@@ -1177,27 +1073,26 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(above.teams[0].currentQuestionId).toBe("p3-1");
   });
 
-  it("8 teams in one 12-question pool never hold the same question, however often they flee", () => { // pregate-literal: WARRIOR_TARGET=12 a pool size, not the warrior target
+  it("8 teams in one 12-question pool never receive a revealed question", () => { // pregate-literal: WARRIOR_TARGET=12 a pool size, not the warrior target
     const seeds = Array.from({ length: 8 }, (_, i) => ({ id: `T${i}`, name: `${i}` }));
     // Seeded so a failure reproduces.
     for (const seed of [1, 2, 3]) {
       let s = seed;
       const rng = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
       let g = createGame(seeds, [{ baseDifficulty: 1, reward: 10 }], [ids("q", 12), [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, rng); // pregate-literal: WARRIOR_TARGET=12 a pool size, not the warrior target
-      for (let n = 0; n < 200; n++) {
+      for (let n = 0; n < 12 && g.phase === "playing"; n++) {
         const id = currentTurnTeamId(g)!;
         const team = g.teams.find((t) => t.id === id)!;
-        ({ game: g } = answerQuestion(g, id, team.currentQuestionId, false, "flee", rng));
-        const held = g.teams.map((t) => t.currentQuestionId);
-        expect(new Set(held).size, `seed ${seed}, flee ${n}`).toBe(held.length);
+        ({ game: g } = answerQuestion(g, id, team.inBoss ? g.boss.currentQuestionId : team.currentQuestionId, false, "flee", rng));
+        for (const t of g.teams.filter((t) => !t.inBoss)) expect(g.revealedQuestionIds).not.toContain(t.currentQuestionId);
       }
     }
   });
 
-  it("when every question is held, a fleeing team gets its own question back, not another team's", () => {
+  it("when every question is held, a fleeing team shares an unseen question instead of repeating an answer", () => {
     let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], [["a", "b"], [], [], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
     ({ game: g } = answerQuestion(g, "T0", "a", false, "flee", first));
-    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b"]);
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "b"]);
   });
 
   it("a pool smaller than the team count borrows a free question from the nearest other pool", () => {
@@ -1210,14 +1105,14 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(held).toContain("c"); // pool 3 is nearer to pool 1 than pool 4
   });
 
-  it("a flee into a lower pool whose every question is held borrows an unrevealed question before giving back its own", () => {
+  it("a flee into a lower pool whose every question is held borrows an unrevealed question without reusing a revealed one", () => {
     const two: RoomTemplate[] = [{ baseDifficulty: 1, reward: 10 }, { baseDifficulty: 3, reward: 30 }];
     let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], two, [["a", "x"], ["b"], ["d", "e"], [], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
     ({ game: g } = answerQuestion(g, "T0", "a", true, "retry", first)); // T0 -> room 1, holds d
     ({ game: g } = answerQuestion(g, "T1", "x", true, "retry", first)); // T1 -> room 1, holds e
     ({ game: g } = answerQuestion(g, "T0", "d", false, "flee", first)); // difficulty 2: T0 takes b
     ({ game: g } = answerQuestion(g, "T1", "e", false, "flee", first)); // pool 2 is all held; a and x are revealed
-    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "d"]);
+    expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["b", "b"]);
     expect(g.usedQuestionIds[1]).toEqual(["b"]); // a pool-3 id never lands in pool 2's list
   });
 
@@ -1232,16 +1127,16 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(g.usedQuestionIds[2]).toEqual(["c"]); // recorded in the pool it came from
   });
 
-  it("after a wrong lock, a flee with no unrevealed spare borrows a revealed one before its own, and gets its own back only when nothing is free", () => {
+  it("after a wrong lock, a flee shares an unseen question instead of either revealed fallback", () => {
     const start = (pools: string[][]) => {
       const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], [{ baseDifficulty: 1, reward: 10 }], pools, ["boss-q1"], { bossThreshold: 99 }, 1, first);
       return { ...g, eliminated: { a: [0] }, revealedQuestionIds: ["c"] };
     };
-    expect(answerQuestion(start([["a", "b"], [], ["c"], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("c");
-    expect(answerQuestion(start([["a", "b"], [], [], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("a");
+    expect(answerQuestion(start([["a", "b"], [], ["c"], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("b");
+    expect(answerQuestion(start([["a", "b"], [], [], [], []]), "T0", "a", false, "flee", first).game.teams[0].currentQuestionId).toBe("b");
   });
 
-  it("a correct answer with nothing free gives back the answered question, never one another team holds", () => {
+  it("a correct answer with nothing free shares an unseen question", () => {
     // Red Team review (/ship): the correct-answer deal counted the team's own question as held, so with
     // every question held it dealt another team's live question to two teams at once.
     const rooms5 = ([5, 3, 5, 5] as const).map((d) => ({ baseDifficulty: d, reward: 1 }));
@@ -1251,8 +1146,8 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     const after = answerQuestion(g, t0.id, "p5", true, "retry", first).game.teams;
     const others = after.filter((t) => t.id !== t0.id).map((t) => t.currentQuestionId);
     expect(held.sort()).toEqual(["p2", "p3", "p5"]);
-    expect(others).not.toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
-    expect(after.find((t) => t.id === t0.id)!.currentQuestionId).toBe("p5");
+    expect(others).toContain(after.find((t) => t.id === t0.id)!.currentQuestionId);
+    expect(after.find((t) => t.id === t0.id)!.currentQuestionId).not.toBe("p5");
   });
 
   it("when every answer left in a pool has been shown, an unseen question from another pool comes before a repeat", () => {
@@ -1270,14 +1165,14 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(g.usedQuestionIds[0]).not.toContain("fresh");
   });
 
-  it("a flee does not keep a question another team holds while a free one exists", () => {
+  it("a flee retires a shared question even when the only free question is revealed", () => {
     // Red Team review (/ship): with fewer questions than teams the fled question was already shared, and the own fallback handed it back.
     let g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], [{ baseDifficulty: 1, reward: 1 }], [["a"], ["b"], [], [], []], ["boss-q1"], { bossThreshold: 2 }, 3, first);
     expect(g.teams.map((t) => t.currentQuestionId)).toEqual(["a", "b", "a"]);
     ({ game: g } = answerQuestion(g, "T0", "a", false, "retry", first));
     ({ game: g } = answerQuestion(g, "T1", "b", true, "retry", first)); // enters the boss; b is revealed and free
     ({ game: g } = answerQuestion(g, "T2", "a", false, "flee", first));
-    expect(g.teams.find((t) => t.id === "T2")!.currentQuestionId).toBe("b");
+    expect(g.teams.find((t) => t.id === "T2")!.inBoss).toBe(true);
   });
 
   it("a borrow takes a question the donor pool has not dealt yet before repeating one", () => {
@@ -1292,12 +1187,12 @@ describe("pools by difficulty (scoring-and-score-pools.md S11)", () => {
     expect(dealt).toContain("d");
   });
 
-  it("a flee keeps its own unseen question rather than re-show an answer when nothing unseen is free", () => {
+  it("a flee enters the boss when nothing unseen is free", () => {
     // Claude adversarial simulation (/ship): the revealed-pool branch skipped `own`, unlike the all-held branch.
     let g = createGame([{ id: "A", name: "A" }], [3, 4].map((d) => ({ baseDifficulty: d as 3 | 4, reward: 10 })), [[], [], ["c"], ["d"], []], ["boss-q1"], { bossThreshold: 99 }, 1, first);
     ({ game: g } = answerQuestion(g, "A", "c", true, "retry", first)); // c is revealed, A moves to d
     ({ game: g } = answerQuestion(g, "A", "d", false, "flee", first)); // difficulty 3: only the revealed c
-    expect(g.teams[0].currentQuestionId).toBe("d");
+    expect(g.teams[0].inBoss).toBe(true);
   });
 
   it("a correct answer scores the difficulty of the pool the question came from", () => {
@@ -1336,7 +1231,7 @@ describe("teams sharing a question split once one comes free (TODOS 題目比隊
     expect(held(sendToBoss(onTurn(start(), "T2"), "T1", first))).toEqual(["b", "b", "a"]);
     const offline = setTeamOnline(onTurn(start(), "T2"), "T2", false);
     // T0 is kept too: currentTurnTeamId names the next online team. Nobody may move, so the pair waits.
-    expect(held(sendToBoss(offline, "T1", first))).toEqual(["a", "b", "a"]);
+    expect(held(sendToBoss(offline, "T1", first))).toEqual(["b", "b", "a"]);
   });
 
   it("a freed question whose answer was shown is not handed over: the two stay together", () => {
@@ -1567,21 +1462,22 @@ describe("boss phases (docs/designs/boss-phases.md)", () => {
     expect(game.boss).toMatchObject({ phasePending: "exhausted", currentQuestionId: q, hp: 3 });
   });
 
-  it("a flee without a shown option never exhausts a phase: the question stays unrevealed", () => {
+  it("a flee without a shown option exhausts a phase: its answer is revealed", () => {
     let g = phased(5);
     g = hit(g).game;
     g = hit(g).game;
     const { game } = answerQuestion(g, "T0", g.boss.currentQuestionId, false, "flee", first);
-    expect(game.boss.phasePending).toBeUndefined();
+    expect(game.boss.phasePending).toBe("exhausted");
   });
 
-  it("the last phase out of questions repeats them, as a one-phase boss does today", () => {
+  it("the last phase out of questions finishes the game instead of repeating a revealed one (#366)", () => {
     let g = enterNextBossPhase(hit(phased(1)).game);
     g = { ...g, boss: { ...g.boss, hp: 9, maxHp: 9 } };
     g = hit(g).game;
+    expect(g.phase).toBe("playing");
     g = hit(g).game;
+    expect(g.phase).toBe("finished");
     expect(g.boss.phasePending).toBeUndefined();
-    expect(["p2-a", "p2-b"]).toContain(g.boss.currentQuestionId);
   });
 
   it("a one-phase boss has phase 1 and nothing else", () => {
@@ -1990,7 +1886,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const g = classGame(["mage", "warrior"], 0);
     const q = g.boss.currentQuestionId;
     // The mage removes two options, then its phone drops: the warrior faces the same narrowed question.
-    const handedOver = setTeamOnline(mageEliminate(g, "T0", q, 1, 4, first), "T0", false);
+    const handedOver = advanceTurn(setTeamOnline(mageEliminate(g, "T0", q, 1, 4, first), "T0", false));
     expect(currentTurnTeamId(handedOver)).toBe("T1");
     const miss = warriorRoll(spendAbility(handedOver, "T1", "warrior"), "T1", q, 1, first);
     expect(miss.outcome).toMatchObject({ type: "incorrect-retry", newBossQuestion: true });
@@ -2508,7 +2404,7 @@ describe("monster defeats (docs/designs/monster-catalog.md §3)", () => {
     ({ game } = answerQuestion(game, "T1", game.teams[1].currentQuestionId, false, "retry", first)); // T1 misses: its turn passes
     expect(game.teams[1].metDefeats).toBe(0);
     ({ game } = answerQuestion(game, "T0", game.teams[0].currentQuestionId, true, "retry", first)); // ghost down, room 2 is a slime again
-    expect(game.teams[0]).toMatchObject({ roomIndex: 2, metDefeats: 1 });
+    expect(game.teams[0]).toMatchObject({ roomIndex: 2, metDefeats: 2 });
   });
 
   // Value: protects=a save from before the catalog (rooms without monsterId) counts nothing and does not throw; fails_when=an undefined key is counted; why_new=new optional field; seam=none; no_claim=none beyond protects
@@ -2989,21 +2885,21 @@ describe("💫 暈眩 (fortune-teller.md)", () => {
     expect(t(g, "T1").fork).toEqual({ phase: "waiting" });
   });
 
-  it("R4: the turn team dropping onto a stunned team skips it and pins the index; a held turn does not", () => {
+  it("disconnecting never consumes another team's stun", () => {
     const g = stun(["T2"]);
     expect(currentTurnTeamId(g)).toBe("T1");
     const dropped = setTeamOnline(g, "T1", false);
-    expect(currentTurnTeamId(dropped)).toBe("T0");
-    expect(dropped.currentTurnIndex).toBe(0);
-    expect(dropped.stunSkipped).toEqual(["T2"]);
+    expect(currentTurnTeamId(dropped)).toBe("T1");
+    expect(dropped.currentTurnIndex).toBe(1);
+    expect(dropped.stunSkipped).toBeUndefined();
     // Back online: T1's turn comes next, nobody is skipped again.
-    expect(currentTurnTeamId(setTeamOnline(dropped, "T1", true))).toBe("T0");
+    expect(currentTurnTeamId(setTeamOnline(dropped, "T1", true))).toBe("T1");
     // A wrong answer waiting holds the turn: no skip.
     const held = setTeamOnline({ ...g, pendingWrong: { teamId: "T1", questionId: t(g, "T1").currentQuestionId } } as GameState, "T1", false);
     expect(t(held, "T2").stunned).toBe(true);
   });
 
-  it("R4: a stunned team reconnecting into the turn is skipped", () => {
+  it("R4: a phone reconnecting does not advance the turn", () => {
     let g = stun(["T2"]);
     g = setTeamOnline(g, "T2", false);
     g = wrong(g);
@@ -3011,7 +2907,7 @@ describe("💫 暈眩 (fortune-teller.md)", () => {
     expect(currentTurnTeamId(g)).toBe("T0");
     g = { ...g, currentTurnIndex: 2 };
     const back = setTeamOnline(g, "T2", true);
-    expect(currentTurnTeamId(back)).toBe("T0");
+    expect(currentTurnTeamId(back)).toBe("T2");
     expect(back.stunSkipped).toEqual(["T2"]);
   });
 
@@ -3143,19 +3039,19 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
   });
 
   // Value: protects=the host's skip of a timing question that would come round as itself counts it as used, so the last phase moves on; fails_when=retire is ignored and the skip loops on the same question; seam=none
-  it("a retiring skip of the phase's last unrevealed timing question counts it as used: the last phase moves on to a revealed one", () => {
+  it("a retiring skip of the phase's last unrevealed timing question counts it as used: the last phase ends", () => {
     const g = { ...tapping(), revealedQuestionIds: [...tapping().revealedQuestionIds, "t-b"] };
     // Without retire it comes round as itself, as before.
     expect(skipBuzz(g).boss.currentQuestionId).toBe("t-a");
     const retired = skipBuzz(g, true);
-    expect(retired.boss.currentQuestionId).toBe("t-b");
+    expect(retired.phase).toBe("finished");
     expect(retired.revealedQuestionIds).toContain("t-a");
     expect(retired.boss.phasePending).toBeUndefined();
     expect(retired.buzz).toBeUndefined();
     // Not the last unrevealed one: an ordinary skip, left unrevealed so it may come round again.
     const early = skipBuzz(tapping(), true);
     expect(early.boss.currentQuestionId).toBe("t-b");
-    expect(early.revealedQuestionIds).not.toContain("t-a");
+    expect(early.revealedQuestionIds).toContain("t-a");
   });
 
   // Value: protects=an earlier phase whose last unrevealed timing question is retired ends (exhausted) and the next phase can start; fails_when=the phase stays on a used question or enterNextBossPhase throws; seam=none
@@ -3256,5 +3152,46 @@ describe("timing question taps (docs/designs/timing-tap.md)", () => {
     expect(hit.game.teams.find((t) => t.id === "T2")!.reward).toBe(reward + 3);
     expect(hit.game.buzz).toMatchObject({ picker: "T1", out: [] });
     expect(hit.game.buzz).not.toHaveProperty("taps");
+  });
+});
+
+describe("adjacent teams' monsters (#366)", () => {
+  function monsters() {
+    const g = makeGame({ bossThreshold: 99 });
+    return { ...g, rooms: g.rooms.map((r, i) => ({ ...r, monsterId: i === 1 ? "ghost-shy" : "slime-soft" })) };
+  }
+
+  it.each(["correct", "retry", "flee", "switch"] as const)("avoids the monster actually faced before %s without changing the next team's question or reward", (action) => {
+    const g = monsters();
+    const next = g.teams[1];
+    const after = answerQuestion(g, "T0", g.teams[0].currentQuestionId, action === "correct", action === "correct" ? "retry" : action, first).game;
+    expect(currentTurnTeamId(after)).toBe("T1");
+    expect(teamMonsterId(after, after.teams[1])).not.toBe("slime-soft");
+    expect(after.teams[1]).toMatchObject({ currentQuestionId: next.currentQuestionId, roomIndex: next.roomIndex, currentDifficulty: next.currentDifficulty, reward: next.reward, score: next.score });
+  });
+
+  it("also avoids repeats on explicit skips and wrapping, including offline teams", () => {
+    let g = setTeamOnline(monsters(), "T1", false);
+    for (let i = 0; i < 9; i++) {
+      const previous = g.teams.find((t) => t.id === currentTurnTeamId(g))!;
+      const monster = teamMonsterId(g, previous);
+      g = advanceTurn(g);
+      const next = g.teams.find((t) => t.id === currentTurnTeamId(g))!;
+      expect(teamMonsterId(g, next)).not.toBe(monster);
+    }
+  });
+
+  it("swaps nothing after a turn that faced no monster (an event room)", () => {
+    const g = monsters();
+    expect(advanceTurn(g).teams[1].swappedMonsterId).toBeDefined();
+    expect(advanceTurn(g, null).teams[1]).toEqual(g.teams[1]);
+  });
+
+  it("keeps a different monster and leaves a shared boss alone", () => {
+    let g = monsters();
+    g = { ...g, teams: g.teams.map((t, i) => i === 1 ? { ...t, swappedMonsterId: "ghost-shy" } : t) };
+    expect(advanceTurn(g).teams[1]).toEqual(g.teams[1]);
+    const boss = sendToBoss(sendToBoss(g, "T0"), "T1");
+    expect(advanceTurn(boss).teams[1]).toEqual(boss.teams[1]);
   });
 });

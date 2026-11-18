@@ -1,5 +1,35 @@
 import { describe, it, expect } from "vitest";
-import { boxLine, editedLine, firstChange, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue } from "./client";
+import { boxLine, editedLine, firstChange, handoffAdded, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, sequenceStart, voiceNarration } from "./client";
+
+// Value: protects=the next-team line added after 下一題 is spoken, a late line over a reveal is not (#350, #352);
+// fails_when=handoffAdded ignores the reveal or the tracked narration, or voiceNarration voices the served dish's own lines.
+describe("the handoff added after a served reveal (big screen)", () => {
+  it("is an added line only after the reveal closed, for the narration already tracked", () => {
+    expect(handoffAdded(false, 7, 7)).toBe(true);
+    expect(handoffAdded(true, 7, 7)).toBe(false); // still under the reveal
+    expect(handoffAdded(false, 6, 7)).toBe(false); // a new narration, not an addition
+    expect(handoffAdded(false, undefined, 7)).toBe(false);
+  });
+  it("voices the served narration only for what was added; other narrations as usual", () => {
+    expect(voiceNarration(true, 7, 7, false)).toBe(false); // 上菜 already said it
+    expect(voiceNarration(true, 7, 7, true)).toBe(true);
+    expect(voiceNarration(true, 8, 7, false)).toBe(true);
+    expect(voiceNarration(true, 8, null, false)).toBe(true);
+    expect(voiceNarration(false, 7, 7, true)).toBe(false);
+  });
+});
+
+// Value: protects=after 上菜 and 下一題 the box goes on to the added line instead of retyping the result (#351);
+// fails_when=sequenceStart starts at 0, or past the last line, or leaves an already-read line to be typed again.
+describe("sequenceStart (where the dialogue box starts)", () => {
+  it("starts at the top with nothing read", () => expect(sequenceStart(0, 2)).toEqual({ line: 0, typed: false }));
+  it("starts on the first unread line", () => expect(sequenceStart(1, 2)).toEqual({ line: 1, typed: false }));
+  it("holds the last line, already typed, until a line is added", () => {
+    expect(sequenceStart(2, 2)).toEqual({ line: 1, typed: true });
+    expect(sequenceStart(5, 2)).toEqual({ line: 1, typed: true });
+  });
+  it("never starts below 0 on an empty box", () => expect(sequenceStart(0, 0)).toEqual({ line: 0, typed: false }));
+});
 
 describe("narration on a reveal", () => {
   it("shows only the result before the host advances, not the ingredient narration", () => {

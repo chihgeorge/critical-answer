@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
-import { BANK_KEY, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
+import { BANK_KEY, NARRATION_MAX_LINES, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
 import { FINISH_PODIUM_MS } from "../protocol";
@@ -560,42 +560,23 @@ describe("restoring after a restart", () => {
 
   // Value: protects=the lost natural 20 survives another team playing first (review finding); fails_when=only the
   // crit team's own rejoin applies it; no_claim=more than two teams.
-  it("a lost natural 20 still wins when another team's phone comes back and plays first", async () => {
-    vi.useFakeTimers();
+  it("a saved natural 20 resolves on its retained turn even before its phone returns", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
     const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
     const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
-    const other = t0 === T1 ? T2 : T1;
     const q = saved.game.teams.find((t: any) => t.id === t0).currentQuestionId;
     saved.game.checks = { [checkKey(q, t0)]: { value: 20, bonus: 0, dc: 8, passed: true } };
     storage.data.set(SNAPSHOT_KEY, saved);
-
     const second = makeRoom(storage);
     await second.room.restore();
     const host = makeConn("host2");
     send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
-    if (other === T1) rejoin(second.room, T1, TEAM_KEY, "a2");
-    else rejoin(second.room, T2, TEAM_KEY + "2", "b2");
-    expect(currentTurnTeamId(second.room.game!)).toBe(other);
-    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN }); // asks again now that someone is on turn
-    judgeCorrect(second.room, host, other);
-    expect(currentTurnTeamId(second.room.game!)).toBe(other); // the crit team's phone is still away
-    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
-    if (t0 === T1) rejoin(second.room, T1, TEAM_KEY, "a3");
-    else rejoin(second.room, T2, TEAM_KEY + "2", "b3");
-    // The turn passed it while its phone was away: it wins when the turn order reaches it again.
-    serveNext(second.room, host, (second.room as any).eventSeq);
-    send(second.room, host, { type: "HOST_CLAIM", token: TOKEN });
-    judgeCorrect(second.room, host, other);
-    // The turn now reaches the crit team, but the win waits for the answer reveal to close (nobody plays under it).
-    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
-    serveNext(second.room, host, (second.room as any).eventSeq);
-    vi.advanceTimersByTime(LOST_CRIT_GAP_MS); // the reveal's 答對 cue was a moment ago in this test
-    expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
-    vi.useRealTimers();
+    if (t0 === T1) rejoin(second.room, T2, TEAM_KEY + "2", "b2");
+    else rejoin(second.room, T1, TEAM_KEY, "a2");
+    expect(second.room.game!.teams.find((t) => t.id === t0)).toMatchObject({ online: false, reward: 10 });
+    expect(second.room.game!.revealedQuestionIds).toContain(q);
   });
-
   // Value: protects=a lost natural 20 never judges inside another judgment (fix-check finding); fails_when=it runs
   // from that judgment's own STATE, ahead of its narration and phase card.
   // Value: protects=the 答錯's cue and story are not cut off by the lost natural 20's (TODOS 說服檢定 3); fails_when=it
@@ -624,6 +605,7 @@ describe("restoring after a restart", () => {
     // The 答錯's cue plays and its story starts first; the natural 20 waits a beat.
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).toBe(q);
     expect((second.room as any).cue).toBe("flee");
+    serveNext(second.room, host, (second.room as any).eventSeq);
     vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
@@ -684,17 +666,18 @@ describe("restoring after a restart", () => {
     expect(lastOf(host, "HOST_ANSWER")).toBeTruthy();
   });
 
-  it("nobody is on turn until a phone rejoins, then the turn and its question appear", async () => {
+  it("a restart keeps the turn and question even before its phone rejoins", async () => {
     const storage = memoryStorage();
     startedGame(makeRoom(storage).room);
     const second = makeRoom(storage).room;
     await second.restore();
     const screen = makeConn("screen");
     second.onConnect(screen);
-    expect(lastOf(screen, "STATE").question).toBeNull(); // every team is offline, so no turn is in play
+    expect(lastOf(screen, "STATE").question).not.toBeNull();
+    const turn = currentTurnTeamId(second.game!);
     rejoin(second, T2, TEAM_KEY + "2", "b-again");
     const state = second.game!;
-    expect(state.turnOrder[state.currentTurnIndex]).toBeDefined();
+    expect(currentTurnTeamId(state)).toBe(turn);
     const after = makeConn("screen2");
     second.onConnect(after);
     expect(lastOf(after, "STATE").question).not.toBeNull();
@@ -760,6 +743,48 @@ describe("restoring after a restart", () => {
     expect(n).toMatchObject({ eventId: saved.eventId, rev: saved.rev + 1 });
     expect(n.lines.slice(0, -1)).toEqual(saved.lines);
     expect(n.lines.at(-1)).toContain("乙隊");
+  });
+
+  // Value: protects=restore() adds the held handoff only where closeReveal would (#352); fails_when=a guard is dropped
+  // and a restart appends a stale handoff to another narration, past the save limit, or before a boss phase card.
+  it("a restart skips the held handoff for another narration, a full one, or a boss phase card", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    expect(saved.heldHandoff.line).toContain("乙隊");
+    const restoredLines = async (patch: (s: any) => void) => {
+      const s = structuredClone(saved);
+      patch(s);
+      storage.data.set(SNAPSHOT_KEY, s);
+      const room = makeRoom(storage).room;
+      await room.restore();
+      return (room as unknown as { lastNarration: { lines: string[] } }).lastNarration.lines;
+    };
+    expect((await restoredLines(() => {})).at(-1)).toBe(saved.heldHandoff.line); // the control: it joins
+    expect(await restoredLines((s) => (s.heldHandoff.eventId -= 1))).toEqual(saved.lastNarration.lines);
+    const full = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`);
+    expect(await restoredLines((s) => (s.lastNarration.lines = full))).toEqual(full);
+    const pending = (s: any) => Object.assign(s.game.boss, { phasePending: "cleared", phases: [...s.game.boss.phases, s.game.boss.phases[0]] });
+    expect((await restoredLines(pending)).slice(0, saved.lastNarration.lines.length)).toEqual(saved.lastNarration.lines);
+    expect((await restoredLines(pending)).join("")).not.toContain(saved.heldHandoff.line);
+  });
+
+  // Value: protects=a handoff dropped at the line limit leaves a log line (#352); fails_when=appendLine drops it silently.
+  it("下一題 on a full narration drops the handoff and logs it", async () => {
+    const storage = memoryStorage();
+    const { room } = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(room);
+    judgeCorrect(room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    const r = room as unknown as { lastNarration: { eventId: number; lines: string[] } };
+    const full = Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`);
+    r.lastNarration = { ...r.lastNarration, lines: full };
+    serveNext(room, host, r.lastNarration.eventId);
+    expect(r.lastNarration.lines).toEqual(full);
+    expect(vi.mocked(console.log).mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining('"narration_line_dropped"'));
   });
 
   // Value: protects=a restart right after 送王房 during a reveal names the boss, not the room monster the team left;
@@ -1006,7 +1031,7 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     let now = 1_000_000;
     const storage = memoryStorage();
     const { room, io } = ended(storage, () => now);
-    expect(lastState(io).podium).toEqual({ ranking: room.game!.ranking, beats: null, elapsedMs: 0 });
+    expect(lastState(io).podium).toEqual({ ranking: room.game!.ranking, beats: null, elapsedMs: 0, step: -1 });
     await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
     const podium = lastState(io).podium;
     // The first beat waits out the lead (the last line read) from when the game finished.
@@ -1154,7 +1179,7 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     expect(await room.restore()).toBe("restored");
     const screen = makeConn("screen");
     room.onConnect(screen);
-    expect(lastOf(screen, "STATE")).not.toHaveProperty("podium");
+    expect(lastOf(screen, "STATE").podium).toMatchObject({ step: -1, beats: expect.any(Array) });
     expect(lastOf(screen, "EPILOGUE")).toMatchObject({ replay: true });
   });
 

@@ -11,7 +11,7 @@ vi.mock("../question-bank-data", async (actual) => {
   const { asTextBank } = await import("../text-bank");
   return { BANK: { ...asTextBank((await actual<typeof import("../question-bank-data")>()).BANK), randomMonsters: undefined } };
 });
-import { WARRIOR_TARGET, checkKey, currentTurnTeamId, setTeamOnline, type ClassId } from "../game-state";
+import { WARRIOR_TARGET, advanceTurn, checkKey, currentTurnTeamId, setTeamOnline, type ClassId } from "../game-state";
 import { sortCode } from "../sort-order";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
@@ -656,7 +656,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
   it("a skipped team whose phone comes back during the beat does not take the kill's turn", () => {
     const { room, ids, turn } = lastHit();
     const other = ids.find((id) => id !== turn)!;
-    room.game = setTeamOnline(room.game!, turn, false);
+    room.game = advanceTurn(setTeamOnline(room.game!, turn, false));
     expect(currentTurnTeamId(room.game)).toBe(other);
     (room as any).judge(other, room.game!.boss.currentQuestionId, true, "retry");
     vi.advanceTimersByTime(2000);
@@ -847,10 +847,12 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     expect(revealOf(room)).toBeNull();
   });
 
-  it("does not reveal on a flee (wrong answer, giving up on the question)", () => {
+  it("reveals without scoring on a flee (wrong answer, giving up on the question)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: false, fleeChoice: "flee" });
-    expect(revealOf(room)).toBeNull();
+    expect(revealOf(room)).toMatchObject({ questionId: "r0-q1", answer: "梅花" });
+    expect(revealOf(room).scored).toBeUndefined();
+    expect(room.game!.revealedQuestionIds).toContain("r0-q1");
   });
 
   it("includes the explanation when the question has one, using room.env.R2_PUBLIC_BASE_URL for an image explanation", () => {
@@ -993,7 +995,7 @@ describe("TEAM_SELECT_OPTION", () => {
       {
         monster: "slime-soft",
         baseDifficulty: 1, reward: 10,
-        questions: [{ kind: "multipleChoice", id: "r0-mc1", content: { kind: "text", value: "選哪個？" }, options: ["A", "B", "C"], correctIndex: 1 }],
+        questions: [1, 2, 3].map((i) => ({ kind: "multipleChoice", id: `r0-mc${i}`, content: { kind: "text", value: "選哪個？" }, options: ["A", "B", "C"], correctIndex: 1 })),
       },
     ],
     boss: {
@@ -1050,12 +1052,13 @@ describe("TEAM_SELECT_OPTION", () => {
       claim(room, host);
       const { conns } = joinTeams(room, host, 1);
       send(room, host, { type: "HOST_START", hideCritRoll: true });
-      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: room.game!.optionOrder["r0-mc1"].indexOf(1) });
-      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+      const id = room.game!.teams[0].currentQuestionId;
+      send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: room.game!.optionOrder[id].indexOf(1) });
+      send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: id });
       reveal(room);
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
-      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", scored: { points: 10 } });
+      expect(lastBroadcast(room).reveal).toMatchObject({ questionId: id, scored: { points: 10 } });
       expect(lastBroadcast(room).view.teams[0].reward).toBe(0);
       send(room, host, { type: "HOST_SERVE", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].reward).toBe(10);
@@ -1316,7 +1319,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       expect(room.game!.checks![checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1, passed: false });
       // No phone left: the team shows offline now, and the turn moves on.
-      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
     });
 
     it("skips persuasion on a boss fill-in turn and refuses a check press", () => {
@@ -1577,13 +1580,14 @@ describe("TEAM_SELECT_OPTION", () => {
     claim(room, hostConn);
     const { conns } = joinTeams(room, hostConn, 1);
     send(room, hostConn, { type: "HOST_START" });
-    const order = room.game!.optionOrder["r0-mc1"];
+    const q = room.game!.teams[0].currentQuestionId;
+    const order = room.game!.optionOrder[q];
     const shown = order.map((i) => ["A", "B", "C"][i]);
     expect(shown).not.toEqual(["A", "B", "C"]);
     expect(lastBroadcast(room).question.options).toEqual(shown);
     const right = shown.indexOf("B");
-    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: "r0-mc1", optionIndex: right });
-    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
+    send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: right });
+    send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     reveal(room);
     vi.advanceTimersByTime(2000);
     vi.advanceTimersByTime(2000); // the crit introduction
@@ -1861,6 +1865,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000); // the reveal's beat: the red tile and its own beat start
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "boss-mc1", correct: false, fleeChoice: "retry" });
       vi.advanceTimersByTime(2000); // the boss miss's timer fires late and finds its miss settled
+      serveNext(room, hostConn, seqOf(room));
       lockBoss(0);
       const states = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE");
       expect(states().at(-1).pendingLock.revealing).toBeUndefined();
@@ -1907,9 +1912,10 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useFakeTimers();
       const { room, ids, conns } = startedMcGame(2);
       const online = (id: string, on: boolean) => (room.game = { ...room.game!, teams: room.game!.teams.map((t) => (t.id === id ? { ...t, online: on } : t)) });
-      online(ids[0], false); // its phone slept on its own turn: the turn passes to team 1
+      online(ids[0], false);
+      room.game = advanceTurn(room.game!); // its phone slept on its own turn: the turn passes to team 1
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
-      pick(room, conns[1], room.game!.optionOrder[room.game!.teams[1].currentQuestionId].indexOf(1));
+      send(room, conns[1], { type: "TEAM_SELECT_OPTION", questionId: room.game!.teams[1].currentQuestionId, optionIndex: room.game!.optionOrder[room.game!.teams[1].currentQuestionId].indexOf(1) });
       send(room, conns[1], { type: "TEAM_LOCK_OPTION", questionId: room.game!.teams[1].currentQuestionId });
       online(ids[0], true); // and wakes up while the lock waits
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
@@ -1990,6 +1996,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
       // A closed phone no longer moves the turn (D9 = A, the test above): move it by hand, as any other path would.
       room.game = { ...room.game!, teams: room.game!.teams.map((t) => (t.id === ids[0] ? { ...t, online: false } : t)) };
+      room.game = advanceTurn(room.game!); // Simulate a stale lock after an explicit turn change.
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
       vi.advanceTimersByTime(60_000);
       expect(lastBroadcast(room).pendingLock).toMatchObject({ teamId: ids[0] });
@@ -1997,7 +2004,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingLock).toBeNull();
       expect(room.game!.teams[0].score).toBe(0);
-      pick(room, conns[1], 1);
+      send(room, conns[1], { type: "TEAM_SELECT_OPTION", questionId: room.game!.teams[1].currentQuestionId, optionIndex: 1 });
       send(room, conns[1], { type: "TEAM_LOCK_OPTION", questionId: room.game!.teams[1].currentQuestionId });
       expect(lastBroadcast(room).pendingLock).toMatchObject({ teamId: ids[1] });
     });
@@ -2289,6 +2296,9 @@ describe("questions and answers (T3)", () => {
       serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: t.currentQuestionId, correct: true });
     }
+    // The boss question stays back while the entry dish is on stage (#364), and shows once 下一題 opens the room.
+    expect(broadcasts(room).findLast((m) => m.type === "STATE").question).toBeNull();
+    serveNext(room, hostConn, seqOf(room));
     const state = broadcasts(room).findLast((m) => m.type === "STATE");
     expect(state.question).toMatchObject({ boss: true, monster: { sprite: "dragon" } });
   });
@@ -2399,15 +2409,15 @@ describe("narration (T5-T7)", () => {
     // once the screen reports it read.
     it("holds the reveal until the screen has read the last narration, then starts a second later", async () => {
       const { clock, readOut, podium } = await ended(false);
-      expect(podium().elapsedMs).toBe(-20_000);
+      expect(podium().step).toBe(-1);
       clock.t += 5_000;
       readOut();
-      expect(podium().elapsedMs).toBe(-1000);
+      expect(podium().step).toBe(-1);
     });
 
     it("starts after the usual delay when the narration was already read", async () => {
       const { podium } = await ended(true);
-      expect(podium().elapsedMs).toBe(-4000);
+      expect(podium().step).toBe(-1);
     });
 
     it("a read after the 20 s cap never moves a reveal already playing", async () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
@@ -2415,7 +2425,7 @@ describe("narration (T5-T7)", () => {
       clock.t += 25_000;
       readOut();
       expect((room as unknown as { revealFrom: number }).revealFrom).toBe(30_000);
-      expect(podium().elapsedMs).toBe(-20_000); // no new STATE: the reveal on screens keeps its clock
+      expect(podium().step).toBe(-1); // no new STATE: the reveal on screens keeps its clock
     });
 
     it("a narration read only in part keeps the reveal held", async () => {
@@ -2435,7 +2445,7 @@ describe("narration (T5-T7)", () => {
       readOut();
       release();
       await sleep(40);
-      expect(podium().elapsedMs).toBe(-1000);
+      expect(podium().step).toBe(-1);
     });
   });
 
@@ -3212,6 +3222,8 @@ describe("LLM narration and director (T8-T10)", () => {
       const epi = all(r.room).filter((m) => m.type === "EPILOGUE");
       expect(epi).toHaveLength(1);
       expect(epi[0].text).toBe("漫長的一夜過去了，Team 0 帶著滿滿的戰利品走出了地城。");
+      const hold = all(r.room).filter((m) => m.type === "STATE").at(-1)!;
+      send(r.room, r.hostConn, { type: "HOST_STEP", eventId: hold.eventId, step: hold.hold.id });
       const podium = all(r.room).filter((m) => m.type === "STATE").at(-1)!.podium!;
       expect(podium.beats!.at(-1)).toMatchObject({ kind: "place", place: 1, line: "第一名是 Team 0！" });
       expect(r.calls.some((c) => c.model === EPILOGUE_MODEL && c.user.includes("排名"))).toBe(true);
@@ -3283,7 +3295,7 @@ describe("story moves on to the next team (two-line narration)", () => {
     serveNext(room, hostConn, seqOf(room));
     const after = narrs(room).at(-1);
     expect(after).toMatchObject({ eventId: n.eventId, rev: n.rev + 1, lines: [...n.lines, expect.stringContaining("Team 1")] });
-    expect(after.lines.at(-1)).toContain("軟趴趴史萊姆");
+    expect(after.lines.at(-1)).toContain(all(room).filter((m) => m.type === "STATE").at(-1).question.monster.name);
     // The STATE that changes the scene goes out before the line.
     const msgs = all(room);
     expect(msgs.findLastIndex((m) => m.type === "STATE" && !m.reveal)).toBeLessThan(msgs.findLastIndex((m) => m.type === "NARRATION"));
@@ -3726,13 +3738,13 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(said()).toMatch(/^戰士擲出 17 點，命中！/);
   });
 
-  it("drops a roll whose turn moved on during the beat, and the use stays spent (R3, reversed in /review)", () => {
+  it("finishes a roll after the phone disconnects and keeps its use spent", () => {
     // A phone that reloads during the beat must not throw a bad die away for free and roll again.
     vi.useFakeTimers();
     const { room, ids, conns, roll } = warriorGame();
     roll(1);
     room.onClose(conns[0]);
-    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
     vi.advanceTimersByTime(2000);
     expect(lastBroadcast(room).pendingRoll).toBeNull();
     expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 0 });
@@ -3741,6 +3753,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
   it("a classless team is refused on its own turn, and nothing is spent", () => {
     const { room, ids, conns } = warriorGame();
     room.onClose(conns[0]);
+    room.game = advanceTurn(room.game!);
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     send(room, conns[1], { type: "TEAM_USE_ABILITY", questionId: room.game!.teams[1].currentQuestionId });
     expect(err(conns[1])).toMatch(/not a warrior/);
@@ -4080,9 +4093,10 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
   });
   it("a cleric's second wrong boss lock in its kept turn gets the beat", () => {
     vi.useFakeTimers();
-    const { room, ids, conns, use, lockWrong } = game("cleric", true);
+    const { room, hostConn, conns, use, lockWrong } = game("cleric", true);
     lockWrong();
     use(12); // pray: rotates to a new boss question, keeps the turn
+    send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
     const q2 = room.game!.boss.currentQuestionId!;
     const wrong = room.game!.optionOrder[q2].indexOf(0);
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: q2, optionIndex: wrong });
@@ -4092,7 +4106,8 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     expect(lastBroadcast(room).view.awaitingPrayer).toBeNull();
     vi.advanceTimersByTime(2000);
     expect(room.game!.pendingWrong).toBeNull();
-    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    expect(room.game!.phase).toBe("finished");
+    expect(lastBroadcast(room).reveal).not.toBeNull();
   });
 
   it("a cleric's prayer for another question is refused without spending", () => {
@@ -5125,7 +5140,7 @@ describe("sort questions", () => {
     expect(lastSentTo(hostConn)).toMatchObject({ detail: "auto_judged" });
   });
 
-  it("a flee after a wrong order clears the marks and reveals nothing", () => {
+  it("a flee after a wrong order clears the marks and reveals the answer", () => {
     const { room, conns } = sortGame();
     lockOrder(room, conns[0], HALF);
     send(room, conns[0], { type: "TEAM_WRONG_CHOICE", questionId: "r0-s1", choice: "flee" });
@@ -5133,6 +5148,7 @@ describe("sort questions", () => {
     const state = lastBroadcast(room);
     expect(state.wrongSlots).toBeUndefined();
     expect(state.reveal?.sorted).toBeUndefined();
+    expect(state.reveal).toMatchObject({ questionId: "r0-s1", answer: expect.any(String) });
   });
 
   it("a cleric's prayer keeps the marks up and the turn", () => {

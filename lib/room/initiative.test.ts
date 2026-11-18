@@ -175,7 +175,7 @@ describe("擲先攻 in the room", () => {
     expect(g.state().intro).toBeUndefined();
   });
 
-  it("once the order is set, 全部代擲 and a dropped phone change nothing; the first online team plays", () => {
+  it("once the order is set, 全部代擲 and a dropped phone change nothing; the first team keeps its turn even offline", () => {
     const g = started();
     g.roll(0, 4);
     g.roll(1, 18);
@@ -186,7 +186,7 @@ describe("擲先攻 in the room", () => {
     expect(g.state().initiative.order).toEqual(before.order);
     expect(g.state().initiative.rolls).toEqual(before.rolls);
     vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
-    expect(g.state().view.currentTurnTeamId).toBe(C);
+    expect(g.state().view.currentTurnTeamId).toBe(B);
   });
 
   it("a room that expires mid-roll or mid-hold never starts a game afterwards", async () => {

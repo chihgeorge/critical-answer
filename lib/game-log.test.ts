@@ -91,16 +91,18 @@ describe("game log", () => {
 
   // Value: protects=rounds stay right when phones drop (adversarial review); fails_when=a turn that skips an offline
   // team past the end of turnOrder is not counted as a new round
-  it("counts a new round when the last team is offline and the turn skips back to the first", () => {
+  it("counts a new round after the offline last team takes its turn", () => {
     const rooms = [1, 1, 1].map(() => ({ baseDifficulty: 1 as const, reward: 10 }));
     const pools = [Array.from({ length: 9 }, (_, i) => `q${i}`), [], [], [], []];
     let g = createGame(["A", "B", "C"].map((id) => ({ id, name: id })), rooms, pools, ["b1"], { bossThreshold: 99 }, 2, first);
     g = answer(g, "A", false);
     g = answer(g, "B", false); // the stored turn is now C
     g = setTeamOnline(g, "C", false);
-    g = answer(g, "A", false); // skips C: round 2
+    g = answer(g, "C", false); // the host can judge an offline team
+    g = answer(g, "A", false); // round 2
     expect(g.round).toBe(2);
     g = answer(g, "B", false);
+    g = answer(g, "C", false);
     g = answer(g, "A", false); // round 3
     expect(gameLog(endGame(g, first), 0)).toMatchObject({ rounds: 3 });
   });

@@ -66,7 +66,9 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
   net.drop();
   await expect(phone.getByText("連線中斷，重新連線中…")).toBeVisible();
 
-  // The room skips the offline team: the host judges 乙隊 meanwhile.
+  // The turn stays with the offline team until the host explicitly skips it.
+  await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  await host.getByRole("button", { name: /跳過這隊的回合/ }).click();
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
 

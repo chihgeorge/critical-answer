@@ -490,3 +490,11 @@ describe("byCategory (#370: the host's 指定題目 grouped by category)", () =>
     ]);
   });
 });
+
+it("HOST_SKIP_TURN requires the displayed team and a nonnegative event id", () => {
+  const msg = { type: "HOST_SKIP_TURN", teamId: ID, eventId: 2 };
+  expect(parseClientMessage(msg)).toEqual(msg);
+  for (const bad of [{ eventId: undefined }, { eventId: -1 }, { eventId: 0.5 }, { teamId: undefined }, { teamId: "" }]) {
+    expect(parseClientMessage({ ...msg, ...bad })).toBeNull();
+  }
+});
