@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.3.2] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) gains `HIDEDIE`, `CHEFFIX` and `LIB` to try rebalancing ideas for 隱藏暴擊骰 without editing lib. Tooling only; no game change.
+
 ## [0.103.3.1] - 2026-11-19
 
 ### Changed
