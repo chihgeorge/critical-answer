@@ -526,7 +526,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         width={width}
         height={height}
         cover={!!v.content.audioOnly}
-        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : timing ? question?.prompt : "聽歌猜題"}
+        cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : timing ? question?.prompt || "聽歌猜題" : "聽歌猜題"}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
@@ -546,7 +546,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         width={width}
         height={height}
         cover={!reveal && (!!v.content.audioOnly || !!timing)}
-        cardTitle={timing ? question?.prompt : undefined}
+        cardTitle={timing ? question?.prompt || undefined : undefined}
         thumbnailUrl={timing && !reveal ? youtubeThumbnailUrl(v.content.videoId) : undefined}
         needsTap={needsTap}
         onPlayingChange={onVideoPlaying}
