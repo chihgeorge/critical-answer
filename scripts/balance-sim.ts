@@ -19,11 +19,12 @@
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
 //   tap-clock ranks them, the closest hits, the others get its small bonus.
 // - A potion a team holds (a fortune's) goes on its next check, mage or prayer die, or the crit die of an answer it knows.
-// - A boss question's knowledge and hit pay follow its difficulty in lib (unset = 3). BOSSD rates every phase-1 question,
+// - A turn-based boss question's knowledge and hit pay follow its difficulty in lib (unset = 3); a song's pay does, its
+//   knowledge stays KB. BOSSD rates every phase-1 question,
 //   BUZZD the songs ("2:17,3:38": 17 songs of difficulty 2, then 38 of 3); BOSSTEXT is phase 1's fill-in share (else TEXT/SORT).
 // - 抓包與神諭 (AC=1: the switch is on from the start). A team that uses the oracle (ORACLEP of teams) asks it on its first
 //   unknown room question of difficulty ORACLE_MIN or more. CHEATERS teams per game ask an AI on an unknown turn-based
-//   question with CHEAT; each waiting team with catches spots it with SPOT (成立). On any other room turn a waiting team
+//   question with CHEAT (boss phase 1 too, where lib allows no catch); each waiting team with catches spots it with SPOT (成立). On any other room turn a waiting team
 //   files a false catch with FALSE (冤枉). The AI is right with AIOK. Pay: BOUNTY CAUGHT FALSEREPORT WRONGED (CATCH_PAY).
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, multi-field songs, late teams, offline phones, away teams.
@@ -55,7 +56,7 @@ const THRESH = env("THRESH", 15), HP1 = env("HP1", 8), HP2 = env("HP2", 3), KB =
 // Lowest room difficulty an ability is used on (always once a team is in the boss room).
 // With 3 uses a thief sneaks from difficulty 2 (2026-11-09 balance).
 const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 2), WEAK = env("WEAK", 0.1);
-// The default layout (issue #371): six rooms of difficulty 1–4 that add up to the 進王門檻. Boss questions are unrated (difficulty 5).
+// The default layout (issue #371): six rooms of difficulty 1–4 that add up to the 進王門檻. Unrated boss questions count as 3 (lib).
 const rooms: GT.RoomTemplate[] = (process.env.ROOMS ?? "1,2,2,3,3,4").split(",").map(Number).map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
 // Big pools: a team that cannot answer keeps fleeing, and a small pool would deal it the same unknown question again.
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
@@ -231,5 +232,5 @@ for (let i = 0; i < N; i++) {
 }
 console.log(`games=${N} unfinished=${unfinished}`);
 for (const [k, s] of [...stats].sort((a, b) => b[1].wins / b[1].n - a[1].wins / a[1].n))
-  // ±: the 95% interval of the win share (normal approximation; a game's four teams are not independent, so it is a little narrow).
+  // ±: the 95% interval of the win share (normal approximation; class rows are one team per game, the * rows share games, so theirs is a little wide).
   console.log(k.padEnd(10), "win%", ((100 * s.wins) / s.n).toFixed(1).padStart(5), "±" + (196 * Math.sqrt((s.wins / s.n) * (1 - s.wins / s.n) / s.n)).toFixed(1), "(fair 25.0)", "avg", (s.sum / s.n).toFixed(1).padStart(6), "left", (s.left / s.n).toFixed(2), "turns", (s.turns / s.n).toFixed(1));
