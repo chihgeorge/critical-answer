@@ -28,7 +28,7 @@ import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
 import { MageHint } from "@/components/mage-hint";
-import { SORT_ITEMS, sortCode, sortOrderOf } from "@/lib/sort-order";
+import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
@@ -285,8 +285,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
   const [mine, setMine] = useState<{ qid: string; order: number[] } | null>(null);
   const sorting = !!q.items;
   // A reload mid-question starts from the team's pick, else its last wrong order (so a 重答 keeps its ✓ places).
-  const seed = sorting ? sortOrderOf(pick ?? gone.at(-1) ?? -1) : undefined;
-  const myOrder = mine?.qid === q.id ? mine.order : (seed ?? Array.from({ length: SORT_ITEMS }, (_, i) => i));
+  const myOrder = mine?.qid === q.id ? mine.order : sorting ? initialSortOrder(q.items ?? [], pick ?? gone.at(-1)) : [];
   const shownOrder = (lock && sortOrderOf(lock.optionIndex)) || (wrong?.optionIndex != null && sortOrderOf(wrong.optionIndex)) || myOrder;
   const myCode = sortCode(myOrder);
   const pickable = sorting ? !gone.includes(myCode) : pick !== null && !gone.includes(pick);
@@ -597,7 +596,6 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </>
       ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
-          {/* A buzzer phase hides the text from STATE (multi-field.md E4): "" only says it was sent. */}
           {sent ? `已送出：${sent}` : "已送出"}・等主持人判
         </div>
       ) : (
@@ -645,7 +643,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             type="text"
             className="px-input text-[20px]"
             aria-label="你們的答案"
-            placeholder={buzzed ? "也可以打字給主持人看（選填）" : "打你們的答案"}
+            placeholder={buzzed ? "打字送出會顯示在大螢幕（選填）" : "打你們的答案"}
             value={text}
             onChange={(e) => setText(e.target.value)}
             maxLength={MAX_TYPED_ANSWER}

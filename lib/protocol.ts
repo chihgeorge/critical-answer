@@ -684,7 +684,7 @@ export type ServerMessage =
     }
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
-   * Host-only: STATE hides it, since the other teams could still buzz (docs/designs/multi-field.md E4).
+   * STATE also carries the submitted text for the big screen; structured fields stay host-only.
    * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
   /** `tap`: a timing question's round as only the host sees it: teams tapped of those that may (timing-tap.md). */
   | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion; tap?: { count: number; eligible: number } }

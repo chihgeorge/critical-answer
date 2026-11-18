@@ -76,6 +76,7 @@ test("sort question: drag to order, a wrong lock marks the places, the right ord
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(team.getByTestId("sort-item-0")).toContainText("✓");
   await expect(team.getByTestId("sort-item-2")).toContainText("✕");
+  await expect(screen.getByTestId("screen-wrong-order")).toHaveText("✕ 排序隊答：甲 → 乙 → 丁 → 丙");
   await expect(screen.getByTestId("wall-sort-1")).toHaveAttribute("data-look", "ok");
   await expect(screen.getByTestId("wall-sort-3")).toHaveAttribute("data-look", "bad");
   await expect(screen.getByText("甲 → 乙 → 丙 → 丁")).toHaveCount(0);
