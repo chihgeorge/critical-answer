@@ -499,7 +499,7 @@ describe("buzzer boss phase in the room", () => {
   // #321: b-a and b-c are music (聽歌), b-b a fill-in (填空).
   const typed = (id: string) => (id === "b-b" ? text(id) : video(id));
 
-  it("the host picks the next question's type; the phone may not (#370); only type names reach STATE (#321)", () => {
+  it("the host picks the next question's type; only type names reach STATE (#321)", () => {
     const g = buzzerGame(typed);
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     expect(g.state().buzzTypes).toBeUndefined();
@@ -598,8 +598,33 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
     expect(g.state().pickHold).toBeUndefined();
     expect(g.state().question.id).toBe("b-c");
+    expect(g.lastHostAnswer()).toMatchObject({ questionId: "b-c" });
     g.buzz(0);
     expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("#370: a held non-video question still takes the pick (buzzing is not open), then opens at once", () => {
+    const g = buzzerGame((id) => (id === "b-a" ? { ...video(id), category: "動漫" } : { ...text(id), category: id === "b-b" ? "動漫" : "遊戲" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state()).toMatchObject({ question: null, pickHold: true });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { category: "動漫" } } });
+    g.buzz(0);
+    expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("#370: with categories left none, there is no hold", () => {
+    const g = buzzerGame((id) => (id === "b-b" ? { ...video(id), category: "動漫" } : video(id)));
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "b-b"] };
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state().pickHold).toBeUndefined();
+    expect(g.state().question).not.toBeNull();
   });
 
   it("#370: the host's 下一步 (HOST_BUZZ_PICK of the dealt question) ends the hold in order", () => {

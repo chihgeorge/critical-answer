@@ -115,7 +115,7 @@ export default function HostPage() {
   // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
   // And the buzzer question waiting for the winner's category (#370): STATE sends none, the host reads it here.
-  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question) ? { ...state!, question: answer!.question! } : state, [state, answer]);
+  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) ? { ...state!, question: answer!.question! } : state, [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
   const [fxOpen, setFxOpen] = useState(false);
@@ -1259,7 +1259,7 @@ export default function HostPage() {
               {game.question?.content.kind === "youtube" && !revealUp && (
                 <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
-              {/* The next buzzer question's type (#321): the winner picks on its phone, the host may set it or the question itself. */}
+              {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
               {buzz && (
                 <div data-testid="host-buzz" className="mt-2 flex flex-col gap-1 text-[16px]">

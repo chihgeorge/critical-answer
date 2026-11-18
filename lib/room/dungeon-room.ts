@@ -1377,6 +1377,7 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     if (this.memoryEnded(questionId)) return questionId === this.currentQuestion()?.pub.id ? this.broadcastState() : undefined;
     if (!this.memorizing() || this.currentQuestion()?.pub.id !== questionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    if (this.pickHold()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "pick_pending" });
     this.endMemory(questionId);
     // A buzzer phase's clip the host never got to play: its question is up now, so buzzing opens (boss-buzzer.md D5).
     if (this.game) this.keepUndoOpen(openBuzz(this.game, questionId));
@@ -1572,7 +1573,9 @@ export class DungeonRoom {
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
     // Check first, question after: a first character an earlier team's mage got on this (shared boss) question waits too.
     // And while a memory question's media plays: no hint shows over it (memory-questions.md).
-    const held = this.awaitingCheck() || this.memorizing() ? this.currentQuestion()?.pub.id : undefined;
+    // And a buzzer question waiting for the winner's category (#370).
+    const hold = this.pickHold();
+    const held = this.awaitingCheck() || this.memorizing() || hold ? this.currentQuestion()?.pub.id : undefined;
     if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
     // So does the first character an earlier team's own check earned on it.
     const earlier = held === undefined ? [] : this.game.teams.map((t) => checkKey(held, t.id)).filter((k) => view.checks?.[k]?.hint !== undefined);
@@ -1587,8 +1590,8 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || this.pickHold() ? null : this.shownQuestion(),
-      ...(this.pickHold() ? { pickHold: true as const } : {}),
+      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold ? null : this.shownQuestion(),
+      ...(hold ? { pickHold: true as const } : {}),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),

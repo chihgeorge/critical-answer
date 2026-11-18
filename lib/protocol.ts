@@ -442,7 +442,6 @@ export type ClientMessage =
   | { type: "HOST_BUZZ_OPEN"; questionId: string }
   /** The buzz winner picks the category of the next song (boss-music-buzzer.md M5); one of STATE `buzzCategories`. */
   | { type: "TEAM_PICK_CATEGORY"; category: string }
-  /** The buzz winner picks the type of the next question (#321); one of STATE `buzzTypes` with `left`. */
   /** Host: the next buzzer question by type, or the question itself (#321), until buzzing opens. Ends the winner's pick. */
   | { type: "HOST_BUZZ_PICK"; qtype: string }
   | { type: "HOST_BUZZ_PICK"; questionId: string }
@@ -585,7 +584,7 @@ export type ServerMessage =
        * The host still reads it in HOST_ANSWER. */
       pickHold?: true;
       /** The buzzer phase's question types while the next question may be picked (#321): names only, `left` false
-       * when none of that type is left (greyed). The winner picks while `view.buzz.picker` is it and not `hostPicked`. */
+       * when none of that type is left (greyed). Only the host page picks a type (#370); the winner picks a category. */
       buzzTypes?: { type: string; left: boolean }[];
       /** A finished game's podium reveal. Absent from older servers and from a game finished before it: show the podium. */
       podium?: PodiumReveal;

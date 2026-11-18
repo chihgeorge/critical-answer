@@ -114,9 +114,9 @@ export const fieldsAnswer = (fields: AnswerField[]): string => fields.map((f) =>
  * only in a buzzer phase (docs/designs/multi-field.md). */
 export const isMusicQuestion = (q: BankQuestion): boolean =>
   q.kind === "text" && ((q.content.kind === "youtube" && q.content.audioOnly === true) || q.content.kind === "audio");
-/** A question's type as a buzzer phase's winner picks it (#321): only this name ever reaches a phone, never the content. */
 /** The buzz-pick category every timing question counts as, in a bank that uses categories (#370). */
 export const TIMING_CATEGORY = "卡點題";
+/** A question's type as the host picks it for a buzzer phase (#321; the phone picks a category since #370): only this name reaches a phone, never the content. */
 export function questionType(q: BankQuestion): string {
   if (q.kind === "timing") return "卡點";
   if (q.kind === "multipleChoice") return "選擇";
