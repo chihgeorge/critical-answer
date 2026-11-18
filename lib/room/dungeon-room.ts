@@ -90,6 +90,7 @@ import {
   tapEligible,
   tapIn,
   tapWinner,
+  serveFeast,
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
@@ -4656,6 +4657,7 @@ export class DungeonRoom {
       const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
       const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
       reveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
+      if (m) this.game = serveFeast(this.game, teamId, m.dish.name);
     } else {
       // ⚔️'s line follows the fork narration on screen (no new eventId: nothing new is narrated by the AI).
       const monster = this.currentQuestion()?.pub.monster.name ?? "";

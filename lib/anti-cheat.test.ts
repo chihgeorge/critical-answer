@@ -146,7 +146,7 @@ describe("🔮 the oracle", () => {
     g = sendToBoss(g, "a", first);
     expect(team(g, "a").oracleQ).toBeUndefined();
     const hit = answerQuestion(g, "a", g.boss.currentQuestionId, true, "retry", first).game;
-    expect(team(hit, "a").reward).toBe(10);
+    expect(team(hit, "a").reward).toBe(25); // an unrated boss question's whole hit
   });
 });
 

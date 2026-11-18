@@ -107,8 +107,7 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(0);
     g.judge(IDS[0], true);
     expect(g.state()).toMatchObject({ cue: "boss-hit", reveal: { questionId: "b-a" }, view: { bossHp: 1 } });
-    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(20); // a phase-1 hit and this one
+    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(50); // a phase-1 hit and this one, 25 each (unrated)
   });
 
   it("沒人答對，換下一題 moves to a new question, refuses a stale id, and drops a 答對 pressed for the old question", () => {
@@ -371,9 +370,9 @@ describe("buzzer boss phase in the room", () => {
     const before = g.room.game!.teams[1].reward;
     judge([true, false]);
     const s = g.state();
-    // One right field hits for 1 HP (D2); the 10-point hit reward × ½ is 5.
+    // One right field hits for 1 HP (D2); an unrated question's 25-point hit × ½ is 12.5 → 13.
     expect(s.view.bossHp).toBe(1);
-    expect(g.room.game!.teams[1].reward - before).toBe(5);
+    expect(g.room.game!.teams[1].reward - before).toBe(13);
     expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: { teamId: IDS[1], marks: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] } });
     // A partial answer still earns the category pick (F6).
     expect(s.view.buzz).toMatchObject({ picker: IDS[1] });
@@ -412,8 +411,8 @@ describe("buzzer boss phase in the room", () => {
     }
     const s = g.state();
     expect(s.reveal.fields.marks.map((f: { right: boolean }) => f.right)).toEqual([true, false]);
-    // Half the 10-point hit, plus the whole kill bonus (rng 0 → four 1s).
-    expect(g.room.game!.teams[1].reward - before).toBe(5 + 4);
+    // Half the 25-point hit (→ 13), plus the whole kill bonus (rng 0 → four 1s).
+    expect(g.room.game!.teams[1].reward - before).toBe(13 + 4);
   });
 
   it("HOST_JUDGE with fields on a question without them is refused", () => {

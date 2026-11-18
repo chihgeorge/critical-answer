@@ -431,7 +431,7 @@ export default function BankEditorPage() {
   const dirty = bank !== saved;
   /** Tabs with edits since the last load or save (each edit replaces only what it touched). */
   const tabDirty = (t: Tab) =>
-    !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.boss.monster !== saved.boss.monster || bank.boss.hitReward !== saved.boss.hitReward : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
+    !!bank && !!saved && (t === "rooms" ? bank.rooms !== saved.rooms || bank.randomMonsters !== saved.randomMonsters || bank.boss.monster !== saved.boss.monster : t === "boss" ? bank.boss.phases !== saved.boss.phases : bank.pools[t] !== saved.pools[t]);
 
   const withPhase = (b: Bank, phase: number, patch: Partial<BossPhase>): Bank => ({
     ...b,
@@ -447,7 +447,7 @@ export default function BankEditorPage() {
   const addPhase = () => {
     setJump(null);
     setToast(null);
-    setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 3, questions: [] }] } } : prev));
+    setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 20, questions: [] }] } } : prev));
   };
   const deletePhase = (phase: number) => {
     const count = bank?.boss.phases[phase]?.questions.length ?? 0;
@@ -804,7 +804,6 @@ export default function BankEditorPage() {
             <RoomsEditor
               bank={bank}
               onRoom={updateRoom}
-              onHitReward={(hitReward) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, hitReward } } : prev))}
               onBossMonster={(monster) => setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, monster } } : prev))}
               onRandomMonsters={(randomMonsters) => setBank((prev) => (prev ? { ...prev, randomMonsters } : prev))}
             />
@@ -958,13 +957,11 @@ export default function BankEditorPage() {
 function RoomsEditor({
   bank,
   onRoom,
-  onHitReward,
   onBossMonster,
   onRandomMonsters,
 }: {
   bank: Bank;
   onRoom: (roomIndex: number, patch: Partial<Bank["rooms"][number]>) => void;
-  onHitReward: (hitReward: number) => void;
   onBossMonster: (monster: string) => void;
   onRandomMonsters: (on: boolean) => void;
 }) {
@@ -1005,21 +1002,8 @@ function RoomsEditor({
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
           <MonsterPicker testId="bank-boss-monster" label="首領" value={bank.boss.monster} boss disabled={bank.randomMonsters} onChange={onBossMonster} />
-          <label className="flex items-center gap-1">
-            每打中一下
-            <input
-              type="number"
-              min={0}
-              step={1}
-              data-testid="bank-boss-hit-reward"
-              className="px-input !w-[72px] !py-1"
-              value={bank.boss.hitReward}
-              onChange={(e) => onHitReward(toReward(e.target.value))}
-            />
-            分
-          </label>
         </div>
-        <div className="text-[13px]">最後一擊另外加 4 顆 D20（4～80 分）。</div>
+        <div className="text-[13px]">首領題打中一下照題目難度得分：難度 1–5 各 5／10／15／20／25 分（沒設難度算 {DEFAULT_BOSS_DIFFICULTY}）。最後一擊另外加 4 顆 D20（4～80 分）。</div>
       </div>
     </Panel>
   );
