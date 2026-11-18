@@ -21,7 +21,6 @@
 - [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b)（[#286](https://github.com/chihgeorge/critical-answer/issues/286)） — L（人工約 1 週 / CC 約半天），活動後
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響)（[#288](https://github.com/chihgeorge/critical-answer/issues/288)） — M，活動後
-- [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用)（[#289](https://github.com/chihgeorge/critical-answer/issues/289)） — M，活動後
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率)（[#292](https://github.com/chihgeorge/critical-answer/issues/292)） — S，活動後
 - [OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上](#openrouter-一鍵登入拿-key手機主持人不用複製貼上)（[#294](https://github.com/chihgeorge/critical-answer/issues/294)） — M
 - [逃跑・換房（完整版）](#逃跑換房完整版)（[#298](https://github.com/chihgeorge/critical-answer/issues/298)） — M（人工約 1-2 天 / CC 約 1 小時），活動後
@@ -209,24 +208,6 @@
 **Depends on:** 活動（2026-11-21）的遊戲紀錄。
 
 ---
-
-## 抓包與神諭：首領房也能用
-
-**What:** 首領房也能公開問神諭和被抓包。
-
-**Why:** 現在只有一般房間能用（`docs/designs/anti-ai-cheating.md`）。首領房的答題牽涉愛心傷害、尾刀和 4d20，規則要另外想（/autoplan 2026-11-10 E3，延到活動後）。
-
-**Context:**
-- `lib/game-state.ts`（`oracleActive`、`assertAntiCheatTurn` 擋 `inBoss`）
-- 要決定：神諭是減半獎勵還是減少傷害；成立時首領題怎麼換（首領題是大家共用的）；搶答階段要不要開。
-
-**Effort/Priority:** M / P3
-
-**Depends on:** 無。
-
----
-
-
 
 ## OpenRouter 一鍵登入拿 key，手機主持人不用複製貼上
 
@@ -529,6 +510,7 @@ PartyKit 部署記錄：`partykit.dev`、[issue #985](https://github.com/partyki
 ## 反 AI 作弊：抓包與神諭（anti-ai-cheating）
 
 - **主持人「⚙ 更多」的開關打開 🔮 公開問神諭和 🚨 抓包** · 版號合併時定 · 預設關閉；打開後每隊神諭 1 次（這題答對減半、不會被抓包）、抓包 2 次，主持人用裁決卡（鍵盤 7／8）判成立或冤枉。設計見 `docs/designs/anti-ai-cheating.md`，規則見 `docs/rules.md`。後續見「抓包與神諭」三項 P3。
+- **首領房也能用 🔮 神諭和 🚨 抓包（#289）** · 版號合併時定 · 首領房的神諭只減半這一下的獎勵分、愛心照扣；最後一個階段剩 1 顆愛心（尾刀）不能問；從 2 顆以上意外打倒時 4d20 也減半。抓包成立＝首領房的逃跑。搶答階段、轉場卡等著時都不開放。
 
 ## 題庫編輯器：載入與上傳的四個小缺口（/review 2026-10-25）
 
