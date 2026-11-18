@@ -117,7 +117,7 @@ export function useRevealTime(podium: PodiumReveal | undefined, lagMs = 0, motio
   }
   useEffect(() => {
     const beats = podium?.beats;
-    if (!beats) return;
+    if (!beats || podium.step !== undefined) return;
     const anchor = performance.now() - podium.elapsedMs + lagMs;
     const marks = revealMarks(beats);
     let timer: ReturnType<typeof setTimeout> | undefined;

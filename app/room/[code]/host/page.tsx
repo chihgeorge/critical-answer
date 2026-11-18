@@ -680,7 +680,7 @@ export default function HostPage() {
       <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
         {/* The label is one block: it drops to its own line whole on a phone, never leaving one character behind. */}
         <div className="text-[18px]"><span className="whitespace-nowrap">⏸ 停在這裡：</span><span className="inline-block text-balance">{hold.label}</span></div>
-        <div className="text-[13px]">手動模式，按「下一步」才會繼續</div>
+        <div className="text-[13px]">按「下一步」才會繼續</div>
       </div>
       <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
         {connected ? "▶ 下一步" : "重新連線中"}
@@ -1176,6 +1176,11 @@ export default function HostPage() {
             )}
             {turn && (turn.team || buzz) && (
             <>
+            {!buzz && turn.team && !revealUp && !lock && !roll && !wrong && !atFortune && !game.forkBeat && !game.view.antiCheat?.openCatch && (
+              <PixelButton disabled={!ready} onClick={() => send({ type: "HOST_SKIP_TURN", teamId: turn.team!.id, eventId: game.eventId })}>
+                {turn.team.online ? "跳過這隊的回合" : "這隊暫離中・跳過這隊的回合"}
+              </PixelButton>
+            )}
             <TurnRibbon color={buzz || turn.inBoss ? "var(--boss)" : undefined}>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
@@ -1553,7 +1558,7 @@ export default function HostPage() {
               revealPanel
             )}
             {/* 改判答對 (TODOS.md): under the judge buttons, held for half a second after it shows up (canUndo). */}
-            {game.undoWrong && !revealUp && (
+            {game.undoWrong && (
               <PixelButton className="!mt-4 text-[16px]" style={{ background: "#fff" }} disabled={!canUndo} onClick={() => send({ type: "HOST_UNDO_WRONG", ...game.undoWrong!, eventId: game.eventId })}>
                 {/* A music question with fields reopens its per-field judging instead (multi-field.md E2). */}
                 ↩ 剛才的{teamName(game.undoWrong.teamId)}{game.question?.id === game.undoWrong.questionId && game.question.fields ? "重新逐欄判定" : "改判答對"}

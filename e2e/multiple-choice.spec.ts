@@ -178,6 +178,7 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   await host.clock.fastForward(1_500);
   await expect(stuckRow).toBeVisible();
   await host.getByRole("button", { name: /替選擇隊選・逃跑・同房/ }).click();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   // The flee is a judgment (new eventId), so the row resets and waits another 15 s.
   await expect(stuckRow).toHaveCount(0);
   await expect(host.getByTestId("host-mc-status")).toContainText("等選擇隊鎖定答案");
@@ -221,6 +222,7 @@ test("phone answering: 逃跑 after a wrong lock moves the team to the other que
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await team.getByRole("button", { name: /逃跑・同房/ }).click();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
 });
@@ -245,6 +247,7 @@ test("phone answering: 逃跑・換房 after a wrong lock brings a new monster i
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await team.getByRole("button", { name: /逃跑・換房/ }).click();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
   await expect(room).toBeVisible(); // still room 1

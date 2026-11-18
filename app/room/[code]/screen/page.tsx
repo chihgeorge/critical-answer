@@ -1084,7 +1084,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   const current = cooked && now.beat >= 0 && !now.done ? beats[now.beat] : undefined;
   const called = new Set(beats.slice(0, now.beat + 1).flatMap((b) => (b.kind === "place" ? [b.place] : [])));
   // Reduced motion skips the beats (t null): the titles stand as a still list instead, one row a team (eng E3).
-  const titleRows = t === null ? view.teams.flatMap((x) => {
+  const titleRows = t === null && podium?.step === undefined ? view.teams.flatMap((x) => {
     const icons = beats.flatMap((b) => (b.kind === "award" && b.teamIds.includes(x.id) ? [b.icon] : [])).join("");
     return icons ? [{ id: x.id, name: x.name, icons }] : [];
   }) : [];
@@ -1093,7 +1093,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // A narration still being read after 結束冒險 stays up: the room starts the reveal once this screen has read it.
   // Only after 結束冒險 (no dish): after a boss kill the kill-shot line has had the cooking to be read (storyboard row 1).
   const holdNarration = unread && !dish;
-  const waiting = cooked && !!podium && podium.beats === null && !holdNarration;
+  const waiting = cooked && !!podium && (podium.beats === null || podium.step === -1) && !holdNarration;
   // After 結束冒險 the box picks up at the line the game screen had reached, so the room's wait is not a second pass.
   const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
@@ -1102,7 +1102,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ended]);
   // Each beat's line is read as it comes up (a roll's chip too); a title's opens on a chime, 🎲 on the crit's (D3).
-  const spoken = current && t !== null ? now.beat : -1;
+  const spoken = current && (t !== null || podium?.step !== undefined) ? now.beat : -1;
   useEffect(() => {
     const beat = beats[spoken];
     if (spoken < 0 || !beat) return;
@@ -1155,7 +1155,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         </div>
       )}
       {!cooked && dish && step === 3 && <DishOnStage dish={dish} title="今晚的大菜" cardTop={120} bottom={140} />}
-      {result && (reveal || killer) && (
+      {(result || (cooked && podium?.step === -1 && reveal && !dish)) && (reveal || killer) && (
         <div data-testid="answer-reveal" className="absolute" style={{ left: 18, top: 160, width: 170, zIndex: 6 }}>
           <Panel tone="turn" className="px-3 py-2 text-[16px] leading-snug">
             {/* With the podium up, the kill line lives here: under the title it sat on the winner's crown. */}

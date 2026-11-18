@@ -528,19 +528,10 @@ function poolIndexFor(pools: string[][], d: Difficulty): number {
   return above;
 }
 
-/**
- * Deal one question of `difficulty`: a question nobody has drawn from its pool since the last
- * reshuffle, avoiding any question a team is holding right now. When every
- * question in the pool has been drawn it reshuffles. Within that, prefer a
- * question whose answer hasn't been revealed; if only revealed ones are left this
- * cycle, an unrevealed one already drawn (fled) wins over re-showing an answer, then an
- * unrevealed free one from the nearest other pool, then `own` if unrevealed and no other team holds it.
- * When every question is held (a small custom bank): an unrevealed free borrow, then `own` (the
- * question the dealt team is leaving: fled, or just answered) if unrevealed and unshared, then any
- * free borrow, then `own` anyway. In a bank with fewer questions than teams, only that last step,
- * or a deal with no `own` (game start), can leave two teams on one question. "Nearest" is by
- * distance, lower first on ties, and a donor pool's undrawn questions come first. Returns the id and the updated used-lists; `rng` keeps tests deterministic.
- */
+/** Deal an unseen question, preferring an undrawn one in the requested pool that no team holds.
+ * Borrow from the nearest pool when necessary. A tiny bank may share an unseen question;
+ * once every room question is revealed, an empty id tells the caller to enter the boss room.
+ * `used` tracks draws within a shuffle; `revealed` permanently retires answers for this game. */
 function deal(
   pools: string[][],
   used: string[][],
@@ -594,7 +585,9 @@ function deal(
   // Every answer left here has been shown: an unseen question from the nearest other pool, then the
   // team's own unseen one, beats a repeat (the same order as the all-held branch above).
   else pool = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : pool);
-  const questionId = pool[Math.floor(rng() * pool.length)];
+  pool = pool.filter((id) => !revealed.includes(id));
+  if (!pool.length) pool = pools.flat().filter((id) => !revealed.includes(id));
+  const questionId = pool[Math.floor(rng() * pool.length)] ?? "";
   // Recorded in the pool that holds it (a borrowed or own question belongs to another pool), once:
   // the fled-question fallback above picks from questions already in `used`. This pool's reshuffle
   // only counts when the question came from it.
@@ -602,16 +595,13 @@ function deal(
   return { questionId, used: (all.includes(questionId) ? base : used).map((u, i) => (i === from && !u.includes(questionId) ? [...u, questionId] : u)) };
 }
 
-/** A question answered again after every question was revealed must not be listed twice. */
+/** A question marked by a hint and later by its judgment is listed only once. */
 function withRevealed(revealed: string[], id: string): string[] {
   return revealed.includes(id) ? revealed : [...revealed, id];
 }
 
-/** Same never-redeal-a-revealed-question rule as deal(), for the boss's shared question ring —
- * walk the ring from the current question (ending back on it), skip anything already revealed,
- * and only fall back to the plain next-in-ring slot once every question has been revealed. A
- * flee therefore stays on the current question when it is the last unrevealed one; a correct hit
- * passes `revealed` with the current question already added, so it never comes straight back. */
+/** Walk the boss question ring past revealed answers. The fallback is only an exhausted
+ * phase's retained question: callers advance the phase or finish before accepting another answer. */
 function nextBossQuestionId(boss: BossState, revealed: string[]): string {
   const { questionIds, currentQuestionId } = boss;
   const startIdx = questionIds.indexOf(currentQuestionId);
@@ -667,7 +657,7 @@ function splitShared(game: GameState, rng: () => number): GameState {
     let move: { t: Team; dealt: ReturnType<typeof deal> } | undefined;
     for (const t of movable) {
       const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, t.currentDifficulty, rng, t.currentQuestionId);
-      if (!room.some((o) => o.currentQuestionId === dealt.questionId) && !game.revealedQuestionIds.includes(dealt.questionId)) {
+      if (dealt.questionId && !room.some((o) => o.currentQuestionId === dealt.questionId) && !game.revealedQuestionIds.includes(dealt.questionId)) {
         move = { t, dealt };
         break;
       }
@@ -1157,23 +1147,21 @@ export function hostPickBuzzQuestion(game: GameState, questionId: string, open: 
   return pickQuestion(game, questionId, { ...unpicked(currentBuzz(game)), hostPicked: true });
 }
 
-/** 沒人答對，換下一題 (D4): the boss question moves on, unrevealed, so it may come round again.
- * `retire`: the host's skip of a timing question, which has no verdict to give and may be one the big screen
- * cannot play (timing-tap.md). When it would come round as itself (the phase's last unrevealed question), it counts as used
- * instead, like a flee from a shown wrong option: an earlier phase then ends (exhausted), the last moves on to
- * revealed questions. */
-export function skipBuzz(game: GameState, retire = false): GameState {
+/** Move the shared boss question on. Explicit host skips retire its answer; automatic timing
+ * rounds with no taps may rotate without revealing it. Exhaustion advances a phase or ends the game. */
+export function skipBuzz(game: GameState, retire = false, rng: () => number = Math.random): GameState {
   if (!isBuzzPhase(game)) throw new InvalidActionError("not_buzzer_phase");
   if (game.buzz?.questionId === game.boss.currentQuestionId && game.buzz.teamId) throw new InvalidActionError("buzz_taken");
   const current = game.boss.currentQuestionId;
   let revealed = game.revealedQuestionIds;
   let rotated = rotateBoss(game.boss, revealed);
-  if (retire && rotated.currentQuestionId === current) {
+  if (retire) {
     revealed = withRevealed(revealed, current);
     if (phaseUsedUp(game.boss, revealed)) {
       // The phase card deals the next phase's question (enterNextBossPhase); the stunned teams' sit-out ends (R5).
       return { ...game, revealedQuestionIds: revealed, buzz: undefined, teams: resetBossSelections(unstun(game.teams, (t) => !!t.inBoss)), boss: { ...game.boss, phasePending: "exhausted" } };
     }
+    if (game.boss.questionIds.every((id) => revealed.includes(id))) return finishGame({ ...game, revealedQuestionIds: revealed, buzz: undefined }, rng);
     rotated = rotateBoss(game.boss, revealed);
   }
   // A new question ends the stunned teams' sit-out (R5); the same one coming round again does not.
@@ -1181,7 +1169,7 @@ export function skipBuzz(game: GameState, retire = false): GameState {
   return { ...game, revealedQuestionIds: revealed, buzz: rotatedBuzz(game, rotated.currentQuestionId), teams: resetBossSelections(teams), boss: { ...game.boss, ...rotated } };
 }
 
-/** An earlier boss phase out of unrevealed questions moves on; the last one repeats them (premise 3). */
+/** Earlier exhausted phases advance; callers finish the game when the last phase is exhausted. */
 function phaseUsedUp(boss: BossState, revealed: string[]): boolean {
   return boss.phaseIndex < boss.phases.length - 1 && boss.questionIds.every((id) => revealed.includes(id));
 }
@@ -1191,7 +1179,7 @@ function assertNotBuzz(game: GameState) {
   if (isBuzzPhase(game)) throw new InvalidActionError("buzzer_phase");
 }
 
-/** The id of the team whose turn it currently is, skipping offline teams (T7). */
+/** The turn stays with its team until a game action or the host advances it. */
 export function currentTurnTeamId(game: GameState): string | null {
   // A team deciding 重答 / 逃跑 keeps the turn even if its phone sleeps (phone-answering.md E9).
   if (game.pendingWrong) return game.pendingWrong.teamId;
@@ -1205,40 +1193,39 @@ export function currentTurnTeamId(game: GameState): string | null {
   if (choosing) return choosing.id;
   // And the team picking a fortune's effect, until it lands (fortune-teller.md).
   if (game.fortune && !game.fortune.effect) return game.fortune.teamId;
-  const idx = nextOnlineIndex(game, 0);
-  // null: every team is offline, so no one can take a turn.
+  const idx = nextTurnIndex(game, 0);
+  // Only an empty order has no turn.
   return idx === null ? null : game.turnOrder[idx];
 }
 
-/** The online team after the one on turn in turnOrder (itself when it is the only one online), or null in a buzzer
+/** The team after the one on turn in turnOrder (including offline teams), or null in a buzzer
  * phase or with nobody on turn. A 💫 stunned team is passed over as landTurn passes it, unless every other one is. */
 export function nextTurnTeamId(game: GameState): string | null {
   const now = isBuzzPhase(game) ? null : currentTurnTeamId(game);
   if (now === null) return null;
   const n = game.turnOrder.length;
   const at = game.turnOrder.indexOf(now);
-  const online = Array.from({ length: n }, (_, i) => getTeam(game, game.turnOrder[(at + i + 1) % n])).filter((t) => t.online);
-  return (online.find((t) => !t.stunned) ?? online[0])?.id ?? null;
+  const candidates = Array.from({ length: n }, (_, i) => getTeam(game, game.turnOrder[(at + i + 1) % n]));
+  return (candidates.find((t) => !t.stunned) ?? candidates[0])?.id ?? null;
 }
 
-/** The first turn index at or after currentTurnIndex + `from` whose team is online (wrapping), or null. */
-function nextOnlineIndex(game: GameState, from: number): number | null {
-  const n = game.turnOrder.length;
-  for (let i = from; i < from + n; i++) {
-    const idx = (game.currentTurnIndex + i) % n;
-    if (getTeam(game, game.turnOrder[idx]).online) return idx;
-  }
-  return null;
+/** The turn index `from` places ahead, regardless of phone connectivity. */
+function nextTurnIndex(game: GameState, from: number): number | null {
+  return game.turnOrder.length ? (game.currentTurnIndex + from) % game.turnOrder.length : null;
 }
 
-/**
- * Advance to the next online team's turn. If every team is offline this is a
- * no-op (there's nothing to advance to) rather than an infinite loop — see
- * Failure modes: nextTurn() 離線隊伍處理 critical gap from /plan-eng-review.
- */
-export function advanceTurn(game: GameState): GameState {
-  const idx = nextOnlineIndex(game, 1);
-  return idx === null ? game : landTurn({ ...game, currentTurnIndex: idx });
+/** Advance once, applying stuns and avoiding the previous turn's room monster. */
+export function advanceTurn(game: GameState, facedMonster?: string): GameState {
+  const previous = game.teams.find((t) => t.id === currentTurnTeamId(game));
+  const idx = nextTurnIndex(game, 1);
+  if (idx === null) return game;
+  const next = landTurn({ ...game, currentTurnIndex: idx });
+  const team = next.teams.find((t) => t.id === currentTurnTeamId(next));
+  if (!previous || !team || previous.id === team.id || (previous.inBoss && !facedMonster) || team.inBoss) return next;
+  const lastMonster = facedMonster ?? teamMonsterId(game, previous);
+  if (!lastMonster || lastMonster !== teamMonsterId(next, team)) return next;
+  const monster = switchMonster(next, team, () => 0);
+  return { ...next, teams: patchTeam(next.teams, team.id, () => ({ swappedMonsterId: monster, metDefeats: next.defeats?.[monster] ?? 0 })) };
 }
 
 /** Every 💫 flag cleared, or only those of teams `which` picks. */
@@ -1246,18 +1233,18 @@ function unstun(teams: Team[], which: (t: Team) => boolean = () => true): Team[]
   return teams.map((t) => (t.stunned && which(t) ? { ...t, stunned: undefined } : t));
 }
 
-/** The turn lands on the first online team at or after currentTurnIndex that is not 💫 stunned (fortune-teller.md G1):
+/** The turn lands on the first team at or after currentTurnIndex that is not 💫 stunned (fortune-teller.md G1):
  * each stunned team passed loses that turn, which counts for `round` and `lastTurnIndex` but adds no `turns`, and its
- * flag clears. Every online team stunned: all flags clear, nobody is skipped. Never in a buzzer phase or with a boss
+ * flag clears. Every team stunned: all flags clear, nobody is skipped. Never in a buzzer phase or with a boss
  * phase card pending (R5). */
 function landTurn(game: GameState): GameState {
   if (isBuzzPhase(game) || game.boss.phasePending) return game;
-  const online = game.teams.filter((t) => t.online);
-  if (!online.some((t) => t.stunned)) return game;
-  if (online.every((t) => t.stunned)) return { ...game, teams: unstun(game.teams) };
+  const teams = game.teams;
+  if (!teams.some((t) => t.stunned)) return game;
+  if (teams.every((t) => t.stunned)) return { ...game, teams: unstun(game.teams) };
   let g = game;
   const skipped: string[] = [];
-  for (let idx = nextOnlineIndex(g, 0); idx !== null; idx = nextOnlineIndex(g, 1)) {
+  for (let idx = nextTurnIndex(g, 0); idx !== null; idx = nextTurnIndex(g, 1)) {
     const id = g.turnOrder[idx];
     if (!getTeam(g, id).stunned) {
       g = { ...g, currentTurnIndex: idx };
@@ -1359,9 +1346,11 @@ export function answerQuestion(
     return warriorDie === undefined ? half : Math.round(half * warriorShare(warriorDie));
   };
 
+  const answeringTeam = getTeam(game, teamId);
+  const facedMonster = answeringTeam.inBoss ? undefined : teamMonsterId(game, answeringTeam);
   const activeTeamId = currentTurnTeamId(game);
   if (activeTeamId === null) {
-    throw new InvalidActionError("No online team available to take a turn");
+    throw new InvalidActionError("No team available to take a turn");
   }
   if (activeTeamId !== teamId) {
     throw new InvalidActionError(
@@ -1395,9 +1384,8 @@ export function answerQuestion(
   };
   // The choice resolves the pending wrong lock.
   game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, ...(sneakBack ? { abilityUses: t.abilityUses + sneakBack } : {}), typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, [...(correct && critValue !== undefined ? [critValue] : []), ...(correct && answerDie !== undefined ? [answerDie] : [])]), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
-  // A wrong lock showed the room part of this question's answer (the red tile on the TV), so a
-  // flee from it counts as revealed: deal() and nextBossQuestionId only reuse it as a last resort.
-  const seenWrong = !correct && fleeChoice !== "retry" && (game.eliminated[questionId]?.length ?? 0) > 0;
+  // Leaving a question publishes its answer, so it can never be dealt again.
+  const seenWrong = !correct && fleeChoice !== "retry";
   const revealedOnFlee = seenWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
 
   const team = getTeam(game, teamId);
@@ -1471,10 +1459,11 @@ export function answerQuestion(
       // the question, and so does a wrong lock even on retry: its red tile on the TV would hand the
       // next team a narrowed question, up to a free hit (boss redesign D1=A). Either way the shown
       // wrong option makes it revealed; the rotation skips every revealed one. Taking turns, a wrong answer with nothing
-      // shown (a fill-in, or the host's stuck-row 下輪換題 for a team that never locked) rotates too, unrevealed; a warrior's missed roll and a cleric's prayed
+      // shown (a fill-in, or the host's stuck-row 下輪換題 for a team that never locked) reveals and rotates too; a warrior's missed roll and a cleric's prayed
       // retry, which answers again at once, keep it (class-abilities.md #106).
       const shownWrong = (game.eliminated[questionId]?.length ?? 0) > 0;
-      const revealed = shownWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
+      const leaves = fleeChoice !== "retry" || shownWrong || (!buzzing && !warriorMiss && !prayed);
+      const revealed = leaves ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
       const phasePending = usedUp(revealed) ? ("exhausted" as const) : undefined;
       // A wrong buzz shuts this team out of the question (D4); once every online team is out, they all buzz on the same
       // question again (boss-music-buzzer.md M1): only the host's 換下一題 moves it on.
@@ -1602,12 +1591,26 @@ export function answerQuestion(
   if ((correct || fleeChoice !== "retry") && getTeam(nextGame, teamId).oracleQ !== undefined) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ oracleQ: undefined })) };
   const left = getTeam(nextGame, teamId).wrongOn;
   if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
+  // Revealing a shared question retires it for every team, including tiny custom banks.
+  for (const t of nextGame.teams) {
+    if (t.inBoss || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
+    const dealt = dealFor(nextGame, t, t.currentDifficulty, nextGame.revealedQuestionIds, rng);
+    nextGame = { ...nextGame, usedQuestionIds: dealt.used, teams: patchTeam(nextGame.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined, oracleQ: undefined, queuedQuestionId: dealt.queuedQuestionId })) };
+  }
+  // No unseen room question remains: continue at the boss instead of reusing an answer.
+  for (const t of nextGame.teams) {
+    if (!t.inBoss && !t.currentQuestionId) nextGame = sendToBoss(nextGame, t.id);
+  }
+  if (outcome.type === "correct-room-advance" && getTeam(nextGame, teamId).inBoss) outcome = { ...outcome, entersBoss: true };
+  if (inBoss && boss.phaseIndex === boss.phases.length - 1 && boss.questionIds.every((id) => nextGame.revealedQuestionIds.includes(id))) {
+    return { game: finishGame(nextGame, rng), outcome };
+  }
   // Step on from the team that answered: the stored index can point at an offline team the turn skipped.
   // Split before the turn passes, so the team that just answered is the one splitShared leaves alone.
   const here = splitShared({ ...nextGame, currentTurnIndex: nextGame.turnOrder.indexOf(teamId) }, rng);
   // A prayed wrong lock keeps the turn (class-abilities.md PR 2): the cleric answers again at once.
   if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
-  return { game: advanceTurn({ ...here, prayerTurn: undefined }), outcome };
+  return { game: advanceTurn({ ...here, prayerTurn: undefined }, facedMonster), outcome };
 }
 
 /** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for
@@ -2431,7 +2434,7 @@ function patchTeam(teams: Team[], teamId: string, patch: (t: Team) => Partial<Te
   return teams.map((t) => (t.id === teamId ? { ...t, ...patch(t) } : t));
 }
 
-/** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
+/** Update phone availability without moving the turn. Buzz races still release a dropped buzz. */
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
   // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz. Not once it has
@@ -2446,16 +2449,7 @@ export function setTeamOnline(game: GameState, teamId: string, online: boolean):
   const buzz = next.buzz;
   const stuck = !online && isBuzzPhase(next) && buzz?.questionId === next.boss.currentQuestionId && buzz.out.length > 0 && !buzz.teamId && next.teams.every((t) => !t.online || !t.inBoss || buzz.out.includes(t.id) || t.stunned);
   const after = stuck ? { ...next, buzz: { ...buzz!, out: [] } } : next;
-  // 💫 (R4): the turn passing to a stunned team this way (the turn team dropped, or a stunned team reconnected into the
-  // turn) skips it, unless a team holds the turn; the index is then pinned on the team that plays.
-  if (after.phase !== "playing" || turnHeld(after)) return after;
-  const idx = nextOnlineIndex(after, 0);
-  return idx !== null && getTeam(after, after.turnOrder[idx]).stunned ? landTurn(after) : after;
-}
-
-/** A team keeps the turn whatever its phone does: a wrong answer, a typed answer, a door or a fortune being picked. */
-function turnHeld(game: GameState): boolean {
-  return !!game.pendingWrong || !!game.antiCheat?.openCatch || game.teams.some((t) => t.typedAnswer !== undefined || t.fork?.phase === "choosing") || (!!game.fortune && !game.fortune.effect);
+  return after;
 }
 
 /* ---------- 抓包與神諭 (docs/designs/anti-ai-cheating.md) ---------- */
@@ -2584,8 +2578,8 @@ export function dismissCatch(game: GameState): { game: GameState; potion: boolea
  */
 export interface SpectatorView {
   currentTurnTeamId: string | null;
-  /** The team whose turn comes after this one (turnOrder, online teams only), for the host's 指定下一題. The team itself
-   * when it is the only one online; absent in a buzzer phase or with nobody on turn. */
+  /** The team whose turn comes after this one (turnOrder, including offline teams), for the host's 指定下一題. The team itself
+   * when it is the only team; absent in a buzzer phase or with nobody on turn. */
   nextTurnTeamId?: string;
   teams: {
     id: string;

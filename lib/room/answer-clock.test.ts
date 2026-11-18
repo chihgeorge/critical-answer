@@ -240,24 +240,19 @@ describe("每題作答倒數 in the room", () => {
     expect(peek(second.room).answerClock).toEqual({ left: 40000 });
   });
 
-  it("an offline team is skipped with a fresh count for the next; with every phone offline the count is held", () => {
+  it("an away team keeps its turn and remaining count until it returns", () => {
     const g = started();
     g.check();
     vi.advanceTimersByTime(10000);
     g.room.onClose(g.phones[0]);
-    expect(g.state().view.currentTurnTeamId).toBe(B);
-    g.check();
-    expect(g.state().answerClock).toEqual({ left: 60000 });
-    vi.advanceTimersByTime(10000);
-    g.room.onClose(g.phones[1]);
-    expect(g.state().view.currentTurnTeamId).toBeNull();
+    expect(g.state().view.currentTurnTeamId).toBe(A);
     expect(g.state().answerClock).toBeUndefined();
-    vi.advanceTimersByTime(10000);
+    vi.advanceTimersByTime(20000);
     const phone = makeConn("again");
     g.room.onConnect(phone);
-    send(g.room, phone, { type: "JOIN", teamId: B, teamKey: "team-key-0123456789abcde1", teamName: "乙隊", resume: true });
-    expect(g.state().view.currentTurnTeamId).toBe(B);
-    expect(g.state().answerClock).toEqual({ left: 40000 });
+    send(g.room, phone, { type: "JOIN", teamId: A, teamKey: "team-key-0123456789abcde0", teamName: "甲隊", resume: true });
+    expect(g.state().view.currentTurnTeamId).toBe(A);
+    expect(g.state().answerClock).toEqual({ left: 30000 });
   });
 });
 

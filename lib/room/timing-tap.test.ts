@@ -323,13 +323,13 @@ describe("timing question in the room", () => {
   });
 
   // Value: protects=the host's skip of the phase's last unrevealed timing question (the big screen cannot play it) moves the last phase on; fails_when=the skip comes round to the same question, leaving only 結束遊戲; seam=none
-  it("the host skips the last timing question left before ▶: it counts as used and the last phase moves on to a revealed one", () => {
+  it("the host skips the last timing question left before ▶: it counts as used and the last phase ends without repeating a revealed answer", () => {
     const g = tapGame();
     g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "t-b", "t-c"] };
     send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
-    expect(g.qid()).toBe("t-b");
+    expect(g.room.game!.phase).toBe("finished");
     expect(g.room.game!.revealedQuestionIds).toContain("t-a");
-    expect(g.state()).toMatchObject({ question: { id: "t-b" } });
+    expect(g.state().reveal).toMatchObject({ questionId: "t-a" });
     expect((g.room as unknown as { tapReplay: string | null }).tapReplay).toBeNull();
   });
 
@@ -340,6 +340,8 @@ describe("timing question in the room", () => {
     g.media("play");
     g.clock();
     send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "t-a" });
+    expect(g.state().reveal).toMatchObject({ questionId: "t-a" });
+    send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
     expect((g.room as unknown as { phaseCard: boolean }).phaseCard).toBe(true);
     expect(g.room.game!.boss.phaseIndex).toBe(2);
     expect(g.qid()).toBe("z-a");

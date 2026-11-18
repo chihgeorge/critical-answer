@@ -167,15 +167,15 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     step(s);
     expect(s.room.game!.pendingWrong).toBeNull();
     expect(state(s.room).question.id).toBe("p1-b");
+    send(s.room, s.host, { type: "HOST_NEXT", eventId: state(s.room).eventId });
     // The second miss uses the phase up: its card is due once the retry line is in, and then waits.
     lockAndReveal(s, false);
     step(s);
     step(s);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(state(s.room)).toMatchObject({ phaseCardDue: true, hold: { kind: "phase-card" } });
+    expect(state(s.room).reveal).toMatchObject({ questionId: "p1-b" });
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phaseCard).toBeUndefined();
-    step(s);
+    send(s.room, s.host, { type: "HOST_NEXT", eventId: state(s.room).eventId });
     expect(state(s.room).phaseCard).toBeTruthy();
     expect(state(s.room).hold).toBeUndefined();
   });
@@ -229,21 +229,21 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phase).toBe("playing");
     step(s);
-    expect(state(s.room)).toMatchObject({ phase: "finished", hold: { kind: "podium" }, podium: { beats: null } });
+    expect(state(s.room)).toMatchObject({ phase: "finished", hold: { kind: "podium" }, podium: { step: -1 } });
     await vi.advanceTimersByTimeAsync(FINISH_PODIUM_MS + LONG);
     expect((s.room as any).epilogue).not.toBeNull();
-    expect(state(s.room).podium.beats).toBeNull();
+    expect(state(s.room).podium.step).toBe(-1);
     step(s);
     expect(state(s.room).podium).toMatchObject({ elapsedMs: 0 });
     expect(state(s.room).podium.beats.length).toBeGreaterThan(0);
-    expect(state(s.room).hold).toBeUndefined();
+    expect(state(s.room).hold).toMatchObject({ kind: "podium" });
   });
 
   it("結束冒險 holds the podium too", async () => {
     const s = setup();
     send(s.room, s.host, { type: "HOST_END_GAME" });
     await vi.advanceTimersByTimeAsync(LONG);
-    expect(state(s.room)).toMatchObject({ phase: "finished", hold: { kind: "podium" }, podium: { beats: null } });
+    expect(state(s.room)).toMatchObject({ phase: "finished", hold: { kind: "podium" }, podium: { step: -1 } });
     step(s);
     expect(state(s.room).podium.beats).not.toBeNull();
   });
@@ -295,13 +295,13 @@ describe("手動停頓: switching with a pause up", () => {
     expect(state(s.room).forkBeat).toMatchObject({ door: "monster", timeout: true });
   });
 
-  it("manual to auto with the podium held: it starts after the usual pause", async () => {
+  it("manual to auto with the podium held: it still waits for the host", async () => {
     const s = setup();
     send(s.room, s.host, { type: "HOST_END_GAME" });
     await vi.advanceTimersByTimeAsync(LONG);
     pacing(s, "auto");
-    expect(state(s.room).podium).toMatchObject({ elapsedMs: -1000 });
-    expect(state(s.room).podium.beats).not.toBeNull();
+    expect(state(s.room).podium).toMatchObject({ step: -1 });
+    expect(state(s.room).podium.step).toBe(-1);
   });
 
   it("auto to manual: a running beat and a running door clock stop and wait", () => {
@@ -335,18 +335,18 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
   });
 
-  it("auto to manual on a finished game: an unstarted podium is held, one already playing plays on", async () => {
+  it("auto to manual on a finished game: awards always wait for the host", async () => {
     const s = setup({ manual: false });
     send(s.room, s.host, { type: "HOST_END_GAME" });
     pacing(s, "manual");
-    expect(state(s.room)).toMatchObject({ hold: { kind: "podium" }, podium: { beats: null } });
+    expect(state(s.room)).toMatchObject({ hold: { kind: "podium" }, podium: { step: -1 } });
 
     const p = setup({ manual: false });
     send(p.room, p.host, { type: "HOST_END_GAME" });
     await vi.advanceTimersByTimeAsync(LONG);
     pacing(p, "manual");
-    expect(state(p.room).hold).toBeUndefined();
-    expect(state(p.room).podium.beats).not.toBeNull();
+    expect(state(p.room).hold).toMatchObject({ kind: "podium" });
+    expect(state(p.room).podium.step).toBe(-1);
   });
 
   it("manual to auto in 擲先攻: a fresh countdown, then the room rolls", () => {
@@ -368,12 +368,12 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
   });
 
-  it("a podium step pressed while the boss cooks starts the reveal after the cooking", () => {
+  it("a podium step pressed while the boss cooks waits for the host to press after cooking", () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
     step(s);
     step(s);
-    expect(state(s.room).hold).toBeUndefined();
+    expect(state(s.room).hold).toMatchObject({ kind: "podium" });
     expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
   });
 
@@ -444,7 +444,7 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
     send(s.room, s.host, { type: "HOST_END_GAME" });
     await vi.advanceTimersByTimeAsync(LONG);
     const fin = await restored(b);
-    expect(fin.last()).toMatchObject({ hold: { kind: "podium" }, podium: { beats: null } });
+    expect(fin.last()).toMatchObject({ hold: { kind: "podium" }, podium: { step: -1 } });
     send(fin.room, fin.host, { type: "HOST_STEP", eventId: fin.last().eventId, step: fin.last().hold.id });
     expect(state(fin.room).podium.beats).not.toBeNull();
   });
@@ -469,5 +469,87 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
     pacing(s, "manual");
     const told = [...[s.host, ...s.phones].flatMap((c) => (c.send as unknown as Spy).mock.calls.map((x) => x[0] as string)), ...(s.room.room.broadcast as Spy).mock.calls.map((x) => x[0] as string)];
     expect(told.some((m) => m.includes("monsterSide"))).toBe(false);
+  });
+});
+
+describe("host-controlled turns and awards (#366)", () => {
+  it("only a current host skip moves an away team, keeping its question and scores", () => {
+    const s = setup({ manual: false });
+    const before = s.room.game!.teams[0];
+    s.room.onClose(s.phones[0]);
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
+    const msg = { type: "HOST_SKIP_TURN", teamId: T1, eventId: state(s.room).eventId };
+    send(s.room, s.phones[1], msg);
+    expect(sent(s.phones[1]).at(-1)).toMatchObject({ error: "not_host" });
+    send(s.room, s.host, { ...msg, eventId: msg.eventId + 1 });
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
+    send(s.room, s.host, msg);
+    expect(state(s.room).view.currentTurnTeamId).toBe(T2);
+    expect(s.room.game!.teams[0]).toMatchObject({ currentQuestionId: before.currentQuestionId, reward: before.reward, score: before.score });
+    expect(state(s.room).reveal).toBeNull();
+    send(s.room, s.host, msg); // buffered double click
+    expect(state(s.room).view.currentTurnTeamId).toBe(T2);
+    send(s.room, s.host, { type: "HOST_SKIP_TURN", teamId: T2, eventId: state(s.room).eventId });
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
+  });
+
+  it("a skip cannot discard a pending answer lock or its reveal", () => {
+    const s = setup({ bank: mcBank });
+    lockAndReveal(s, true);
+    const skip = () => send(s.room, s.host, { type: "HOST_SKIP_TURN", teamId: state(s.room).view.currentTurnTeamId, eventId: state(s.room).eventId });
+    skip();
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
+    expect(state(s.room).pendingLock).toBeTruthy();
+    step(s);
+    skip();
+    expect(state(s.room).pendingRoll).toBeTruthy();
+    step(s);
+    const game = s.room.game;
+    skip();
+    expect(s.room.game).toBe(game);
+    expect(state(s.room).reveal).toBeTruthy();
+  });
+
+  it.each(["flee", "switch"])("%s reveals and retires the abandoned question until the host continues", (fleeChoice) => {
+    const s = setup({ manual: false });
+    const questionId = s.room.game!.teams[0].currentQuestionId;
+    send(s.room, s.host, { type: "HOST_JUDGE", teamId: T1, questionId, correct: false, fleeChoice });
+    expect(state(s.room).reveal).toMatchObject({ questionId, answer: `答案 ${questionId}` });
+    expect(s.room.game!.revealedQuestionIds).toContain(questionId);
+    expect(s.room.game!.teams.every((t) => t.currentQuestionId !== questionId)).toBe(true);
+    const next = s.room.game;
+    send(s.room, s.host, { type: "HOST_SKIP_TURN", teamId: T2, eventId: state(s.room).eventId });
+    expect(s.room.game).toBe(next);
+    send(s.room, s.host, { type: "HOST_NEXT", eventId: state(s.room).eventId });
+    expect(state(s.room).reveal).toBeNull();
+  });
+
+  it("auto-paced awards need one host press per beat, survive restart, and ignore duplicate presses", async () => {
+    const storage = memoryStorage();
+    const s = setup({ manual: false, storage });
+    send(s.room, s.host, { type: "HOST_END_GAME" });
+    await vi.advanceTimersByTimeAsync(LONG);
+    expect(state(s.room).podium.step).toBe(-1);
+    const firstPress = { type: "HOST_STEP", eventId: state(s.room).eventId, step: state(s.room).hold.id };
+    send(s.room, s.phones[0], firstPress);
+    expect(state(s.room).podium.step).toBe(-1);
+    send(s.room, s.host, firstPress);
+    send(s.room, s.host, firstPress);
+    expect(state(s.room).podium.step).toBe(0);
+    await vi.advanceTimersByTimeAsync(LONG);
+    expect(state(s.room).podium.step).toBe(0);
+    const room = new DungeonRoom(makeIo(storage), () => 0, { bank: textBank });
+    expect(await room.restore()).toBe("restored");
+    const host = makeConn("new-host");
+    room.onConnect(host);
+    send(room, host, { type: "HOST_CLAIM", token: TOKEN });
+    const peek = () => state(room) ?? sent(host).filter((m) => m.type === "STATE").at(-1);
+    expect(peek().podium.step).toBe(0);
+    for (let i = 1; i <= peek().podium.beats.length; i++) {
+      const current = peek();
+      send(room, host, { type: "HOST_STEP", eventId: current.eventId, step: current.hold.id });
+      expect(peek().podium.step).toBe(i);
+    }
+    expect(peek().hold).toBeUndefined();
   });
 });

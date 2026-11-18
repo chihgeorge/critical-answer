@@ -262,11 +262,11 @@ describe("叉路 (branch-fork.md)", () => {
     expect(() => startForkChoice(after, "t0", 1, "left")).toThrow("no_fork");
   });
 
-  it("a choosing team keeps the turn offline; a waiting one is skipped and keeps waiting", () => {
+  it("both choosing and waiting teams keep the turn offline", () => {
     const choosing = setTeamOnline(atForkGame(), "t0", false);
     expect(currentTurnTeamId(choosing)).toBe("t0");
     const waiting = setTeamOnline(atForkGame(false), "t0", false);
-    expect(currentTurnTeamId(waiting)).toBe("t1");
+    expect(currentTurnTeamId(waiting)).toBe("t0");
     expect(team(waiting).fork).toEqual({ phase: "waiting" });
   });
 

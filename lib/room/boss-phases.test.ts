@@ -167,16 +167,19 @@ describe("boss phases in the room", () => {
     };
     await lockWrong("p1-a");
     expect(g.room.game!.boss.currentQuestionId).toBe("p1-b");
+    g.next();
     const before = g.state().eventId;
     await lockWrong("p1-b");
     // Review finding (red team, 2026-10-28): the card opened in the same tick, so the retry line was never read.
     expect(g.state()).toMatchObject({ cue: "retry", question: { id: "p1-b" } });
     expect(g.state().phaseCard).toBeUndefined();
     // Clients hear the card is coming, so an event turn's button waits for it (event-rooms review, 2026-11-08).
-    expect(g.state().phaseCardDue).toBe(true);
+    expect(g.state().reveal).toMatchObject({ questionId: "p1-b" });
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-b", optionIndex: 0 });
     expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
-    await vi.advanceTimersByTimeAsync(15_000); // the retry line read out, never past the reveal's cap
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(g.state().phaseCard).toBeUndefined();
+    g.next(); // the answer remains until the host advances
     // The first STATE of each new event: what the screens play.
     const events = g.states().filter((m, i, all) => m.eventId > before && m.eventId !== all[i - 1].eventId);
     expect(events.map((m) => [m.cue, !!m.phaseCard])).toEqual([["retry", false], ["boss-phase", true]]);
@@ -214,6 +217,7 @@ describe("boss phases in the room", () => {
       send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: id });
       g.reveal();
       await vi.advanceTimersByTimeAsync(5000);
+      if (id === "p1-a") g.next();
     }
     expect(g.state().phaseCard).toBeUndefined();
     g.next();
@@ -236,6 +240,7 @@ describe("boss phases in the room", () => {
         g.next(); // card closed; T2 is on turn
       } else {
         send(g.room, g.host, { type: "HOST_JUDGE", teamId: T1, questionId: "p1-a", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
+        g.next();
       }
       send(g.room, g.host, { type: "HOST_JUDGE", teamId: T2, questionId: g.state().view.teams[1].currentQuestionId, correct: true, eventId: g.state().eventId });
       await new Promise((r) => setTimeout(r, 0));

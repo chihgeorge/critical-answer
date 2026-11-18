@@ -129,7 +129,7 @@ export async function nextQuestion(host: Page) {
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
@@ -217,4 +217,23 @@ export function textOnlyBank(answer?: string) {
     expect(restored.ok()).toBe(true);
     original = undefined;
   });
+}
+
+/** Advances every award with host actions; timers alone must never finish the podium. */
+export async function advanceAwards(host: Page) {
+  const step = host.getByTestId("host-step");
+  await expect(step).toBeVisible();
+  await expect(async () => {
+    if (await step.isVisible() && await step.isEnabled()) await step.click();
+    await expect(step).toHaveCount(0, { timeout: 100 });
+  }).toPass({ timeout: 45000, intervals: [600] });
+}
+
+export async function advanceSocketAwards(host: WebSocket, cur: () => HostState) {
+  await expect.poll(() => cur().podium?.beats).toBeTruthy();
+  await expect.poll(() => {
+    const state = cur();
+    if (state.hold) host.send(JSON.stringify({ type: "HOST_STEP", eventId: state.eventId, step: state.hold.id }));
+    return !state.hold;
+  }, { timeout: 45000, intervals: [600] }).toBe(true);
 }

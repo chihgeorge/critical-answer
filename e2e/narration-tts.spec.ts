@@ -1,7 +1,6 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { revealMarks } from "../lib/podium";
 import type { PodiumReveal } from "../lib/protocol";
-import { answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
+import { advanceSocketAwards, answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
 import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
@@ -252,7 +251,6 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   host.onmessage = (e) => {
     const m = JSON.parse(e.data as string) as HostState & { podium?: PodiumReveal };
     if (m.type === "STATE") box.state = m;
-    if (m.type === "STATE" && m.podium?.beats) box.revealEnd = Date.now() - m.podium.elapsedMs + revealMarks(m.podium.beats).at(-1)!;
     if (m.type === "EPILOGUE") box.epilogue = true;
     if (m.type === "NARRATION") box.narration = (m as unknown as { eventId: number }).eventId;
   };
@@ -264,7 +262,7 @@ test("screen TTS: an epilogue replayed at connect is shown but never spoken", as
   await judgeToTheEnd(host, cur);
   await expect.poll(() => box.epilogue, { timeout: 15_000 }).toBe(true);
   // A screen opened mid-reveal reads the place calls (podium-reveal D20); this one opens after them.
-  await expect.poll(() => Date.now() >= box.revealEnd, { timeout: 45_000 }).toBe(true); // the titles add 2.5 s each
+  await advanceSocketAwards(host, cur);
 
   // Now open the screen, the host's 🔊 on (the default). onConnect replays the EPILOGUE with `replay: true`: it must
   // show, but must not be read aloud again.
