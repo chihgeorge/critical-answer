@@ -90,6 +90,20 @@ describe("describeTurn", () => {
     expect(t.monster.kind).toBe("dragon");
   });
 
+  it("keeps the boss, in its phase colour, through a beat that sends no question (#401)", () => {
+    const boss = { name: "深淵小黑龍", sprite: "dragon", hue: 0 } as const;
+    const t = describeTurn(view({ bossPhase: 2 }, [{ inBossPhase: true }]), null, undefined, boss);
+    expect(t.monster).toMatchObject({ kind: "dragon", name: "深淵小黑龍", hue: PHASE_HUE_STEP });
+    expect(t.bossScene).toBe(true);
+  });
+
+  it("keeps a room's monster and room through a beat, without turning it into the boss scene (#401)", () => {
+    const t = describeTurn(view({}, [{ roomIndex: 2 }]), null, undefined, pq().monster);
+    expect(t.monster).toMatchObject({ kind: "ghost", name: "害羞幽靈", hue: 40 });
+    expect(t.bossScene).toBe(false);
+    expect(t.theme).toBe("moss");
+  });
+
   it("reports how many hits the boss has taken", () => {
     expect(describeTurn(view({ bossHp: 2, bossMaxHp: 5 }), null).bossHits).toBe(3);
   });
