@@ -1170,6 +1170,21 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     expect(lastState(second.io).podium.elapsedMs).toBe(-(FINISH_PODIUM_MS - 1000));
   });
 
+  // Value: protects=the podium and phones show the killer's true score, boss dish included (#400); fails_when=the
+  // unserved-dish hiding still applies once the game is over (a finished game's boss dish is never 上菜'd);
+  // why_new=bug #400; seam=none; no_claim=the screen's drawing
+  it("after the finishing blow, STATE scores and the podium ranking use the true scores, boss dish included", async () => {
+    const { room, io } = killedBoss(memoryStorage(), () => 1_000_000);
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const live = room.game!.teams;
+    const state = lastState(io);
+    expect(state.reveal?.dish).toBeTruthy(); // the boss dish is up, never served
+    for (const t of live) expect(state.view.teams.find((s: { id: string }) => s.id === t.id).reward).toBe(t.reward);
+    // Sanity check: the ranking reads game.ranking (true scores), not the STATE view the loop above covers.
+    const best = Math.max(...live.map((t) => t.reward));
+    expect(live.find((t) => t.id === state.podium.ranking[0])!.reward).toBe(best);
+  });
+
   // Value: protects=an epilogue that throws still lets the places be called, on scripted lines (/review pass 2);
   // fails_when=the failure only logs and podiumView waits for lines forever; why_new=before the reveal a failed epilogue
   // lost only the story; seam=the runner made to reject; no_claim=what makes it throw
