@@ -148,11 +148,13 @@ test("cleric: a double-tap of 2 on the host's 祈禱 never judges the new attemp
 // 逃跑 sends 下輪再答 (same question) or 祈禱, or leaves the wait up; why_new=the tests above press 祈禱 / host 下輪再答 only;
 // seam=none; no_claim=the boss room's rotation (unit tests).
 test("cleric: the phone's 逃跑 in the wait deals a new question and spends nothing", async ({ browser }) => {
-  const { team, box } = await clericRoom(browser);
+  const { host, team, box } = await clericRoom(browser);
   const question = team.getByRole("heading", { level: 2 });
   const before = await question.textContent();
   await team.getByRole("button", { name: /^逃跑・同房/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
+  // Fleeing shows the left question's answer first (#366); 下一題 deals the new one.
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   // The new question is a new persuasion check, and it shows only once that is rolled (dnd design R6).
   await rollCheck(team);

@@ -442,7 +442,9 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await expect(host.getByTestId("host-mc-status")).toContainText("答錯！首領換一題");
   await expect(screen.getByText("紅隊答錯了！首領換一題……")).toBeVisible();
 
-  // Then the room rotates on its own: the other boss question, with no greyed option.
+  // Then the left question's answer shows (#366), and 下一題 brings the other boss question, with no greyed option.
+  await expect(screen.getByTestId("answer-reveal")).toBeVisible();
+  await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByRole("button", { name: first.next })).toBeEnabled();
   await expect(team.getByRole("button", { name: first.wrong })).toHaveCount(0);
   await expect(team.getByRole("heading", { name: first.nextQ })).toBeVisible();
