@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.92.1.0] - 2026-11-19
+
+### Changed
+- The owner's reply checks (Traditional Chinese, no questions left in the reply text) now run as a fixed-rule Stop hook script, `scripts/stop-lint.mts`, instead of three model-judged prompt hooks that kept blocking on vague "not enough evidence" verdicts.
+
 ## [0.92.0.0] - 2026-11-18
 
 ### Added
