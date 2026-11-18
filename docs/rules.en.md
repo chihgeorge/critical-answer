@@ -30,7 +30,7 @@ The host reads the question out (the question is on the big screen; the answer i
 
 ## Multiple-choice questions
 
-After a correct answer, the big screen first explains that a crit roll comes next. In manual pacing, the host presses Next Step before the die appears.
+After a correct answer, the big screen first explains that a crit roll comes next. In manual pacing, the host presses 「▶ 下一步」 (next step) before the die appears.
 
 The crit roll screen does not preview which face is a critical success. After it lands, it names the tier (critical failure, minor failure, minor success or critical success) and explains its effect on the reward and boss hearts. The host can choose 「隱藏暴擊骰」 (hide crit roll) before starting: correct multiple-choice and sort answers settle directly, with no crit die or crit bonus.
 
@@ -46,7 +46,7 @@ A **memory question** is watch first, then the question: while the question's vi
 
 ## Persuasion check
 
-After a successful check, the big screen pauses on a success card and the narration announces it before the question appears. In manual pacing, the host presses Next Step to continue.
+After a successful check, the big screen pauses on a success card and the narration announces it before the question appears. In manual pacing, the host presses 「▶ 下一步」 (next step) to continue.
 
 No boss-room phase uses a persuasion check. A fill-in question appears immediately there, and its answer clock starts when the question appears. The warrior, mage and thief can use their abilities as soon as the question is up, with no check to wait for.
 
@@ -84,7 +84,7 @@ Design in [docs/designs/timing-tap.md](designs/timing-tap.md) and [docs/designs/
 
 ## Boss scoring
 
-The final blow first shows the defeated boss and announces the defeat. In manual pacing, the host presses Next Step before the four kill dice roll.
+The final blow first shows the defeated boss and announces the defeat. In manual pacing, the host presses 「▶ 下一步」 (next step) before the four kill dice roll.
 
 Boss questions come by difficulty, easiest first (a boss question the bank gives no difficulty counts as difficulty 5 and comes last). Each hit on the boss pays by that question's difficulty: **5/10/15/20/25** reward points for difficulty 1–5; the **finishing blow** (the hit that brings the last phase's health to 0) adds 4 D20 (4–80 points). When the crit die rolls a 20, this hit gets an extra half (for example 13 more on a difficulty-5 hit of 25) and the boss loses one extra heart; the 4 D20 of the finishing blow do not change. The big screen rolls those 4 dice first (they land one by one); the points are added, and the podium shows, only after they stop.
 
