@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.2.0] - 2026-11-19
+
+### Added
+- End-to-end tests for the buzzer phase's category and type pick, the big screen's media test, uploaded and Instagram clips and their playback errors, memory and timing questions (with their bank-editor fields), and the host's room-closing warning, fixes and re-judging.
+
+## [0.103.1.1] - 2026-11-19
+
+### Changed
+- README and the hosting guide (both languages) match the current game: the home page is a title screen with a player door and a host door, a boss hit scores by the question's difficulty (5/10/15/20/25, unset counts as 3), fleeing reveals the old question's answer, a team whose phones step away keeps its turn, and the README names the four songs (title, tavern lobby, boss, victory) and when each plays. The overview screenshot is retaken with the dungeon art, and the question-bank guide now says an unset boss difficulty is 3, not 5 (#327).
+
 ## [0.103.1.0] - 2026-11-19
 
 ### Changed
