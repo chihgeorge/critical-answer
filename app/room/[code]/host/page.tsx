@@ -106,6 +106,7 @@ export default function HostPage() {
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   /** 進王門檻 for the next game: this page's pick like answerSeconds; the room keeps it in game.config once started. */
   const [bossThreshold, setBossThreshold] = useState<number>(BOSS_THRESHOLD);
+  const [hideCritRoll, setHideCritRoll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -565,7 +566,7 @@ export default function HostPage() {
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
   // A fill-in whose team has not rolled its persuasion check: no count runs, so the row offers 替○○擲骰 after 15 s.
-  const checkStuck = !isMc && !!turn?.team && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
+  const checkStuck = !isMc && !!turn?.team && !turn.inBoss && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
   const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, check: checkStuck, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
@@ -1069,6 +1070,10 @@ export default function HostPage() {
                   </label>
                   <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
                   <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    <input type="checkbox" checked={hideCritRoll} onChange={(e) => setHideCritRoll(e.target.checked)} className="h-6 w-6 accent-[var(--k)]" />
+                    隱藏暴擊骰（答對直接結算）
+                  </label>
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
                     題庫：
                     <select
                       data-testid="host-bank"
@@ -1109,7 +1114,7 @@ export default function HostPage() {
                 const noClass = lobby.filter((t) => !t.classId).length;
                 const warnings = [...(sizeWarning ? [bankSizeWarningText(sizeWarning, lobby.length)] : []), ...(noClass ? [`還有 ${noClass} 隊沒選職業（沒有技能，比較吃虧）`] : [])];
                 if (warnings.length && !window.confirm(`${warnings.join("\n")}\n確定要開始？`)) return;
-                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold });
+                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold, hideCritRoll });
               }}
             >
               開始遊戲 ▶

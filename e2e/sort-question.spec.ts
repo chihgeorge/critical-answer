@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -87,7 +87,10 @@ test("sort question: drag to order, a wrong lock marks the places, the right ord
   await sortWithKeys(team, RIGHT);
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible({ timeout: 10_000 });
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 });
   await expect(screen.getByTestId("answer-reveal")).toContainText("正解：甲 → 乙 → 丙 → 丁");
   await expect(screen.getByTestId("wall-sort-0")).toHaveAttribute("data-look", "ok");
+  // 飽足感 counts once the dish is served (#364).
+  await serveDish(host);
+  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
 });

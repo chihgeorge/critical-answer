@@ -63,12 +63,12 @@ test("crit die: a right lock shows the die on the big screen after 公布答案,
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await host.getByRole("button", { name: /公布答案/ }).click();
 
-  // After the reveal's 2 s, the crit die: nothing is judged yet.
+  // After the reveal's 2 s and the crit intro's 2 s (#364), the crit die: nothing is judged yet.
   const overlay = screen.getByTestId("roll-overlay");
-  await expect(overlay).toHaveAttribute("data-kind", "crit");
+  await expect(overlay).toHaveAttribute("data-kind", "crit", { timeout: 10_000 });
   await expect(team.getByText(/答對！暴擊骰擲出 \d+/)).toBeVisible();
   await expect(host.getByText("暴擊隊擲出了骰子…")).toBeVisible();
-  await expect(screen.getByTestId("roll-result")).toHaveText(/20 大成功！多拿一半|1 大失敗……還是打中了|\d+，答對！/);
+  await expect(screen.getByTestId("roll-result")).toHaveText(/^\d+ (大失敗|小失敗|小成功|大成功)：/); // the tier and its effect once it lands (#364)
 
   // The die's 2 s: then the room judges the answer and the overlay goes.
   await expect(overlay).toHaveCount(0, { timeout: 5000 });

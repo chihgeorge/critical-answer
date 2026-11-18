@@ -39,7 +39,8 @@ test("every phone rolls 擲先攻, the big screen shows the dice, then the first
   await expect(screen.getByTestId("initiative-result")).toHaveText("還有 2 隊沒擲");
   await expect(host.getByTestId("host-initiative")).toContainText("已擲 0／2 隊");
   await a.getByRole("button", { name: "🎲 擲骰" }).click();
-  await expect(a.getByTestId("phone-initiative")).toContainText("你們擲出 10");
+  // Faces stay hidden until every team has rolled (#364).
+  await expect(a.getByTestId("phone-initiative")).toContainText("已擲骰，等大家擲完一起公布點數");
   await expect(screen.getByTestId("initiative-result")).toHaveText("還有 1 隊沒擲");
   await expect(b.getByRole("button", { name: "🎲 擲骰" })).toBeVisible();
 

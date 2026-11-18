@@ -57,6 +57,7 @@ function started(first: object = mc("m1"), classes: (string | null)[] = [null, n
     send(room, phones[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     send(room, host, { type: "HOST_REVEAL", teamId: A, questionId: q });
     vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // correct answer introduction before the crit die
   };
   return { room, io, host, phones, dice, all, state, team, lastTo, give, drink, lockRight };
 }
