@@ -26,7 +26,7 @@ npm install
 npm run dev
 ```
 
-`npm run dev` starts both Next.js (`http://localhost:3000`) and the room server (`localhost:8787`). Open `http://localhost:3000` and press 「主持遊戲」 (Host a game) to open a room.
+`npm run dev` starts both Next.js (`http://localhost:3000`) and the room server (`localhost:8787`). Open `http://localhost:3000` to reach the game's title screen, then press 「主持遊戲」 (Host a game) behind the 「我是主持人」 (I'm the host) door to open a room.
 
 ### Let phones join (LAN playtest)
 
@@ -68,7 +68,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 | Stage | Host (laptop) | Big screen | Players (phones) |
 | --- | --- | --- | --- |
 | Before the event | Check the question bank answers, test the connection | Open the big-screen URL on the host page, test the volume | Get the phones online |
-| Gathering | On the home page, press 「主持遊戲」 (Host a game) to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code to join and picks a class |
+| Gathering | On the home page, press 「主持遊戲」 (Host a game) behind the 「我是主持人」 (I'm the host) door to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code, or types the code behind the home page's 「我是玩家」 (I'm a player) door, then picks a class |
 | Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 7-page how-to-play intro, then shows the initiative roll's order | Watch the big screen, then roll initiative on the phone |
 | Each question | Multiple choice and sort: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; sort: drag the items into order, then lock; fill-in: roll persuasion first, then type |
 | Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue (when a boss with a dish falls, the boss is cooked and served first) | See who has the most reward points |
@@ -77,9 +77,9 @@ The big-screen URL is at the top of the host page. For keyboard controls, switch
 
 ## The rules in one minute
 
-- **Take turns**: at the start each team rolls a d20 on its phone (initiative roll); the highest goes first, and the teams answer in that order all game. Each room has one monster; answer correctly to defeat it, earn reward points and move into the next room.
-- **Wrong answer**: choose 「下輪再答」 (answer next round: the next team goes first, then this team answers the same question again), or flee to swap it for one a level easier: 「逃跑・同房」 (Flee, same room) keeps the same monster, 「逃跑・換房」 (Flee, switch room) brings another monster (the progress does not change).
-- **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit is worth 10 points, and the final blow adds 4 d20s.
+- **Take turns**: at the start each team rolls a d20 on its phone (initiative roll); the highest goes first, and the teams answer in that order all game (a team whose phones step away keeps its turn; the host decides whether to skip it). Each room has one monster; answer correctly to defeat it, earn reward points and move into the next room.
+- **Wrong answer**: choose 「下輪再答」 (answer next round: the next team goes first, then this team answers the same question again), or flee to swap it for one a level easier: 「逃跑・同房」 (Flee, same room) keeps the same monster, 「逃跑・換房」 (Flee, switch room) brings another monster (the progress does not change). Fleeing reveals the old question's answer on the big screen, and that question does not come back this game (unless the bank runs short).
+- **Boss room**: once the progress points from correct answers reach 15, you enter the boss room; after one team goes in, every other team follows on its next correct answer. The boss's HP is shared; each hit scores by the question's difficulty (difficulty 1–5 gives 5/10/15/20/25 points; a question with no difficulty counts as 3), and the final blow adds 4 d20s.
 - **Dice**: a correct multiple-choice or sort answer rolls a crit die; a 20 gives half the reward points again. A fill-in question starts with a persuasion check: the question shows only after the roll, and a pass shows the first character of the answer. The default question bank is all multiple choice, so no persuasion checks are rolled.
 - **Classes**: the Warrior rolls dice instead of answering, the Mage removes wrong options, reveals the first character or a sort question's first item, the Cleric answers again after a wrong answer, the Thief's sneak attack gives 1.5× the reward points for that question, and the Chef (passive) has a die scale its reward up or down on a correct answer. Every ability use rolls a d20: 1 critical failure, 2–6 small failure, 7–19 success, 20 critical success. No class ability works in the boss buzzer phase.
 - **Winning**: the team with the most reward points wins; a tie in the top three is settled by rolling d20s. The team that defeats the boss is not always the champion.
@@ -100,7 +100,7 @@ Design records are in [docs/designs/](docs/designs/), pixel design rules in [DES
 
 ## Roadmap
 
-Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, five classes, crit die, persuasion checks, monsters into dishes, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
+Done: big screen, question bank and question bank editor, scripted and AI narration, voice narration, sound effects and background music, live map, five classes, crit die, persuasion checks, monsters into dishes, the boss buzzer phase and timing questions, the title-screen home page, production deployment. The next focus is the **second live playtest**: checking whether, with atmosphere added, the game is more fun than the first round. Full designs are in [docs/designs/critical-answer-iteration-2.md](docs/designs/critical-answer-iteration-2.md) (second round) and [docs/designs/critical-answer-party-game.md](docs/designs/critical-answer-party-game.md) (first round).
 
 ## License
 
