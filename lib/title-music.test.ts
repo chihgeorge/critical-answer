@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { TITLE_THEME } from "./bgm";
 import { TITLE_MUSIC_KEY, titleMusic } from "./title-music";
 
-function setup(stored: string | null) {
+function setup(stored: string | null, defaultOn?: boolean) {
   const p = { setSong: vi.fn(), start: vi.fn(async () => {}), stop: vi.fn(), unlock: vi.fn(async () => {}), running: vi.fn(() => true) };
   const store = new Map<string, string>(stored ? [[TITLE_MUSIC_KEY, stored]] : []);
   const player = vi.fn(() => p);
-  const m = titleMusic(player, (k) => store.get(k) ?? null, (k, v) => void store.set(k, v));
+  const m = titleMusic(player, (k) => store.get(k) ?? null, (k, v) => void store.set(k, v), defaultOn);
   return { m, p, player, store };
 }
 
@@ -48,5 +48,15 @@ describe("titleMusic: the home page's title song", () => {
     expect(store.get(TITLE_MUSIC_KEY)).toBe("off");
     m.gesture();
     expect(p.start).toHaveBeenCalledTimes(1);
+  });
+
+  it("on a phone it starts off until switched on, but a stored choice wins either way", () => {
+    const phone = setup(null, false);
+    expect(phone.m.on()).toBe(false);
+    phone.m.gesture();
+    expect(phone.player).not.toHaveBeenCalled();
+    expect(setup("on", false).m.on()).toBe(true);
+    expect(setup("off", true).m.on()).toBe(false);
+    expect(setup(null, true).m.on()).toBe(true);
   });
 });

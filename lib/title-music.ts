@@ -12,9 +12,12 @@ interface Player {
   running(): boolean;
 }
 
-/** `player` is called only inside a gesture, so the AudioContext is never created before one. */
-export function titleMusic(player: () => Player, read: (key: string) => string | null, write: (key: string, value: string) => void) {
-  let on = read(TITLE_MUSIC_KEY) !== "off";
+/** `player` is called only inside a gesture, so the AudioContext is never created before one. `defaultOn` is the
+ * state before this browser has a stored choice: off on phones (players join from this page, and every phone playing
+ * its own copy over the big screen is noise), on elsewhere. A stored choice always wins. */
+export function titleMusic(player: () => Player, read: (key: string) => string | null, write: (key: string, value: string) => void, defaultOn = true) {
+  const stored = read(TITLE_MUSIC_KEY);
+  let on = stored === null ? defaultOn : stored !== "off";
   let started = false;
   let made: Player | null = null;
   function play() {

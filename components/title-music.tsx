@@ -14,7 +14,9 @@ export function TitleMusic() {
   useEffect(() => {
     if (!("AudioContext" in window)) return;
     let player: BgmPlayer | null = null;
-    const c = titleMusic(() => (player ??= createBgmPlayer()), readStored, writeStored);
+    // A phone (a touch screen as its main pointer, or a narrow window) starts with the music off.
+    const phone = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768;
+    const c = titleMusic(() => (player ??= createBgmPlayer()), readStored, writeStored, !phone);
     ctl.current = c;
     // localStorage is read after mount, never in render (lib/stored.ts). A named function, not the effect body
     // itself: react-hooks/set-state-in-effect (as in app/bank-editor/page.tsx).
