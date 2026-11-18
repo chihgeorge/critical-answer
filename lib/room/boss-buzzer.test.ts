@@ -138,6 +138,18 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.buzz).toMatchObject({ teamId: IDS[1], out: [] });
   });
 
+  it("a buzzing phone that drops after sending its answer keeps the buzz; the host still judges it (#368)", () => {
+    const g = buzzerGame();
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "晴天", eventId: g.state().eventId });
+    g.room.onClose(g.phones[1]);
+    expect(g.state()).toMatchObject({ media: { state: "paused" }, view: { buzz: { teamId: IDS[1] } } });
+    expect(g.state().view.teams[1].typedAnswer).toBe("晴天");
+    g.judge(IDS[1], false);
+    expect(g.state().view.buzz.out).toContain(IDS[1]);
+  });
+
   it("the buzzing phone drops: the music it stopped plays on; a pause the host chose stays through a wrong buzz", () => {
     const g = buzzerGame();
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
@@ -256,16 +268,16 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().view.buzz.teamId).toBe(IDS[1]);
   });
 
-  it("the team that buzzed may type its answer for the host; nobody else may (boss-music-buzzer.md M2)", () => {
+  it("the team that buzzed publishes its submitted answer immediately; nobody else may (boss-music-buzzer.md M2)", () => {
     const g = buzzerGame(text);
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: "早到", eventId: g.state().eventId });
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "no_buzz" });
     g.buzz(1);
     send(g.room, g.phones[1], { type: "TEAM_SUBMIT_TEXT", questionId: "b-a", text: " 麻辣鮮師 ", eventId: g.state().eventId });
-    // Host only (multi-field.md E4): STATE, which every phone gets, says only that it was sent.
-    expect(g.state().view.teams[1].typedAnswer).toBe("");
-    expect(JSON.stringify(g.state())).not.toContain("麻辣鮮師");
+    expect(g.state().view.teams[1].typedAnswer).toBe("麻辣鮮師");
     expect(g.lastHostAnswer()).toMatchObject({ typed: { teamId: IDS[1], text: "麻辣鮮師" } });
+    g.judge(IDS[1], false);
+    expect(g.state().view.teams[1].typedAnswer).toBeNull();
   });
 
   // Value: protects=a game ended mid-buzz keeps the typed answer out of STATE (multi-field.md E4); fails_when=the
@@ -344,7 +356,7 @@ describe("buzzer boss phase in the room", () => {
     submit([" 晴天 ", ""]);
     expect(g.lastHostAnswer()).toMatchObject({ typed: { teamId: IDS[1], text: "晴天／—", fields: ["晴天", ""] } });
     expect(g.state().view.teams[1].typedFields).toBeUndefined();
-    expect(JSON.stringify(g.state())).not.toContain("晴天");
+    expect(g.state().view.teams[1].typedAnswer).toBe("晴天／—");
   });
 
   it("half the fields right is a hit scaled by half; the reveal marks each field (multi-field.md F6, F7)", () => {

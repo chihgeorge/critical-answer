@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { SORT_ORDERS, sortCode, sortOrderOf, sortSlots } from "./sort-order";
+import { initialSortOrder, sortAnswer, SORT_ORDERS, sortCode, sortOrderOf, sortSlots } from "./sort-order";
 
 // Value: protects=a sort order and its one-number pick round-trip, and per-place marks follow the game's shown order;
 // fails_when=two orders share a code, a code decodes to another order, or marks compare shown instead of bank indices;
@@ -21,5 +21,20 @@ describe("sort-order", () => {
     // Fails closed: a code that is no order is never all right.
     expect(sortSlots(24)).toEqual([false, false, false, false]);
     expect(sortSlots(-1)).toEqual([false, false, false, false]);
+  });
+});
+
+describe("public sort answers", () => {
+  const items = ["D", "B", "A", "C"];
+  it("starts letter items at ABCD while preserving public indices", () => {
+    expect(initialSortOrder(items)).toEqual([2, 1, 3, 0]);
+    expect(sortAnswer(items, sortCode(initialSortOrder(items)))).toBe("A → B → C → D");
+    expect(initialSortOrder(["魚", "肉", "菜", "蛋"])).toEqual([0, 1, 2, 3]);
+  });
+  it("keeps a saved attempt and displays exactly its submitted order", () => {
+    const code = sortCode([1, 0, 3, 2]);
+    expect(initialSortOrder(items, code)).toEqual([1, 0, 3, 2]);
+    expect(sortAnswer(items, code)).toBe("B → D → C → A");
+    expect(sortAnswer(items, -1)).toBe("");
   });
 });
