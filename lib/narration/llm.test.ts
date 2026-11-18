@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { createLlmProvider, buildPrompt, CROWD_RULE, NARRATION_MODEL, EPILOGUE_MODEL } from "./llm";
-import { MAX_MODEL_LINE } from "./runner";
+import { MAX_MODEL_LINE, PROMPT_MODEL_LINE } from "./runner";
 import { NarrationError } from "./errors";
 import type { NarrationEvent } from "./events";
 
@@ -227,7 +227,7 @@ describe("prompt", () => {
     const { system } = buildPrompt(event, []);
     expect(system).toMatch(/貓頭鷹/);
     expect(system).toMatch(/不要.*喵/);
-    expect(system).toMatch(/最多 34 個字/);
+    expect(system).toMatch(/最多 24 個字/);
   });
 
   it("tells the model to say boss health as hearts left, never as a fraction or percentage", () => {
@@ -271,7 +271,7 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
     const { system } = buildPrompt(ordinary, []);
     expect(system).toMatch(/兩行/);
     expect(system).not.toMatch(/三行|氣氛/);
-    expect(system).toMatch(new RegExp(`第一行[^。]*最多 ${MAX_MODEL_LINE} 個字`));
+    expect(system).toMatch(new RegExp(`第一行[^。]*最多 ${PROMPT_MODEL_LINE} 個字`));
     expect(system).toMatch(/第二行：轉向下一隊/);
   });
 
@@ -555,7 +555,7 @@ describe("prompt: 美食節目／生物學家口吻", () => {
     expect(system).toContain("最後一句如果已經在講吃，這次就都不要講吃");
     expect(system).toContain("不要自己取菜名");
     // The length rules are untouched.
-    expect(system).toMatch(/第一行[^。]*最多 34 個字/);
+    expect(system).toMatch(/第一行[^。]*最多 24 個字/);
     expect(system).toContain("不超過 20 個字");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆" }, []).system).toContain("大約三成的句子");
   });
@@ -585,7 +585,7 @@ describe("prompt: 觀眾反應", () => {
     const { system, user } = buildPrompt(loud, []);
     expect(system).toContain(CROWD_RULE);
     expect(system).toContain("不要說反應會影響分數或輪到誰，不要暗示反應是在針對答對或答錯，也不要提題目或答案");
-    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 34 個字。第三行：轉向下一隊/);
+    expect(system).toMatch(/輸出三行[^]*第二行：說一句台下的觀眾反應，要寫出事件裡「觀眾反應」那一隊的名字，最多 24 個字。第三行：轉向下一隊/);
     expect(system).not.toContain("藍莓請忽略");
     expect(system).toContain("不超過 20 個字");
     expect(user).toContain("觀眾反應：等待中的隊伍「藍莓請忽略」這回合在台下噓聲連連。");

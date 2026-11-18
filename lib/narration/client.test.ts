@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { editedLine, firstChange, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue } from "./client";
+import { boxLine, editedLine, firstChange, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue } from "./client";
 
 describe("narration on a reveal", () => {
   it("shows only the result before the host advances, not the ingredient narration", () => {
@@ -11,6 +11,21 @@ describe("narration on a reveal", () => {
     expect(narrationCanSpeak(4, 4, false, true)).toBe(false);
     expect(narrationCanSpeak(5, 4, false, false)).toBe(false);
     expect(narrationCanSpeak(4, 4, false, false)).toBe(true);
+  });
+});
+
+describe("boxLine (#365)", () => {
+  // Value: protects=the words on screen are the words heard, and a hidden tab keeps up with the room; fails_when=the box types on its own clock under the voice
+  it("follows the voice's line, never goes back, and stops at the last line", () => {
+    expect(boxLine(0, 3, undefined, false)).toBe(0);
+    expect(boxLine(0, 3, 2, false)).toBe(2);
+    expect(boxLine(2, 3, 1, false)).toBe(2);
+    expect(boxLine(0, 3, 5, false)).toBe(2);
+  });
+  it("shows the last line at once on a hidden tab", () => {
+    expect(boxLine(0, 3, undefined, true)).toBe(2);
+    expect(boxLine(0, 3, 0, true)).toBe(2);
+    expect(boxLine(0, 0, undefined, true)).toBe(0);
   });
 });
 

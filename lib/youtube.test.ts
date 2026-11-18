@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeThumbnailUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
+import { clipEndForStage, fileTestError, youtubeTestError, extractYoutubeId, youtubeEmbedUrl, youtubeThumbnailUrl, youtubeWatchUrl, playerSteps, clipStatusFromYoutube, parseClipTime, formatClipTime, hostMediaStatus, hostBuzzWait, resendClipError, clipStopAt, END_SCREEN_GUARD_S, pickZhCaption, syncZhCaptions, shouldSeek, type CaptionPlayer } from "./youtube";
 
 it("uses the public YouTube thumbnail for a timing song", () => {
   expect(youtubeThumbnailUrl("dQw4w9WgXcQ")).toBe("https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg");
@@ -93,7 +93,7 @@ describe("extractYoutubeId", () => {
 
 describe("youtubeEmbedUrl", () => {
   it("builds a youtube-nocookie.com embed URL from a video id", () => {
-    expect(youtubeEmbedUrl("dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&iv_load_policy=3");
   });
 });
 
@@ -113,9 +113,9 @@ describe("youtubeTestError (screen-media-test.md)", () => {
 
 describe("youtubeEmbedUrl with a clip", () => {
   it("adds start and end only when given", () => {
-    expect(youtubeEmbedUrl("dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
-    expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, 30)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=5&end=30");
-    expect(youtubeEmbedUrl("dQw4w9WgXcQ", undefined, 30)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?end=30");
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&iv_load_policy=3");
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, 30)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&iv_load_policy=3&start=5&end=30");
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ", undefined, 30)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&iv_load_policy=3&end=30");
   });
 });
 
@@ -216,7 +216,7 @@ describe("pickZhCaption (youtube-questions.md 公布答案後的中文字幕)", 
 
 describe("youtubeEmbedUrl with Chinese captions", () => {
   it("adds the caption hints and the JS API only when asked", () => {
-    expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, undefined, true)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?start=5&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW");
+    expect(youtubeEmbedUrl("dQw4w9WgXcQ", 5, undefined, true)).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?rel=0&iv_load_policy=3&start=5&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW");
   });
 });
 
@@ -263,5 +263,14 @@ describe("syncZhCaptions (youtube-questions.md 公布答案後的中文字幕)",
     expect(syncZhCaptions(broken, true)).toBe(false);
     expect(syncZhCaptions(broken, false)).toBe(false);
     expect(syncZhCaptions({}, true)).toBe(false);
+  });
+});
+
+describe("clipStopAt (#365)", () => {
+  // Value: protects=YouTube's end screen of other videos never shows on the big screen; fails_when=a reveal with no clip end plays to the video's end
+  it("stops at the clip's end, else just before the video's own end once its length is known", () => {
+    expect(clipStopAt(30, 200)).toBe(30);
+    expect(clipStopAt(undefined, 200)).toBe(200 - END_SCREEN_GUARD_S);
+    expect(clipStopAt(undefined, 0)).toBeUndefined();
   });
 });

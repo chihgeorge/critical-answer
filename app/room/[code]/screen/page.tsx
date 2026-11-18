@@ -3,7 +3,7 @@
 // The shared big screen. Public: it only ever receives the spectator view and
 // never a host-only message, so it can be cast to a TV without leaking answers.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { useParams } from "next/navigation";
 import { REST_NOTICE, RESTED_RECONNECT_LABEL } from "@/lib/room/close-codes";
 import { useRoomSocket } from "@/lib/use-room-socket";
@@ -321,7 +321,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null } }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -870,7 +870,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -1338,6 +1338,8 @@ export default function ScreenPage() {
    * (not all queued at once) so a host edit can swap a later line, or restart from the edited one (D13).
    * `eventId` is the narration's, or null for any other line (intro, 上菜, epilogue). */
   const speech = useRef<{ lines: string[]; at: number; eventId: number | null; utter: SpeechSynthesisUtterance | null } | null>(null);
+  /** The narration line the voice is reading, for the dialogue box to show the same line (#365). */
+  const [voiceAt, setVoiceAt] = useState<{ eventId: number; at: number } | null>(null);
 
   function speakAt(q: NonNullable<typeof speech.current>) {
     if (speech.current !== q || !ttsVoice) return;
@@ -1345,6 +1347,7 @@ export default function ScreenPage() {
       speech.current = null;
       return;
     }
+    setVoiceAt(q.eventId === null ? null : { eventId: q.eventId, at: q.at });
     const utter = new SpeechSynthesisUtterance(q.lines[q.at]);
     utter.voice = ttsVoice;
     utter.lang = ttsVoice.lang;
@@ -1385,6 +1388,27 @@ export default function ScreenPage() {
     speech.current = q;
     speakAt(q);
   }
+
+  /** The tab is in front again (#365): a hidden tab's throttled timers can leave the voice on a line the room has moved
+   * past (dropped), or stalled on one that never ended (read again from there). */
+  const onTabShown = useEffectEvent(() => {
+    const q = speech.current;
+    if (document.hidden || !q || !ttsSupported()) return;
+    if (q.eventId !== null && q.eventId < latestSceneId.current) {
+      speech.current = null; // before cancel(): see speakAt's guard
+      setVoiceAt(null);
+      window.speechSynthesis.cancel();
+    } else if (!window.speechSynthesis.speaking) {
+      q.utter = null;
+      window.speechSynthesis.cancel();
+      speakAt(q);
+    }
+  });
+  useEffect(() => {
+    const on = () => onTabShown();
+    document.addEventListener("visibilitychange", on);
+    return () => document.removeEventListener("visibilitychange", on);
+  }, []);
 
   // --- How far this screen has read the narration (host-narration-edit.md D3, D11, D14) ---
   /** typed: lines finished typing. spoken: lines finished speaking, or null when the voice isn't reading it.
@@ -1557,6 +1581,7 @@ export default function ScreenPage() {
       window.speechSynthesis.cancel();
       pendingLines.current = null;
       speech.current = null;
+      setVoiceAt(null);
     } else if (!playing && !revealUp.current) {
       const waiting = deferredNarration.current;
       if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
@@ -1670,6 +1695,7 @@ export default function ScreenPage() {
     }
     if (!voiceWasOn || next.voice || !ttsSupported()) return; // only when 🔊 turns off, not on every STATE
     speech.current = null; // before cancel(): see speakAt's guard
+    setVoiceAt(null);
     window.speechSynthesis.cancel();
     pendingLines.current = null;
     if (progress.current) progress.current.spoken = null;
@@ -1908,6 +1934,7 @@ export default function ScreenPage() {
           sfxSeen.current = null;
           pendingLines.current = null;
           speech.current = null;
+          setVoiceAt(null);
           progress.current = null;
           window.speechSynthesis?.cancel();
           break;
@@ -1932,6 +1959,7 @@ export default function ScreenPage() {
           if (deferredNarration.current && deferredNarration.current.eventId < msg.eventId) deferredNarration.current = null;
           if (msg.reveal && !revealUp.current) {
             speech.current = null;
+            setVoiceAt(null);
             pendingLines.current = null;
             if (ttsSupported()) window.speechSynthesis.cancel();
           }
@@ -2127,7 +2155,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

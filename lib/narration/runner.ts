@@ -11,6 +11,9 @@ import { MAX_TITLE, MAX_TITLE_REASON, parseTitle } from "../podium";
 export const MAX_LINE = 50;
 /** An AI result, atmosphere or handoff line: enough room for a team and a complete short sentence. */
 export const MAX_MODEL_LINE = 34;
+/** What the prompt asks for. The model often overshoots a stated cap, and a 22-character ask held at 22 sent 18 of 41
+ * lines in one game back to the scripted line (#365): the ask stays well under the hard cap. */
+export const PROMPT_MODEL_LINE = 24;
 /** 2 s timed out 3 of 21 lines in a real game (answers took up to 1.9 s once every line has two parts). */
 export const DEFAULT_HOLD_MS = 3000;
 export const DEFAULT_EPILOGUE_HOLD_MS = 15000;

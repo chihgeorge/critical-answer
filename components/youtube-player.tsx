@@ -10,7 +10,7 @@
 // broken video costs a turn at an event.
 
 import { useEffect, useRef, useState } from "react";
-import { CLIP_STATUS_TEXT, clipStatusFromYoutube, loadCaptions, playerSteps, shouldSeek, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
+import { CLIP_STATUS_TEXT, clipStatusFromYoutube, clipStopAt, loadCaptions, playerSteps, shouldSeek, syncZhCaptions, ZH_CAPTION_VARS, type CaptionPlayer, type ClipStatus, type MediaWant } from "@/lib/youtube";
 
 interface YTPlayer extends CaptionPlayer {
   playVideo(): void;
@@ -18,6 +18,7 @@ interface YTPlayer extends CaptionPlayer {
   mute(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  getDuration(): number;
   destroy(): void;
 }
 interface YTNamespace {
@@ -192,6 +193,7 @@ export function YoutubePlayer({
             controls: controls ? 1 : 0,
             disablekb: controls ? 0 : 1,
             rel: 0,
+            iv_load_policy: 3,
             // YouTube can still show same-channel related videos and its own overlays; the API has no share switch.
             playsinline: 1,
           },
@@ -303,10 +305,11 @@ export function YoutubePlayer({
 
   // The clip ends by the video's own clock, not a timer, so buffering never cuts it short (eng review).
   useEffect(() => {
-    if (status !== "playing" || end === undefined) return;
+    if (status !== "playing") return;
     const timer = setInterval(() => {
       const p = player.current;
-      if (!p || p.getCurrentTime() < end) return;
+      const stop = p ? clipStopAt(end, p.getDuration()) : undefined;
+      if (!p || stop === undefined || p.getCurrentTime() < stop) return;
       ended.current = true;
       p.pauseVideo();
       setStatus("ended");
