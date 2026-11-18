@@ -363,6 +363,8 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
+  /** The host can resolve correct choice and sort answers without a crit die. */
+  hideCritRoll?: boolean;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -2639,6 +2641,8 @@ export interface SpectatorView {
   }[];
   /** The score that opens the boss room (GameConfig). Absent from older servers: DEFAULT_GAME_CONFIG's. */
   bossThreshold?: number;
+  /** The host disabled the correct-answer crit die for this game. */
+  hideCritRoll?: true;
   bossHp: number;
   bossMaxHp: number;
   /** This game's boss as the map strip draws it (the room's bossLook: drawn, or the bank's). Absent from an older server. */
@@ -2707,6 +2711,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(oracleActive(game, t.id) ? { oracle: true as const } : {}),
     })),
     bossThreshold: game.config.bossThreshold,
+    ...(game.config.hideCritRoll ? { hideCritRoll: true as const } : {}),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossPhase: game.boss.phaseIndex + 1,

@@ -104,6 +104,8 @@ describe("手動停頓: the switch", () => {
     lockAndReveal(s, true);
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).stageBeat).toBe("crit-intro");
+    vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
     vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).reveal).not.toBeNull();
@@ -133,6 +135,8 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
+    expect(state(s.room)).toMatchObject({ stageBeat: "crit-intro", hold: { kind: "crit-intro" }, pendingRoll: null });
+    step(s);
     expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: { kind: "crit" }, hold: { kind: "roll" }, reveal: null });
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).reveal).toBeNull();
@@ -150,7 +154,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     press(eventId, hold.id);
     press(eventId, hold.id); // the double press: the die's step has another id
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "crit" }, reveal: null });
+    expect(state(s.room)).toMatchObject({ stageBeat: "crit-intro", pendingRoll: null, reveal: null });
     expect(state(s.room).hold.id).not.toBe(hold.id);
   });
 
@@ -225,7 +229,9 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
   it("the kill's 4d20, then the podium: the reveal waits though its lines are in", async () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing" });
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, hold: { kind: "kill-defeated" } });
+    step(s);
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phase).toBe("playing");
     step(s);
@@ -259,6 +265,8 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(BEAT_MS - 1);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     vi.advanceTimersByTime(1);
+    expect(state(s.room).stageBeat).toBe("crit-intro");
+    vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
   });
 
@@ -313,6 +321,7 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
+    step(s);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
 
     const f = setup({ manual: false });
@@ -331,6 +340,8 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     const id = (s.room as any).steps.get("lock").id;
     send(s.room, s.host, { type: "HOST_STEP", eventId: state(s.room).eventId, step: id });
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
+    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).stageBeat).toBe("crit-intro");
     vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
   });
@@ -363,6 +374,7 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
     step(s);
+    step(s);
     pacing(s, "auto");
     await vi.advanceTimersByTimeAsync(0);
     expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
@@ -371,6 +383,7 @@ describe("手動停頓: review cases (2026-11-09)", () => {
   it("a podium step pressed while the boss cooks waits for the host to press after cooking", () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
+    step(s);
     step(s);
     step(s);
     expect(state(s.room).hold).toMatchObject({ kind: "podium" });
@@ -482,6 +495,54 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
   });
 });
 
+describe("#364: 飽足感 waits for 上菜", () => {
+  it("the stage shows the answer's 飽足感 only once the dish is served", () => {
+    const s = setup();
+    const t = s.room.game!.teams[0];
+    send(s.room, s.host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true, eventId: state(s.room).eventId });
+    const before = state(s.room);
+    expect(before.reveal.dish).toBeTruthy();
+    expect(before.view.teams[0].reward).toBe(0);
+    expect(s.room.game!.teams[0].reward).toBe(10); // scored when judged, shown later
+    send(s.room, s.host, { type: "HOST_SERVE", eventId: before.eventId });
+    expect(state(s.room).view.teams[0].reward).toBe(10);
+  });
+});
+
+describe("#364: beats that hold the turn", () => {
+  // Value: protects=a kill judged at once with the crit die hidden keeps its team on turn when its phone dropped during the
+  // lock (/review); fails_when=resolveLock syncs the team offline and resolveRoll drops the kill as "turn moved on"
+  it("hidden crit die: a phone that dropped during the lock still lands the kill", () => {
+    const s = setup({ bank: mcBank, teams: 2 });
+    const g = s.room.game!;
+    s.room.game = { ...g, config: { ...g.config, hideCritRoll: true }, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1 } };
+    const turn = s.room.game.turnOrder[s.room.game.currentTurnIndex];
+    const phone = s.phones[[T1, T2].indexOf(turn)];
+    const id = s.room.game.boss.currentQuestionId!;
+    send(s.room, phone, { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: s.room.game.optionOrder[id].indexOf(1) });
+    send(s.room, phone, { type: "TEAM_LOCK_OPTION", questionId: id });
+    send(s.room, s.host, { type: "HOST_REVEAL", teamId: turn, questionId: id });
+    s.room.onClose(phone);
+    step(s); // the lock's beat: judged at once, no crit die
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", hold: { kind: "kill-defeated" } });
+    step(s); // the defeat beat, then the 4d20
+    step(s);
+    expect(s.room.game!.phase).toBe("finished");
+    expect(s.room.game!.boss.hp).toBe(0);
+  });
+
+  it("a passed check holds its beat in manual until 下一步, then the question shows", () => {
+    const s = setup({ teams: 1, fixedDie: 18 });
+    send(s.room, s.phones[0], { type: "TEAM_ROLL_CHECK", questionId: s.room.game!.teams[0].currentQuestionId, eventId: state(s.room).eventId });
+    step(s); // the check die's beat
+    expect(state(s.room)).toMatchObject({ stageBeat: "check-success", hold: { kind: "check-success" }, question: null });
+    step(s);
+    expect(state(s.room).stageBeat).toBeUndefined();
+    expect(state(s.room).hold).toBeUndefined();
+    expect(state(s.room).question.id).toBe(s.room.game!.teams[0].currentQuestionId);
+  });
+});
+
 describe("host-controlled turns and awards (#366)", () => {
   it("only a current host skip moves an away team, keeping its question and scores", () => {
     const s = setup({ manual: false });
@@ -510,6 +571,10 @@ describe("host-controlled turns and awards (#366)", () => {
     skip();
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     expect(state(s.room).pendingLock).toBeTruthy();
+    step(s);
+    skip(); // the crit intro (#364) holds the turn too
+    expect(state(s.room).stageBeat).toBe("crit-intro");
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     step(s);
     skip();
     expect(state(s.room).pendingRoll).toBeTruthy();

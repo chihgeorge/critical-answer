@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TIER_LABELS, WARRIOR_TARGET, skillTier } from "@/lib/game-state";
-import { answerEffect, clericEffect, mageEffect, warriorEffect, type CastOn } from "@/lib/class-dice";
+import { answerEffect, clericEffect, critEffect, mageEffect, warriorEffect, type CastOn } from "@/lib/class-dice";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
 import { ROW_NAMES } from "@/lib/podium";
@@ -39,11 +39,15 @@ const TUMBLE_MS = 1200;
  * 改成答對. Every class die, and a crit die with a reader, lands red on 1–6, plain on 7–19 and gold on 20. Keyed by the caller per roll, so every roll
  * tumbles again. `values`: a 🧪 potion's two dice (lucky-potion.md D10), tumbling and landing together; `value` is the
  * higher, and a tie shows both as kept. */
-export function RollOverlay({ teamName, value, values, kind = "warrior", critable = false, bonus = 0, dc = 0, castOn = "multipleChoice", reader, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "crit" | "check" | "mage" | "cleric" | "answer"; critable?: boolean; bonus?: number; dc?: number; castOn?: CastOn; reader?: "chef" | "thief"; rejudge?: boolean }) {
-  const [face, setFace] = useState<number | null>(null);
+export function RollOverlay({ teamName, value, values, kind = "warrior", critable = false, boss = false, bonus = 0, dc = 0, castOn = "multipleChoice", reader, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "crit" | "check" | "mage" | "cleric" | "answer"; critable?: boolean; boss?: boolean; bonus?: number; dc?: number; castOn?: CastOn; reader?: "chef" | "thief"; rejudge?: boolean }) {
+  // Start covered: the winning face and tier must not flash before the tumble effect mounts.
+  const [face, setFace] = useState<number | null>(1);
   useEffect(() => {
     // Reduced motion: no face flicker either (the CSS tumble already stops), the die shows its value at once.
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      const land = setTimeout(() => setFace(null), 0);
+      return () => clearTimeout(land);
+    }
     const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
     const land = setTimeout(() => {
       clearInterval(tick);
@@ -61,14 +65,14 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
   // A crit die a chef or armed thief reads is coloured and tiered like a fill-in's answer die (#346).
   const classDie = kind === "mage" || kind === "cleric" || kind === "answer" || (kind === "crit" && !!reader);
   const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : classDie ? skillTier(value) >= 2 : crit ? value !== 1 : value >= WARRIOR_TARGET;
-  const tier = `${value} ${TIER_LABELS[skillTier(value)]}`;
+  const tier = `${value} ${crit ? (value === 1 ? "大失敗" : value <= 6 ? "小失敗" : value === 20 ? "大成功" : "小成功") : TIER_LABELS[skillTier(value)]}`;
   const read = answerEffect(reader, value);
   const result = classDie
     ? kind === "mage"
       ? `${tier}：${mageEffect(castOn, value)}`
       : kind === "cleric"
         ? `${tier}：${clericEffect(value)}`
-        : `${tier}：${crit && reader === "chef" && value === 20 ? "多拿一半，" : ""}${read ?? "答對！"}`
+        : `${tier}：${crit && reader === "chef" && value === 20 ? "獎勵多一半，" : ""}${read ?? "答對！"}${crit && boss && value === 20 ? "、首領多扣 1 顆愛心" : ""}`
     : check
     ? value === 20
       ? "20！說服成功，免答"
@@ -76,7 +80,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
         ? "1……說服失敗，答對只拿一半"
         : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} 擲骰檢定 ${dc}${hit ? " 過了！" : " 沒過"}`
     : crit
-    ? (value === 20 ? "20 大成功！多拿一半" : value === 1 ? "1 大失敗……還是打中了" : `${value}，答對！`)
+    ? critEffect(value, boss)
     : warriorEffect(value);
   const chip = classDie && !crit
     ? kind === "mage"
@@ -89,7 +93,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
     : check
       ? `🗣️ ${teamName} 說服：d20 + ${bonus}，擲骰檢定 ${dc}`
       : crit
-        ? `✨ ${teamName} 答對！擲暴擊骰，20 是大成功`
+        ? `✨ ${teamName} 答對！擲暴擊骰`
         : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就算答對`;
   const potion = values && values.length > 1 ? values : null;
   return (
@@ -266,7 +270,7 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
   const name = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
   const tie = ini.order && beat < ties.length ? ties[beat] : null;
   const ids = tie ? tie.teams : (ini.order ?? teams.map((t) => t.id));
-  const value = (id: string, i: number) => (tie ? tie.values[i] : ini.rolls[id]);
+  const value = (id: string, i: number) => (tie ? tie.values[i] : ini.order ? ini.rolls[id] : undefined);
   const size = ids.length <= 4 ? 150 : 90;
   const left = ids.filter((id) => ini.rolls[id] === undefined).length;
   const chip = tie
@@ -288,7 +292,7 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
         {ids.map((id, i) => {
           const v = value(id, i);
           return (
-            <div key={id} className="flex flex-col items-center gap-2" style={v === undefined ? { opacity: 0.45 } : undefined}>
+            <div key={id} className="flex flex-col items-center gap-2" style={ini.rolls[id] === undefined ? { opacity: 0.45 } : undefined}>
               {v === undefined ? <D20 value="?" size={size} /> : <TumbleDie key={tie ? `t${beat}-${v}` : v} value={v} size={size} />}
               <div className="truncate text-[18px] text-white" style={{ maxWidth: size + 20, textShadow: "2px 2px 0 var(--k)" }}>
                 {name(id)}
