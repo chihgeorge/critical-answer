@@ -2223,12 +2223,15 @@ function redealForDoor(game: GameState, teamId: string, spec: ForkDoorSpec, cate
   let difficulty = team.currentDifficulty;
   if (spec.kind === "hard") {
     difficulty = Math.min(5, team.currentDifficulty + 1) as Difficulty;
+    // An empty harder pool would fall back to an easier one: keep the question rather than a 💀 that is not harder.
+    if (poolIndexFor(game.pools, difficulty) !== difficulty - 1) return game;
     ({ questionId, used } = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, difficulty, rng));
     if (game.revealedQuestionIds.includes(questionId)) questionId = "";
   } else if (spec.kind === "category") {
     if (categoryOf[team.currentQuestionId] === spec.category) return game;
     const p = poolIndexFor(game.pools, team.currentDifficulty);
-    const held = new Set(game.teams.filter((t) => !t.inBoss && t.id !== teamId).flatMap((t) => [t.currentQuestionId, ...(t.queuedQuestionId ? [t.queuedQuestionId] : [])]));
+    // The host's queued picks, the team's own included, stay queued.
+    const held = new Set(game.teams.filter((t) => !t.inBoss).flatMap((t) => [...(t.id !== teamId ? [t.currentQuestionId] : []), ...(t.queuedQuestionId ? [t.queuedQuestionId] : [])]));
     const ids = game.pools[p].filter((id) => categoryOf[id] === spec.category && !held.has(id) && !game.revealedQuestionIds.includes(id));
     // Undrawn since the pool's last reshuffle first, as deal() does.
     const fresh = ids.filter((id) => !game.usedQuestionIds[p].includes(id));

@@ -103,7 +103,7 @@ describe("BankStore.putBank", () => {
     const storage = memoryStorage({ format: BANK_FORMAT, bank: validBank, version: 1 });
     await new BankStore(storage).putBank(categorized, 1);
     const stored = (await storage.get("bank")) as { format: number };
-    // The category format sits six below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations, boss difficulties, uploaded media, memory questions, timing questions and placed forks came after it.
+    // The category format sits seven below BANK_FORMAT: answer fields (multi-field.md), Instagram explanations, boss difficulties, uploaded media, memory questions, timing questions and placed forks came after it.
     expect(stored.format).toBe(BANK_FORMAT - 7);
     // Code at the format before reads it as this code reads a format ahead of its own: unreadable, and a save may not replace it.
     const ahead = memoryStorage({ ...stored, format: BANK_FORMAT + 1 });

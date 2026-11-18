@@ -3,7 +3,7 @@
 
 import type { Boon, EventOutcome, EventResult, EventScene, ForkDoor, ForkDoorSpec, ForkSide, FortuneCondition, FortuneEffect } from "./game-state";
 
-/** 叉路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. */
+/** A random 叉路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. A bank's labelled fork (#286) names both. */
 export const FORK_SIDE_LABEL: Record<ForkSide, string> = { left: "左門", right: "右門" };
 export const FORK_DOOR_LABEL: Record<ForkDoor, string> = { monster: "⚔️ 怪物房", mystery: "❓ 神秘房", hard: "💀 難題", category: "🏷️ 類別" };
 /** A closed door's nameplate: what a labelled fork's door leads to (#286), else only its side. */

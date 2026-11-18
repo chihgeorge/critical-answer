@@ -620,7 +620,7 @@ export type ServerMessage =
       late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
-       * and what was behind it; the other door is never named, nor which side hides what before a pick. */
+       * and what was behind it; on an unlabelled fork the other door is never named, nor which side hides what before a pick (a bank's labelled fork, #286, shows both: forkDoors). */
       forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; category?: string; timeout?: true };
       /** A labelled fork's doors (#286), left then right, while its team chooses and during its door opening. Absent: unlabelled. */
       forkDoors?: ForkDoorSpec[];

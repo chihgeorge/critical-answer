@@ -1,5 +1,6 @@
 import type { Conn, RoomIO } from "./io";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
+import { forkDoorLabel } from "../event-text";
 import { BANK_KEY, NARRATION_MAX_LINES, parseSavedBank, parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
@@ -4919,11 +4920,12 @@ export class DungeonRoom {
       reveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
       if (m) this.game = serveFeast(this.game, teamId, m.dish.name);
     } else {
-      // ⚔️'s line follows the fork narration on screen (no new eventId: nothing new is narrated by the AI).
+      // ⚔️'s line (a bank's 💀 / 🏷️ door names itself, #286) follows the fork narration on screen (no new eventId).
       const monster = this.currentQuestion()?.pub.monster.name ?? "";
-      line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster) };
+      const { door, category } = chosen.record;
+      line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster, door === "monster" ? undefined : forkDoorLabel({ kind: door, category })) };
     }
-    // The opened door is revealed, and only it: the other side's door is never named.
+    // The opened door is revealed; on an unlabelled fork only it, the other side's door is never named.
     const beat = { teamId, side: chosen.record.side, door: chosen.record.door, ...(chosen.record.category ? { category: chosen.record.category } : {}), timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}), ...(fortune ? { fortune: true as const } : {}) };
     this.forkBeat = beat;
     this.pace("forkBeat", "fork-beat", FORK_BEAT_MS, () => (this.forkBeat === beat ? "接下來走進門後的房間" : null), () => {

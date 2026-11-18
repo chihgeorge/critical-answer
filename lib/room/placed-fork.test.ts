@@ -12,12 +12,12 @@ const T2 = "00000000-0000-0000-0000-000000000002";
 const TOKEN = "host-token-0123456789abcdef";
 const KEY = "team-key-0123456789abcdef";
 const video = (id: string, category?: string) => ({ kind: "text" as const, id, content: { kind: "youtube" as const, value: "dQw4w9WgXcQ" }, prompt: "這首歌是？", answer: `答案 ${id}`, ...(category ? { category } : {}) });
-const rawBank = (fork?: unknown, extra: object = {}) => ({
+const rawBank = (fork?: unknown, extra: object = {}, forkRooms = [1]) => ({
   pools: {
     "1": [0, 1, 2, 3, 4, 5, 6, 7].map((i) => video(`a${i}`, i % 2 ? "動漫" : "電影")),
     "2": [0, 1, 2, 3].map((i) => video(`h${i}`)),
   },
-  rooms: [0, 1, 2, 3, 4].map((r) => ({ monster: "slime-soft", difficulty: 1, reward: 10, ...(r === 1 && fork ? { fork } : {}) })),
+  rooms: [0, 1, 2, 3, 4].map((r) => ({ monster: "slime-soft", difficulty: 1, reward: 10, ...(forkRooms.includes(r) && fork ? { fork } : {}) })),
   boss: { monster: "dragon", maxHp: 3, hitReward: 10, questions: [video("boss-a")] },
   ...extra,
 });
@@ -32,10 +32,10 @@ const state = (room: DungeonRoom) =>
     .filter((m) => m.type === "STATE")
     .at(-1);
 
-function setup(fork: unknown, teams = 1) {
+function setup(fork: unknown, teams = 1, forkRooms = [1]) {
   const io = { id: "room-1", broadcast: vi.fn(), getConnections: vi.fn(() => []) } as unknown as RoomIO;
   // e2eEventTeam forces the random roll on every eligible answer: a bank with a placed fork must ignore it.
-  const room = new DungeonRoom(io, () => 0, { bank: parseBank(rawBank(fork)), e2eEventTeam: "EventTeam", epilogueDelayMs: 0 });
+  const room = new DungeonRoom(io, () => 0, { bank: parseBank(rawBank(fork, {}, forkRooms)), e2eEventTeam: "EventTeam", epilogueDelayMs: 0 });
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -91,12 +91,14 @@ describe("題庫指定叉路: the bank (#286)", () => {
       editor.rooms = editor.rooms.map((r, i) => (i === 1 ? { ...r, fork: fork as never } : r));
       expect(bankProblems(editor).find((p) => p.tab === "rooms")?.message).toMatch(msg);
     }
-    // First and last room, and hard in a difficulty-5 room.
-    const cats = poolCategories([]);
-    expect(roomForkProblem({}, 0, 4, 1, cats)).toMatch(/第一間和最後一間/);
-    expect(roomForkProblem({}, 4, 5, 1, cats)).toMatch(/第一間和最後一間/);
-    expect(roomForkProblem({ doors: [{ kind: "hard" }, { kind: "monster" }] }, 1, 4, 5, cats)).toMatch(/難度 5/);
-    expect(roomForkProblem({ doors: [{ kind: "hard" }, { kind: "monster" }] }, 1, 4, 4, cats)).toBeNull();
+    // First and last room, hard in a difficulty-5 room, and hard over an empty harder pool.
+    const { pools } = parseBank(rawBank());
+    expect(roomForkProblem({}, 0, 4, 1, pools)).toMatch(/第一間和最後一間/);
+    expect(roomForkProblem({}, 4, 5, 1, pools)).toMatch(/第一間和最後一間/);
+    expect(roomForkProblem({ doors: [{ kind: "hard" }, { kind: "monster" }] }, 1, 4, 5, pools)).toMatch(/難度 5/);
+    expect(roomForkProblem({ doors: [{ kind: "hard" }, { kind: "monster" }] }, 1, 4, 2, pools)).toMatch(/難度 3 題庫沒有題目/);
+    expect(roomForkProblem({ doors: [{ kind: "hard" }, { kind: "monster" }] }, 1, 4, 1, pools)).toBeNull();
+    expect([...poolCategories(pools[1])].sort()).toEqual(["動漫", "電影"]);
   });
 });
 
@@ -146,6 +148,27 @@ describe("題庫指定叉路: the room (#286)", () => {
     pick(h, "left");
     expect(h.room.game!.teams[0].currentQuestionId).toMatch(/^h/);
     expect(h.room.game!.teams[0].currentDifficulty).toBe(2);
+    // The door's line names it, never ⚔️.
+    expect((h.room as unknown as { forkBeat: { line?: { text: string } } }).forkBeat.line?.text).toMatch(/💀 難題/);
+    expect((h.room as unknown as { forkBeat: { line?: { text: string } } }).forkBeat.line?.text).not.toMatch(/⚔️/);
+    // A correct answer to the hard question earns difficulty 2's progress.
+    await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
+    const before = h.room.game!.teams[0].score;
+    const t = h.room.game!.teams[0];
+    send(h.room, h.host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true, eventId: state(h.room).eventId });
+    expect(h.room.game!.teams[0].score - before).toBe(2);
+  });
+
+  it("placed forks on neighbouring rooms both come, even after the ⚔️ door", async () => {
+    vi.useFakeTimers();
+    const s = setup({}, 1, [1, 2]);
+    answerRight(s, 0);
+    pick(s, "left");
+    expect(s.room.game!.teams[0].fork).toEqual({ phase: "monster" });
+    await vi.advanceTimersByTimeAsync(FORK_BEAT_MS);
+    answerRight(s, 0);
+    expect(s.room.game!.teams[0].roomIndex).toBe(2);
+    expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
   });
 
   it("the clock runs out on labelled doors: the left door opens", async () => {

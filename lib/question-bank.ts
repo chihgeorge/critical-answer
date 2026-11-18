@@ -144,9 +144,9 @@ export interface BankRoom {
 
 const DOOR_KINDS = ["monster", "mystery", "hard", "category"] as const;
 /** Why room `i`'s `fork` is invalid (each message names the fix), or null. Shared by parseBank and the bank editor's
- * pre-save check. Reads raw values: parseBank calls it before trusting them. `categories`: the categories of the
- * questions in this room's pool. */
-export function roomForkProblem(fork: unknown, i: number, roomCount: number, difficulty: Difficulty, categories: ReadonlySet<string>): string | null {
+ * pre-save check. Reads raw values: parseBank calls it before trusting them. `pools`: the bank's questions by difficulty. */
+export function roomForkProblem(fork: unknown, i: number, roomCount: number, difficulty: Difficulty, pools: Record<Difficulty, readonly BankQuestion[]>): string | null {
+  const categories = poolCategories(pools[difficulty]);
   if (fork === undefined) return null;
   const where = `第 ${i + 1} 間房的叉路`;
   if (!fork || typeof fork !== "object" || Array.isArray(fork)) return `${where}格式不對：要是 {} 或 { "doors": [左門, 右門] }`;
@@ -158,6 +158,7 @@ export function roomForkProblem(fork: unknown, i: number, roomCount: number, dif
     const d = door as { kind?: unknown; category?: unknown } | null;
     if (!d || typeof d !== "object" || !DOOR_KINDS.includes(d.kind as (typeof DOOR_KINDS)[number])) return `${where}的門只能是怪物房、神秘房、難題或類別`;
     if (d.kind === "hard" && difficulty >= 5) return `${where}：難度 5 的房間沒有更難的題目，請換掉「難題」門`;
+    if (d.kind === "hard" && pools[(difficulty + 1) as Difficulty].length === 0) return `${where}：難度 ${difficulty + 1} 題庫沒有題目，請先加題目或換掉「難題」門`;
     if (d.kind === "category") {
       if (typeof d.category !== "string" || !d.category.trim()) return `${where}的類別門要寫類別`;
       if (!categories.has(d.category)) return `${where}的類別「${d.category}」在難度 ${difficulty} 的題目裡找不到，請改成有題目的類別`;
@@ -471,7 +472,7 @@ export function parseBank(raw: unknown): Bank {
   });
   rooms.forEach((r, i) => {
     if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
-    const problem = roomForkProblem(r.fork, i, rooms.length, r.difficulty, poolCategories(pools[r.difficulty]));
+    const problem = roomForkProblem(r.fork, i, rooms.length, r.difficulty, pools);
     if (problem) fail(problem);
     // Only the known keys, trimmed: a stored bank is untrusted JSON.
     if (r.fork) r.fork = r.fork.doors ? { doors: r.fork.doors.map((d) => (d.kind === "category" ? { kind: "category", category: d.category } : { kind: d.kind })) as RoomFork["doors"] } : {};
