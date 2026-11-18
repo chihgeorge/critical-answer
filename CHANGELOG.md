@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.2.0] - 2026-11-19
+
+### Added
+- End-to-end tests for the buzzer phase's category and type pick, the big screen's media test, uploaded and Instagram clips and their playback errors, memory and timing questions (with their bank-editor fields), and the host's room-closing warning, fixes and re-judging.
+
 ## [0.103.1.1] - 2026-11-19
 
 ### Changed
