@@ -24,7 +24,7 @@
 //   BUZZD the songs ("2:17,3:38": 17 songs of difficulty 2, then 38 of 3); BOSSTEXT is phase 1's fill-in share (else TEXT/SORT).
 // - 抓包與神諭 (AC=1: the switch is on from the start). A team that uses the oracle (ORACLEP of teams) asks it on its first
 //   unknown room question of difficulty ORACLE_MIN or more. CHEATERS teams per game ask an AI on an unknown turn-based
-//   question with CHEAT (boss phase 1 too, where lib allows no catch); each waiting team with catches spots it with SPOT (成立). On any other room turn a waiting team
+//   question with CHEAT (boss phase 1 too unless CHEATBOSS=0; lib allows no catch there); each waiting team with catches spots it with SPOT (成立). On any other room turn a waiting team
 //   files a false catch with FALSE (冤枉). The AI is right with AIOK. Pay: BOUNTY CAUGHT FALSEREPORT WRONGED (CATCH_PAY).
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, multi-field songs, late teams, offline phones, away teams.
@@ -69,7 +69,7 @@ let songAt = 0;
 for (const [d, n] of (process.env.BUZZD ?? "").split(",").filter(Boolean).map((x) => x.split(":").map(Number)))
   for (let j = 0; j < n && songAt < songs.length; j++) bossDifficulties[songs[songAt++]] = d as GT.Difficulty;
 const AC = process.env.AC === "1", ORACLEP = env("ORACLEP", 1), ORACLE_MIN = env("ORACLE_MIN", 3), AIOK = env("AIOK", 0.9);
-const CHEATERS = env("CHEATERS", 0), CHEAT = env("CHEAT", 0.5), SPOT = env("SPOT", 0.3), FALSE = env("FALSE", 0);
+const CHEATBOSS = process.env.CHEATBOSS !== "0", CHEATERS = env("CHEATERS", 0), CHEAT = env("CHEAT", 0.5), SPOT = env("SPOT", 0.3), FALSE = env("FALSE", 0);
 // CATCH_PAY is a const in lib; the sim overrides it in place for a sweep.
 for (const k of Object.keys(G.CATCH_PAY)) if (process.env[k.toUpperCase()]) (G.CATCH_PAY as Record<string, number>)[k] = Number(process.env[k.toUpperCase()]);
 type Tag = { oracle: boolean; cheater: boolean };
@@ -158,7 +158,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     const catchable = !inBoss && g.antiCheat?.caughtTurn !== `${id}:${q}:${team().turns ?? 0}`;
     if (AC && !knows()) {
       if (!inBoss && tag.oracle && (team().oracleLeft ?? 0) > 0 && d >= ORACLE_MIN) { g = G.askOracle(g, id, q); if (R() < AIOK) L.known = true; }
-      else if (tag.cheater && !G.oracleActive(g, id) && R() < CHEAT) {
+      else if (tag.cheater && (CHEATBOSS || !inBoss) && !G.oracleActive(g, id) && R() < CHEAT) {
         cheated = true;
         const spotter = !catchable ? undefined : shuffle(g.teams.filter((x) => x.id !== id && (x.catchesLeft ?? 0) > 0)).find(() => R() < SPOT);
         if (spotter) { g = G.upholdCatch(G.fileCatch(g, spotter.id, q), R).game; continue; }
