@@ -7,8 +7,11 @@
 export type Part = string[];
 
 export interface Song {
-  /** Steps per minute: one step is an eighth note, so 240 is 120 bpm. */
+  /** Steps per minute. A step is an eighth note (8 per bar, so 240 is 120 bpm) or, in a swung or triplet
+   * song, a triplet eighth (12 per bar, so 396 is 132 bpm). */
   stepsPerMinute: number;
+  /** Steps at the start that play once, like a fanfare; the loop repeats from the step after them. */
+  introSteps?: number;
   melody: Part;
   bass: Part;
   /** A kick drum: each note is a short low thump that slides down (BOSS_RAGE_THEME). */
@@ -60,31 +63,124 @@ export const DUNGEON_THEME: Song = {
   ),
 };
 
-/** ④ 王低血暴走: a separate, urgent boss motif with its own bass and kick pattern. */
-export const BOSS_RAGE_THEME: Song = {
-  stepsPerMinute: 288,
+/** Bass for one bar of a swung song: root and fifth on the beats, short, so it bounces. */
+const bounce = (root: string, fifth: string) => `${root} - . ${fifth} - . ${root} - . ${fifth} - .`;
+
+/** 大廳等人曲: a bouncy sixteen-bar G-major shuffle at 132 bpm (triplet steps, long-short skips) while teams join. */
+export const LOBBY_THEME: Song = {
+  stepsPerMinute: 396,
   melody: bars(
-    "E5 . D#5 E5 B4 - G5 F#5",
-    "E5 - B4 C5 D5 . B4 .",
-    "G5 F#5 E5 . D5 E5 F#5 .",
-    "G5 - A5 G5 F#5 E5 D#5 .",
-    "C5 E5 G5 . F#5 E5 D5 .",
-    "B4 D5 F#5 . E5 D5 C5 .",
-    "E5 G5 B5 . A5 G5 F#5 E5",
-    "D#5 - B4 - E5 - . .",
+    "G4 - B4 D5 - G5 F#5 - G5 D5 - .",
+    "E5 - G5 B4 - E5 D5 - B4 G4 - .",
+    "C5 - E5 G5 - E5 A5 - G5 E5 - C5",
+    "D5 - . F#5 - A5 G5 - F#5 E5 - D5",
+    "G4 - B4 D5 - G5 F#5 - G5 A5 - B5",
+    "G5 - E5 B4 - E5 G5 - . E5 - .",
+    "C5 - E5 A5 - G5 F#5 - E5 F#5 - A5",
+    "G5 - - D5 - B4 G4 - - . . .",
+    "E5 - E5 G5 - E5 C5 - E5 G5 - .",
+    "D5 - D5 G5 - D5 B4 - D5 G5 - .",
+    "C5 - E5 A5 - C6 B5 - A5 G5 - E5",
+    "F#5 - A5 D5 - F#5 A5 - - . . .",
+    "E5 - G5 C6 - B5 A5 - G5 E5 - C5",
+    "D5 - G5 B5 - A5 G5 - D5 B4 - G4",
+    "A4 - C5 E5 - A5 F#5 - E5 D5 - C5",
+    "B4 - G4 D5 - B4 G4 - . D4 - .",
   ),
   bass: bars(
-    "E2 . E2 B2 E2 . D2 B2",
-    "E2 . B2 . C3 . B2 .",
-    "C2 . C3 G2 C2 . D2 .",
-    "G2 . D3 . B2 . F#2 .",
-    "A2 . E3 . A2 . G2 .",
-    "B2 . F#3 . B2 . A2 .",
-    "C3 . G2 . D3 . B2 .",
-    "E2 . B2 . E2 . E2 .",
+    bounce("G2", "D3"), bounce("E2", "B2"), bounce("C2", "G2"), bounce("D2", "A2"),
+    bounce("G2", "D3"), bounce("E2", "B2"), "A2 - . E2 - . D2 - . A2 - .", bounce("G2", "D3"),
+    bounce("C2", "G2"), bounce("G2", "D3"), bounce("A2", "E2"), bounce("D2", "A2"),
+    bounce("C2", "G2"), bounce("G2", "D3"), "A2 - . E2 - . D2 - . A2 - .", "G2 - . D3 - . G2 - . D2 - .",
   ),
-  drum: bars(...Array.from({ length: 8 }, (_, i) => i % 2 ? "C2 . . C2 C2 . C2 ." : "C2 . C2 . . C2 C2 .")),
 };
+
+/** Bass for one bar of the boss song: driving eighths on the low root with an octave kick. */
+const pump = (low: string, high: string) => `${low} ${low} ${high} ${low} ${low} ${high} ${low} ${low}`;
+
+/** ④ 王低血暴走, the boss song: sixteen bars of E minor at 152 bpm over a pounding eighth-note bass. The first
+ * half states the theme in long notes; the second climbs a step a bar (E, F, G, A) to the top and falls back. */
+export const BOSS_RAGE_THEME: Song = {
+  stepsPerMinute: 304,
+  melody: bars(
+    "E5 - - - B4 - - -",
+    "C5 - - D5 E5 - G5 -",
+    "F#5 - - - D5 - A4 -",
+    "B4 - - - D#5 - F#5 -",
+    "G5 - - - F#5 - E5 -",
+    "E5 - - - G5 - C6 -",
+    "A5 - - - C6 - B5 A5",
+    "B5 - - - - - D#5 F#5",
+    "G5 F#5 E5 F#5 G5 - B4 -",
+    "A5 G5 F5 G5 A5 - C5 -",
+    "B5 A5 G5 A5 B5 - D5 -",
+    "C6 B5 A5 B5 C6 - E5 -",
+    "E6 - D6 C6 B5 - A5 G5",
+    "F#5 - G5 A5 B5 - D#5 -",
+    "E5 G5 B5 E6 - - D#6 -",
+    "B5 - - - F#5 - D#5 B4",
+  ),
+  bass: bars(
+    pump("E2", "E3"), pump("C2", "C3"), pump("D2", "D3"), pump("B1", "B2"),
+    pump("E2", "E3"), pump("C2", "C3"), pump("A1", "A2"), pump("B1", "B2"),
+    pump("E2", "E3"), pump("F2", "F3"), pump("G2", "G3"), pump("A2", "A3"),
+    pump("C2", "C3"), pump("B1", "B2"),
+    "E2 E2 E3 E2 C2 C2 C3 C2",
+    "B1 B1 B2 B1 B1 B2 B1 B2",
+  ),
+  drum: bars(
+    ...Array.from({ length: 8 }, () => "C2 . C2 . C2 . C2 C2"),
+    ...Array.from({ length: 7 }, () => "C2 C2 C2 . C2 C2 C2 C2"),
+    "C2 C2 C2 C2 C2 C2 C2 C2",
+  ),
+};
+
+/** 勝利曲: a C-major fanfare at 150 bpm on triplet steps (a rising triplet, a ♭VI–♭VII–I cadence), played once,
+ * then an eight-bar shuffle march that loops through the podium. */
+export const VICTORY_THEME: Song = {
+  stepsPerMinute: 450,
+  introSteps: 60,
+  melody: bars(
+    // fanfare, once
+    "G4 C5 E5 G5 - - . . . G5 A5 B5",
+    "C6 - - - - - G5 - - C6 - -",
+    "Ab5 - - Eb5 - Ab5 C6 - - Ab5 - -",
+    "Bb5 - - F5 - Bb5 D6 - - Bb5 C6 D6",
+    "C6 - - - - - - - - . . .",
+    // loop
+    "E5 - G5 C6 - G5 E5 - G5 C6 - .",
+    "A5 - C6 F5 - A5 C6 - A5 F5 - .",
+    "G5 - B5 D6 - B5 G5 - F5 E5 - D5",
+    "E5 - - C5 - E5 G5 - - . . .",
+    "A5 - E5 C5 - E5 A5 - B5 C6 - A5",
+    "F5 - A5 C6 - A5 F5 - E5 D5 - C5",
+    "Eb5 - Ab5 C6 - Ab5 D5 - F5 Bb5 - D6",
+    "C6 - - G5 - E5 C5 - - G4 A4 B4",
+  ),
+  bass: bars(
+    "C2 . . C2 . . C2 . . C2 . .",
+    "C2 - - G2 - - C3 - - G2 - -",
+    "Ab1 - - Eb2 - - Ab2 - - Eb2 - -",
+    "Bb1 - - F2 - - Bb2 - - F2 - -",
+    "C2 - - - - - - - - . . .",
+    bounce("C2", "G2"), bounce("F2", "C3"), bounce("G2", "D3"), bounce("C2", "G2"),
+    bounce("A1", "E2"), bounce("F2", "C3"), "Ab1 - . Eb2 - . Bb1 - . F2 - .", "C2 - . G2 - . C2 - . G1 - .",
+  ),
+  drum: bars(
+    "C2 . . C2 . . C2 . . C2 C2 C2",
+    "C2 . . . . . C2 . . . . .",
+    "C2 . . . . . C2 . . . . .",
+    "C2 . . . . . C2 . . C2 C2 C2",
+    "C2 . . . . . . . . . . .",
+    ...Array.from({ length: 7 }, () => "C2 . . . . . C2 . . . . ."),
+    "C2 . . . . . C2 . . C2 C2 C2",
+  ),
+};
+
+/** Seconds the intro lasts (0 without one): later passes start this far into the song. */
+export function introDuration(song: Song): number {
+  return ((song.introSteps ?? 0) * 60) / song.stepsPerMinute;
+}
 
 /** Seconds one pass of the song lasts. */
 export function loopDuration(song: Song): number {

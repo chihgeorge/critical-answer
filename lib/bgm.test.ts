@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOSS_RAGE_THEME, DUNGEON_THEME, loopDuration, noteToFreq, songEvents } from "./bgm";
+import { BOSS_RAGE_THEME, DUNGEON_THEME, LOBBY_THEME, VICTORY_THEME, introDuration, loopDuration, noteToFreq, songEvents } from "./bgm";
 
 describe("noteToFreq", () => {
   it("tunes A4 to 440 Hz and moves by octaves and semitones", () => {
@@ -47,10 +47,10 @@ describe("DUNGEON_THEME", () => {
   it("the boss theme has its own melody and bass, with a kick drum that loops with it", () => {
     expect(BOSS_RAGE_THEME.melody).not.toEqual(DUNGEON_THEME.melody);
     expect(BOSS_RAGE_THEME.bass).not.toEqual(DUNGEON_THEME.bass);
-    expect(BOSS_RAGE_THEME.drum).toHaveLength(DUNGEON_THEME.melody.length);
-    expect(loopDuration(BOSS_RAGE_THEME)).toBeLessThan(loopDuration(DUNGEON_THEME));
+    expect(BOSS_RAGE_THEME.drum).toHaveLength(BOSS_RAGE_THEME.melody.length);
+    expect(BOSS_RAGE_THEME.stepsPerMinute).toBeGreaterThan(DUNGEON_THEME.stepsPerMinute);
     const drums = songEvents(BOSS_RAGE_THEME).filter((e) => e.voice === "drum");
-    expect(drums.length).toBe(32);
+    expect(drums.length).toBe(8 * 5 + 7 * 7 + 8);
     expect(songEvents(DUNGEON_THEME).some((e) => e.voice === "drum")).toBe(false);
   });
 
@@ -58,5 +58,23 @@ describe("DUNGEON_THEME", () => {
     const [a, b] = songEvents({ stepsPerMinute: 60, melody: ["A4", ".", "-", "A4"], bass: [] });
     expect(a).toMatchObject({ start: 0, duration: 1 });
     expect(b).toMatchObject({ start: 3, duration: 1 });
+  });
+});
+
+describe("LOBBY_THEME, BOSS_RAGE_THEME and VICTORY_THEME", () => {
+  it.each([
+    ["lobby", LOBBY_THEME, 12],
+    ["boss", BOSS_RAGE_THEME, 8],
+    ["victory", VICTORY_THEME, 12],
+  ] as const)("%s: every voice fills whole bars of the same length, so they loop together", (_, song, perBar) => {
+    for (const part of [song.melody, song.bass, song.drum ?? song.melody]) expect(part).toHaveLength(song.melody.length);
+    expect(song.melody.length % perBar).toBe(0);
+    expect(() => songEvents(song)).not.toThrow();
+  });
+
+  it("the victory fanfare plays once: its intro is whole bars, and the loop after it is shorter than the song", () => {
+    expect(VICTORY_THEME.introSteps! % 12).toBe(0);
+    expect(introDuration(VICTORY_THEME)).toBe(8); // 60 triplet steps at 150 bpm
+    expect(introDuration(LOBBY_THEME)).toBe(0);
   });
 });
