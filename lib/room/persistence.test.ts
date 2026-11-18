@@ -976,6 +976,71 @@ describe("restoring after a restart", () => {
     second.room.onConnect(late);
     expect(lastOf(late, "EPILOGUE")).toMatchObject({ text: "已經寫好的後記" });
   });
+
+  /** Restores a copy of `saved`, changed by `patch`, into a fresh room. */
+  const restoredFrom = async (storage: ReturnType<typeof memoryStorage>, saved: unknown, patch: (s: any) => void = () => {}) => {
+    const s = structuredClone(saved);
+    patch(s);
+    storage.data.set(SNAPSHOT_KEY, s);
+    const room = makeRoom(storage).room;
+    await room.restore();
+    return room as any;
+  };
+
+  // Value: protects=a restart during a passed check's card shows the card again (#364 follow-up); fails_when=the beat is
+  // not saved, or a saved one comes back for a turn or a check it no longer fits, or from a damaged save
+  it("a restart during a passed check's card brings the card back, only for the same turn and a passed check", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage);
+    startedGame(first.room);
+    const g = first.room.game!;
+    const teamId = currentTurnTeamId(g)!;
+    const questionId = g.teams.find((t) => t.id === teamId)!.currentQuestionId;
+    first.room.game = { ...g, checks: { ...g.checks, [checkKey(questionId, teamId)]: { value: 15, bonus: 0, dc: 8, passed: true } } };
+    (first.room as any).checkSuccessBeat(teamId, questionId);
+    (first.room as any).persist();
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    expect(saved.checkBeat).toEqual({ teamId, questionId });
+    // The turn is not pinned during the card: a save after it moved on still names the team that passed.
+    first.room.game = { ...first.room.game!, currentTurnIndex: (g.currentTurnIndex + 1) % g.turnOrder.length };
+    (first.room as any).persist();
+    expect((storage.data.get(SNAPSHOT_KEY) as any).checkBeat).toEqual({ teamId, questionId });
+    vi.useFakeTimers();
+    const room = await restoredFrom(storage, saved);
+    expect(room.snapshot()).toMatchObject({ stageBeat: "check-success", question: null });
+    vi.advanceTimersByTime(10_000);
+    expect(room.stageBeat).toBeNull();
+    expect(room.snapshot().question).toMatchObject({ id: questionId });
+    expect((await restoredFrom(storage, saved, (s) => (s.checkBeat.teamId = T2 === teamId ? T1 : T2))).stageBeat).toBeNull();
+    expect((await restoredFrom(storage, saved, (s) => (s.game.checks[checkKey(questionId, teamId)].passed = false))).stageBeat).toBeNull();
+    expect((await restoredFrom(storage, saved, (s) => (s.checkBeat = { teamId }))).stageBeat).toBeNull();
+  });
+
+  // Value: protects=a restart during a boss-entry dish still announces the entrance the dish held back (#364 follow-up);
+  // fails_when=the entrance is not saved, or is added to another narration
+  it("a restart during a boss-entry dish adds the held-back entrance to the narration on show", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    first.room.game = { ...first.room.game!, config: { ...first.room.game!.config, bossThreshold: 1 } };
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    expect((first.room as any).bossEntryBefore).not.toBeNull();
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    // Two teams and a threshold of 1: this entry also starts 最後衝刺, saved with it.
+    expect(saved.bossEntry).toMatchObject({ teamId: T1, eventId: saved.lastNarration.eventId, sprint: true });
+    const lines = async (patch?: (s: any) => void) => (await restoredFrom(storage, saved, patch)).lastNarration.lines.join(" ");
+    expect(saved.lastNarration.lines.join(" ")).not.toContain("吃飽後走進首領房");
+    expect(await lines()).toContain("甲隊吃飽後走進首領房");
+    // Restoring it saves nothing half-restored: the room's start time stays as saved.
+    expect((storage.data.get(SNAPSHOT_KEY) as any).createdAt).toBe(saved.createdAt);
+    // A 最後衝刺 that started with this entry is said after it; one that was already on is not said again.
+    const sprinting = (sprint: boolean) => (s: any) => Object.assign(s, { game: { ...s.game, sprint: { teamIds: [T2] } }, bossEntry: { eventId: s.bossEntry.eventId, teamId: s.bossEntry.teamId, ...(sprint ? { sprint: true } : {}) } });
+    expect(await lines(sprinting(true))).toContain("乙隊獲得祝福");
+    expect(await lines(sprinting(false))).not.toContain("祝福");
+    expect(await lines((s) => (s.bossEntry.eventId -= 1))).not.toContain("吃飽後走進首領房");
+    expect(await lines((s) => (s.bossEntry = { teamId: T1 }))).not.toContain("吃飽後走進首領房");
+  });
 });
 
 describe("saved data that cannot be used", () => {
