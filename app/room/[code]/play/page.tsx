@@ -31,6 +31,7 @@ import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
+import { useFreshPrediction } from "@/components/predictions";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
@@ -770,6 +771,57 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
   );
 }
 
+type PredictSent = { eventId: number; correct: boolean };
+/** 群眾預測 (docs/designs/crowd-prediction.md): a waiting team's 會答對 / 會答錯, above its reactions, while the room
+ * lets it lock; then the side it locked (page state: after a reload just 「已鎖定預測」), and the result for 6 s. */
+function PredictBar({ game, teamId, waiting, send, sent, setSent }: { game: StateMessage; teamId: string; waiting: boolean; send: (m: ClientMessage) => void; sent: PredictSent | null; setSent: (s: PredictSent) => void }) {
+  const result = useFreshPrediction(game.predicted);
+  const p = game.predictions;
+  const mine = !!p?.locked.includes(teamId);
+  // A press still on its way counts as locked, so a second tap never goes out.
+  const pressed = mine || sent?.eventId === game.eventId;
+  const side = pressed ? sent?.correct : undefined;
+  const verdict = result?.right.includes(teamId) ? "🎯 猜中了！" : result?.wrong.includes(teamId) ? "🎯 沒猜中" : null;
+  const row = waiting && !!p && (p.open || mine);
+  if (!row && !verdict) return null;
+  const turnName = game.view.teams.find((t) => t.id === game.view.currentTurnTeamId)?.name ?? "";
+  const grey = { background: "var(--cream2)", color: "var(--dim-ink)", cursor: "default", boxShadow: "0 -4px 0 0 var(--dim-line), 0 4px 0 0 var(--dim-line), -4px 0 0 0 var(--dim-line), 4px 0 0 0 var(--dim-line)" };
+  return (
+    <div data-testid="predict-bar" className="mb-3 flex flex-col gap-1">
+      {verdict && (
+        <div data-testid="predict-result" role="status" className="text-center text-[18px] text-[var(--cream)]" style={{ textShadow: "2px 2px 0 var(--k)" }}>
+          {verdict}
+        </div>
+      )}
+      {row && (
+        <>
+          <div role="status" className="text-center text-[15px] text-[var(--cream)]" style={{ textShadow: "2px 2px 0 var(--k)" }}>
+            {!pressed ? `偷偷猜${turnName}答不答得對，揭曉時公布` : side === undefined ? "已鎖定預測" : `已鎖定：${side ? "會答對" : "會答錯"}・${p!.locked.length} 隊已預測`}
+          </div>
+          <div className="grid grid-cols-2 gap-[6px]">
+            {[true, false].map((correct) => (
+              <PixelButton
+                key={String(correct)}
+                aria-disabled={pressed}
+                className="!m-0 !min-h-[56px] !p-1 !text-[18px] leading-tight"
+                // Locked: the D5 grey (phone-answering.md D12), drawn, not :disabled opacity.
+                style={pressed ? grey : { background: "var(--cream)" }}
+                onClick={() => {
+                  if (pressed) return;
+                  send({ type: "PREDICT", eventId: game.eventId, correct });
+                  setSent({ eventId: game.eventId, correct });
+                }}
+              >
+                🎯 {correct ? "會答對" : "會答錯"}
+              </PixelButton>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 type ReactSent = { reaction: Reaction; at: number };
 /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team's four fixed reactions, in one row above the
  * dialogue box. After a tap all four go grey for REACT_GAP_MS, the room's own limit (it allows REACT_JITTER_MS of network delay). */
@@ -1045,6 +1097,10 @@ export default function PlayPage() {
         case "EPILOGUE":
           setEpilogue(msg.text);
           break;
+        case "PREDICTIONS":
+          // Who locked, between STATEs (crowd-prediction.md); a STATE without a round has nothing to add it to.
+          setGame((g) => (g?.predictions ? { ...g, predictions: { ...g.predictions, locked: msg.locked } } : g));
+          break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
@@ -1073,6 +1129,7 @@ export default function PlayPage() {
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const potion = game ? potionLine(myTeam, isMyTurn) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
+  const [predictSent, setPredictSent] = useState<PredictSent | null>(null);
   const finished = game?.phase === "finished";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */
   const buzz = !finished && !game?.phaseCard ? game?.view.buzz : undefined;
@@ -1100,6 +1157,7 @@ export default function PlayPage() {
                 {potion.text}
               </div>
             )}
+            {isMyTurn && !!game.predictions?.locked.length && <div data-testid="phone-predict-count" className="text-[15px]">🎯 {game.predictions.locked.length} 隊在猜你答不答得對</div>}
             <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
               {myTeam ? (
                 <>
@@ -1447,6 +1505,8 @@ export default function PlayPage() {
               while connected, since a tap sent offline reaches the room before the phone has rejoined its team. */}
           {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
           {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
+          {/* 🎯 群眾預測 above the reactions; its result also reaches a team whose turn came up meanwhile. */}
+          {game && !finished && !intro && !initiative && !disconnected && !unreachable && !rested && <PredictBar game={game} teamId={teamId} waiting={!isMyTurn} send={send} sent={predictSent} setSent={setPredictSent} />}
           {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
           <DialogueBox
             compact
