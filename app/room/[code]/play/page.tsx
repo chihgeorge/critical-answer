@@ -31,7 +31,7 @@ import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, forkDoorLabel, forkSideLabel, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
 /** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
 const CLASS_HINTS: Record<ClassId, string> = {
@@ -1588,7 +1588,7 @@ function ForkPanel({ game, teamId, send, canVote }: { game: StateMessage; teamId
         <span data-testid="phone-fork-watch">{beat ? `${team.name}推開了門……看大螢幕 📺` : `${team.name}在叉路口猶豫中……看大螢幕 📺`}</span>
         {voting && (
           <div data-testid="phone-fork-vote" className="flex flex-col gap-1">
-            <span>{mine ? `你們投了${FORK_SIDE_LABEL[mine]}，可以改` : `幫${team.name}投一票：走哪扇門？`}<span className="block text-[14px]">只是建議，{team.name}自己決定</span></span>
+            <span>{mine ? `你們投了${forkSideLabel(mine, game.forkDoors)}，可以改` : `幫${team.name}投一票：走哪扇門？`}<span className="block text-[14px]">只是建議，{team.name}自己決定</span></span>
             <div className="flex gap-3">
               {(["left", "right"] as const).map((side) => (
                 <PixelButton
@@ -1598,7 +1598,7 @@ function ForkPanel({ game, teamId, send, canVote }: { game: StateMessage; teamId
                   onClick={() => send({ type: "FORK_VOTE", side })}
                   className="!m-0 min-h-[56px] flex-1 text-[20px]"
                   style={mine === side ? { background: "var(--turn2)" } : { background: "var(--cream)" }}
-                >{FORK_SIDE_LABEL[side]}</PixelButton>
+                >{forkSideLabel(side, game.forkDoors)}</PixelButton>
               ))}
             </div>
           </div>
@@ -1632,7 +1632,7 @@ function ForkPanel({ game, teamId, send, canVote }: { game: StateMessage; teamId
             className="!m-0 min-h-[72px] flex-1 text-[24px]"
             // The picked door stays bright during the opening and shows what was behind it; the other is never told.
             style={beat ? { opacity: beat.side === side ? 1 : 0.35 } : undefined}
-          >{beat?.side === side ? FORK_DOOR_LABEL[beat.door] : FORK_SIDE_LABEL[side]}</PixelButton>
+          >{beat?.side === side ? forkDoorLabel({ kind: beat.door, category: beat.category }) : forkSideLabel(side, game.forkDoors)}</PixelButton>
         ))}
       </div>
     </>

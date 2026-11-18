@@ -15,7 +15,7 @@
 // BANK constant (or the bankJson import) to this file — that import belongs only in
 // lib/question-bank-data.ts.
 
-import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
+import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomFork, type RoomTemplate } from "./game-state";
 import { MAX_FIELDS, MAX_ID, type FileVideo, type HiddenFile, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
@@ -138,6 +138,34 @@ export interface BankRoom {
   difficulty: Difficulty;
   /** Reward points for defeating the room's monster (docs/designs/scoring-and-score-pools.md S5). */
   reward: number;
+  /** 題庫指定叉路 (#286): walking into this room by a correct answer always brings a fork. Not on the first or last room. */
+  fork?: RoomFork;
+}
+
+const DOOR_KINDS = ["monster", "mystery", "hard", "category"] as const;
+/** Why room `i`'s `fork` is invalid (each message names the fix), or null. Shared by parseBank and the bank editor's
+ * pre-save check. Reads raw values: parseBank calls it before trusting them. `categories`: the categories of the
+ * questions in this room's pool. */
+export function roomForkProblem(fork: unknown, i: number, roomCount: number, difficulty: Difficulty, categories: ReadonlySet<string>): string | null {
+  if (fork === undefined) return null;
+  const where = `第 ${i + 1} 間房的叉路`;
+  if (!fork || typeof fork !== "object" || Array.isArray(fork)) return `${where}格式不對：要是 {} 或 { "doors": [左門, 右門] }`;
+  if (i === 0 || i === roomCount - 1) return `${where}：第一間和最後一間房不能是叉路，請改到中間的房間`;
+  const doors = (fork as { doors?: unknown }).doors;
+  if (doors === undefined) return null;
+  if (!Array.isArray(doors) || doors.length !== 2) return `${where}要剛好兩扇門（左門、右門）`;
+  for (const door of doors as unknown[]) {
+    const d = door as { kind?: unknown; category?: unknown } | null;
+    if (!d || typeof d !== "object" || !DOOR_KINDS.includes(d.kind as (typeof DOOR_KINDS)[number])) return `${where}的門只能是怪物房、神秘房、難題或類別`;
+    if (d.kind === "hard" && difficulty >= 5) return `${where}：難度 5 的房間沒有更難的題目，請換掉「難題」門`;
+    if (d.kind === "category") {
+      if (typeof d.category !== "string" || !d.category.trim()) return `${where}的類別門要寫類別`;
+      if (!categories.has(d.category)) return `${where}的類別「${d.category}」在難度 ${difficulty} 的題目裡找不到，請改成有題目的類別`;
+    } else if (d.category !== undefined) return `${where}：只有類別門能寫類別`;
+  }
+  const [a, b] = doors as { kind: string; category?: string }[];
+  if (a.kind === b.kind && a.category === b.category) return `${where}的兩扇門一樣，請換掉一扇`;
+  return null;
 }
 export interface Bank {
   /** Questions by difficulty (S11); a room draws from the pool of its difficulty. */
@@ -438,10 +466,15 @@ export function parseBank(raw: unknown): Bank {
       monster: parseMonster(r.monster, `rooms[${i}]`, false),
       difficulty: d,
       reward: parseReward(r.reward, defaultRoomReward(d), `room ${i}`),
+      ...(r.fork !== undefined ? { fork: r.fork as RoomFork } : {}),
     };
   });
   rooms.forEach((r, i) => {
     if (pools[r.difficulty].length === 0) fail(`room ${i} has difficulty ${r.difficulty} but pool ${r.difficulty} has no questions`);
+    const problem = roomForkProblem(r.fork, i, rooms.length, r.difficulty, poolCategories(pools[r.difficulty]));
+    if (problem) fail(problem);
+    // Only the known keys, trimmed: a stored bank is untrusted JSON.
+    if (r.fork) r.fork = r.fork.doors ? { doors: r.fork.doors.map((d) => (d.kind === "category" ? { kind: "category", category: d.category } : { kind: d.kind })) as RoomFork["doors"] } : {};
   });
   if (b!.randomMonsters !== undefined && typeof b!.randomMonsters !== "boolean") fail("randomMonsters is not true or false");
   if (b!.randomBoss !== undefined && typeof b!.randomBoss !== "boolean") fail("randomBoss is not true or false");
@@ -505,7 +538,12 @@ export function savableProblems(bank: Bank): string[] {
 
 /** `monsters`: this game's room monsters by room (gameMonsters); the bank's own when absent. */
 export function roomTemplates(bank: Bank, monsters = bank.rooms.map((r) => r.monster)): RoomTemplate[] {
-  return bank.rooms.map((r, i) => ({ baseDifficulty: r.difficulty, reward: r.reward, monsterId: monsters[i], dish: catalogMonster(monsters[i]).dish.name }));
+  return bank.rooms.map((r, i) => ({ baseDifficulty: r.difficulty, reward: r.reward, monsterId: monsters[i], dish: catalogMonster(monsters[i]).dish.name, ...(r.fork ? { fork: r.fork } : {}) }));
+}
+
+/** The categories the questions of one pool use, for a category door (#286). */
+export function poolCategories(pool: readonly BankQuestion[]): Set<string> {
+  return new Set(pool.flatMap((q) => (q.category ? [q.category] : [])));
 }
 
 /** Question ids by pool, `[d - 1]` for difficulty d, the shape GameState.pools keeps. */

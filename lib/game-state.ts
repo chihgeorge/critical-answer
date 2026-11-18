@@ -296,6 +296,8 @@ export interface RoomTemplate {
   dish?: string;
   /** Its monster's catalog id (docs/designs/monster-catalog.md). Absent in saves from before the catalog. */
   monsterId?: string;
+  /** A fork the bank placed here (#286). Absent: the room may still draw a random fork, unless any room has one. */
+  fork?: RoomFork;
 }
 
 export interface BossState {
@@ -2198,19 +2200,76 @@ export function eventEligible(game: GameState, outcome: AnswerOutcome): boolean 
   return outcome.type === "correct-room-advance" && !outcome.entersBoss && outcome.nextRoomIndex < game.rooms.length - 1;
 }
 
+/** Which fork this correct answer may bring (#286): the bank's, on the room it walks into; in a bank that places none,
+ * the random draw (the room rolls it). A bank that places any fork draws no random ones, so its layout is the plan. */
+export function forkRule(game: GameState, outcome: AnswerOutcome): "placed" | "random" | null {
+  if (outcome.type !== "correct-room-advance" || !eventEligible(game, outcome)) return null;
+  if (!game.rooms.some((r) => r.fork)) return "random";
+  return game.rooms[outcome.nextRoomIndex].fork ? "placed" : null;
+}
+
+/** The labelled doors of the fork `team` stands at (#286), or undefined for the unlabelled ⚔️ / ❓ fork. */
+export function forkDoors(game: GameState, team: Team): [ForkDoorSpec, ForkDoorSpec] | undefined {
+  return game.rooms[team.roomIndex]?.fork?.doors;
+}
+
+/** A hard or category door (#286): the team's room question is swapped. hard deals from the next harder pool (a correct
+ * answer then earns that pool's progress), category deals an unrevealed question of the category from the room's pool
+ * that no other team holds. With nothing to deal, the team keeps the question it holds. */
+function redealForDoor(game: GameState, teamId: string, spec: ForkDoorSpec, categoryOf: Record<string, string | undefined>, rng: () => number): GameState {
+  const team = getTeam(game, teamId);
+  let questionId = "";
+  let used = game.usedQuestionIds;
+  let difficulty = team.currentDifficulty;
+  if (spec.kind === "hard") {
+    difficulty = Math.min(5, team.currentDifficulty + 1) as Difficulty;
+    ({ questionId, used } = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, difficulty, rng));
+    if (game.revealedQuestionIds.includes(questionId)) questionId = "";
+  } else if (spec.kind === "category") {
+    if (categoryOf[team.currentQuestionId] === spec.category) return game;
+    const p = poolIndexFor(game.pools, team.currentDifficulty);
+    const held = new Set(game.teams.filter((t) => !t.inBoss && t.id !== teamId).flatMap((t) => [t.currentQuestionId, ...(t.queuedQuestionId ? [t.queuedQuestionId] : [])]));
+    const ids = game.pools[p].filter((id) => categoryOf[id] === spec.category && !held.has(id) && !game.revealedQuestionIds.includes(id));
+    // Undrawn since the pool's last reshuffle first, as deal() does.
+    const fresh = ids.filter((id) => !game.usedQuestionIds[p].includes(id));
+    const from = fresh.length ? fresh : ids;
+    questionId = from[Math.floor(rng() * from.length)] ?? "";
+    if (questionId && !used[p].includes(questionId)) used = used.map((u, i) => (i === p ? [...u, questionId] : u));
+  }
+  if (!questionId || questionId === team.currentQuestionId) return game;
+  const checks = { ...game.checks };
+  delete checks[checkKey(team.currentQuestionId, teamId)];
+  return {
+    ...game,
+    usedQuestionIds: used,
+    ...(game.checks ? { checks } : {}),
+    teams: patchTeam(game.teams, teamId, () => ({ currentQuestionId: questionId, currentDifficulty: difficulty, currentSelection: null, wrongOn: undefined, oracleQ: undefined })),
+  };
+}
+
 /* ---------- 叉路 (docs/designs/branch-fork.md) ---------- */
 
 /** waiting: at the fork, its turn not come yet (no clock). choosing: its turn, until `deadline` (ms epoch, the room's
  * clock), with the ⚔️ door on `monsterSide` (drawn by the room, never sent to any screen). monster: it took ⚔️ (or timed
  * out), so this room's correct answer rolls no fork. */
 export type Fork = { phase: "waiting" } | { phase: "choosing"; deadline: number; monsterSide: ForkSide } | { phase: "monster" };
-export type ForkDoor = "monster" | "mystery";
-/** The doors are unmarked: a team picks a side, and only the opened door shows what it was. */
+/** What a door leads to. hard and category only behind a bank's labelled doors (#286). */
+export type ForkDoor = "monster" | "mystery" | "hard" | "category";
+/** A door a bank places (#286): the room's question (monster), an event (mystery), a question from the next harder
+ * pool (hard, progress one level up), or a question of `category` from the room's pool. */
+export type ForkDoorSpec = { kind: "monster" | "mystery" | "hard" } | { kind: "category"; category: string };
+/** A fork a bank places on a room (#286): walking into that room by a correct answer always brings a fork. `doors`:
+ * labelled, left then right, shown on every screen from the start, and a timeout opens the left one; absent: the
+ * unlabelled ⚔️ / ❓ fork with the sides drawn by the room. */
+export interface RoomFork {
+  doors?: [ForkDoorSpec, ForkDoorSpec];
+}
+/** Unlabelled doors: a team picks a side, and only the opened door shows what it was. Labelled doors (#286): shown. */
 export type ForkSide = "left" | "right";
 /** A team's pick, or the clock running out (the room's only). */
 export type ForkChoice = ForkSide | "timeout";
-/** One fork in the game log: the side opened, what was behind it, and whether the clock picked it. */
-export type ForkRecord = { side: ForkSide; door: ForkDoor; timeout?: true; crowd?: ForkCrowd };
+/** One fork in the game log: the side opened, what was behind it (a category door's category), and whether the clock picked it. */
+export type ForkRecord = { side: ForkSide; door: ForkDoor; category?: string; timeout?: true; crowd?: ForkCrowd };
 /** The waiting teams' door votes when the fork was chosen (#285), only when at least one team voted. */
 export type ForkCrowd = { left: number; right: number };
 /** How long the team on turn has to pick a door; then the room takes ⚔️ for it. */
@@ -2241,16 +2300,21 @@ export function startForkChoice(game: GameState, teamId: string, deadline: numbe
  * as if there had been no fork (the question it holds, the same turn). ❓: the event is drawn now and opened at once, as
  * openEvent does (the effect lands, the team walks on, the turn passes).
  */
-export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random, crowd?: ForkCrowd): { game: GameState; record: ForkRecord; result?: EventResult } {
+export function chooseFork(game: GameState, teamId: string, choice: ForkChoice, rng: () => number = Math.random, crowd?: ForkCrowd, categoryOf: Record<string, string | undefined> = {}): { game: GameState; record: ForkRecord; result?: EventResult } {
   assertPlaying(game);
   assertTurn(game, teamId);
-  const fork = getTeam(game, teamId).fork;
+  const team = getTeam(game, teamId);
+  const fork = team.fork;
   if (fork?.phase !== "choosing") throw new InvalidActionError("no_fork");
-  const side = choice === "timeout" ? fork.monsterSide : choice;
-  const door: ForkDoor = side === fork.monsterSide ? "monster" : "mystery";
-  const record: ForkRecord = { side, door, ...(choice === "timeout" ? { timeout: true as const } : {}), ...(crowd && crowd.left + crowd.right > 0 ? { crowd } : {}) };
+  const doors = forkDoors(game, team);
+  // Labelled doors: a timeout opens the left one; unlabelled: the ⚔️ side the room drew.
+  const side = choice === "timeout" ? (doors ? "left" : fork.monsterSide) : choice;
+  const spec: ForkDoorSpec = doors ? doors[side === "left" ? 0 : 1] : { kind: side === fork.monsterSide ? "monster" : "mystery" };
+  const door = spec.kind;
+  const record: ForkRecord = { side, door, ...(spec.kind === "category" ? { category: spec.category } : {}), ...(choice === "timeout" ? { timeout: true as const } : {}), ...(crowd && crowd.left + crowd.right > 0 ? { crowd } : {}) };
   const chose = patchTeam(game.teams, teamId, (t) => ({ fork: door === "mystery" ? undefined : { phase: "monster" as const }, forks: [...(t.forks ?? []), record] }));
   if (door === "monster") return { game: { ...game, teams: chose }, record };
+  if (door === "hard" || spec.kind === "category") return { game: redealForDoor({ ...game, teams: chose }, teamId, spec, categoryOf, rng), record };
   const event = drawEvent(game, teamId, rng);
   const entered = enterEventRoom({ ...game, teams: chose }, teamId, event);
   // The fortune teller's event waits on the team for its effect (resolveFortune opens it).

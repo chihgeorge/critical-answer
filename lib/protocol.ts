@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkDoorSpec, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -617,7 +617,9 @@ export type ServerMessage =
       /** The door that just opened, on show for FORK_BEAT_MS (branch-fork.md): `question` is null and the view still
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
-      forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; timeout?: true };
+      forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; category?: string; timeout?: true };
+      /** A labelled fork's doors (#286), left then right, while its team chooses and during its door opening. Absent: unlabelled. */
+      forkDoors?: [ForkDoorSpec, ForkDoorSpec];
       /** The waiting teams' door votes (#285), teamId → side, while a team chooses. Advice only; FORK_VOTES updates it. */
       forkVotes?: Record<string, ForkSide>;
       /** 占卜師 (docs/designs/fortune-teller.md), from the crystal ball to the host's 下一題 after the effect card. `step`:
