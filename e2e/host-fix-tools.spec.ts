@@ -87,7 +87,7 @@ test("host fixes: 🩺 檢查題庫 answers in the lobby, then 修正 and 改判
   const before = Number(await shown.textContent());
   await fix.getByRole("button", { name: "修正隊加 5 分" }).click();
   await expect(shown).toHaveText(String(before + 5));
-  await fix.getByLabel("修正隊的分數").fill("42");
+  await fix.getByLabel("修正隊的分數", { exact: true }).fill("42");
   await fix.getByRole("button", { name: "設定修正隊的分數" }).click();
   await expect(shown).toHaveText("42");
   await expect(reward).toHaveText("42");

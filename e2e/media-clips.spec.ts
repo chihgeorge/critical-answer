@@ -11,8 +11,11 @@ closeLeftoverContexts();
 
 const WORKER = "http://localhost:1996";
 const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
-const FILE_KEY = "0b7e2f6a-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
-const EXPLAIN_KEY = "9f8e7d6c-5b4a-4321-8fed-cba987654321";
+/** The bank accepts only keys the bucket holds: each test uploads two stand-in MP4s (an `ftyp isom` header is all the
+ * upload's sniff reads), and the big screen's copies of them are page routes. */
+let FILE_KEY = "";
+let EXPLAIN_KEY = "";
+const FAKE_MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.alloc(64)]);
 /** The R2 bucket's public URL (wrangler.jsonc R2_PUBLIC_BASE_URL): uploaded files load from there. */
 const R2 = /\.r2\.dev\//;
 
@@ -57,6 +60,13 @@ window.YT = {
 let original: unknown;
 test.beforeEach(async ({ request }) => {
   original = (await (await request.get(`${WORKER}/api/bank`, { headers: HEADERS })).json()).bank.pools["1"];
+  const upload = async () => {
+    const res = await request.post(`${WORKER}/api/bank/image`, { headers: { ...HEADERS, "Content-Type": "video/mp4" }, data: FAKE_MP4 });
+    expect(res.ok(), await res.text()).toBe(true);
+    return (await res.json()).key as string;
+  };
+  FILE_KEY = await upload();
+  EXPLAIN_KEY = await upload();
 });
 test.afterEach(async ({ request }) => {
   if (!original) return;
