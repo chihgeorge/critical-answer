@@ -1595,10 +1595,10 @@ export function answerQuestion(
   if ((correct || fleeChoice !== "retry") && getTeam(nextGame, teamId).oracleQ !== undefined) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ oracleQ: undefined })) };
   const left = getTeam(nextGame, teamId).wrongOn;
   if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
-  // A question this answer revealed retires for every team holding it (tiny custom banks). One a hint revealed
-  // earlier (a mage's cast) stays with its team until that team leaves it.
+  // A revealed question retires for every team holding it (tiny custom banks), except the answering team's own
+  // question a hint revealed earlier (a mage's cast): a 重答 stays on it.
   for (const t of nextGame.teams) {
-    if (t.inBoss || revealedAtStart.includes(t.currentQuestionId) || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
+    if (t.inBoss || (t.id === teamId && revealedAtStart.includes(t.currentQuestionId)) || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
     const dealt = dealFor(nextGame, t, t.currentDifficulty, nextGame.revealedQuestionIds, rng);
     nextGame = { ...nextGame, usedQuestionIds: dealt.used, teams: patchTeam(nextGame.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined, oracleQ: undefined, queuedQuestionId: dealt.queuedQuestionId })) };
   }

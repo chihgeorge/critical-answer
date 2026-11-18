@@ -449,6 +449,16 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
     expect(state(fin.room).podium.beats).not.toBeNull();
   });
 
+  it("a finished, held save from before host-stepped awards still waits at the first podium beat", async () => {
+    const b = memoryStorage();
+    const s = setup({ storage: b });
+    send(s.room, s.host, { type: "HOST_END_GAME" });
+    await vi.advanceTimersByTimeAsync(LONG);
+    delete (b.data.get(SNAPSHOT_KEY) as Record<string, unknown>).podiumStep;
+    const fin = await restored(b);
+    expect(fin.last()).toMatchObject({ hold: { kind: "podium" }, podium: { step: -1 } });
+  });
+
   it("a save from before the switch, or a damaged one, is auto", async () => {
     const storage = memoryStorage();
     setup({ storage, manual: false });

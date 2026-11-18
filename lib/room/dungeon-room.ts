@@ -1169,7 +1169,7 @@ export class DungeonRoom {
     this.epilogueRequested = s.epilogueRequested;
     this.podium = s.podium ?? (s.epilogue && s.game?.ranking ? { lines: [], at: this.now() } : null);
     // A save from before host-stepped awards: a held podium starts over, one already played shows its end.
-    this.podiumStep = s.podiumStep ?? (s.revealHeld ? -1 : Number.MAX_SAFE_INTEGER);
+    this.podiumStep = s.podiumStep ?? (!s.revealHeld && s.game?.phase === "finished" ? Number.MAX_SAFE_INTEGER : -1);
     const pages = this.epilogue ? epiloguePages(this.epilogue).length : 1;
     this.epiloguePage = Number.isInteger(s.epiloguePage) && s.epiloguePage! >= 0 && s.epiloguePage! < pages ? s.epiloguePage! : 0; // a damaged save shows the first page
     this.revealFrom = s.revealFrom ?? null;
@@ -1446,6 +1446,8 @@ export class DungeonRoom {
     const want = this.answering();
     if (want === "hold") {
       if (this.answerClock && this.heldClockMs === null) this.heldClockMs = Math.max(0, this.answerClock.endsAt - this.now());
+      // Kept fresh so a save made while away holds the time left, not the old deadline.
+      if (this.answerClock && this.heldClockMs !== null) this.answerClock = { ...this.answerClock, endsAt: this.now() + this.heldClockMs };
       return {};
     }
     if (this.heldClockMs !== null && want && this.answerClock?.key === want.key) this.answerClock = { ...this.answerClock, endsAt: this.now() + this.heldClockMs };
