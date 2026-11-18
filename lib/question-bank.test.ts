@@ -140,6 +140,8 @@ describe("boss phases", () => {
     expect(findQuestion(b, "b1")).toMatchObject({ difficulty: 3 });
     // An explicit 3 is the default: stored as no difficulty.
     expect(b.boss.phases[0].questions.find((x) => x.id === "b3")).not.toHaveProperty("difficulty");
+    // A 5 is no longer the default, so it is stored and survives a save (banks saved before 2026-11-18 dropped it).
+    expect(b.boss.phases[0].questions.find((x) => x.id === "b4")).toHaveProperty("difficulty", 5);
     expect(bossPhaseStates(b)[0].questionIds).toEqual(["b1", "b2", "b3", "b4"]);
     expect(bossDifficulties(b)).toEqual({ b2: 2, b4: 5 });
     expect(() => parseBank({ ...valid(), boss: { monster: "dragon", phases: [{ maxHp: 3, questions: [{ ...q("b1"), difficulty: 6 }] }] } })).toThrow(/difficulty 6/);
