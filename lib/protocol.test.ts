@@ -47,6 +47,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_BUZZ_OPEN", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_OPEN", questionId: "q1" });
     expect(parseClientMessage({ type: "SCREEN_CLIP_ERROR", questionId: "q1" })).toEqual({ type: "SCREEN_CLIP_ERROR", questionId: "q1" });
     expect(parseClientMessage({ type: "SCREEN_CLIP_ERROR" })).toBeNull();
+    expect(parseClientMessage({ type: "SCREEN_CLIP_DURATION", questionId: "q1", seconds: 212.5 })).toEqual({ type: "SCREEN_CLIP_DURATION", questionId: "q1", seconds: 212.5 });
+    for (const seconds of [0, -1, Infinity, "212", undefined]) expect(parseClientMessage({ type: "SCREEN_CLIP_DURATION", questionId: "q1", seconds })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "動漫" })).toEqual({ type: "TEAM_PICK_CATEGORY", category: "動漫" });
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "" })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "x".repeat(65) })).toBeNull();

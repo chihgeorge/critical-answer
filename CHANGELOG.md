@@ -2,6 +2,24 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.1.1] - 2026-11-19
+
+### Changed
+- README and the hosting guide (both languages) match the current game: the home page is a title screen with a player door and a host door, a boss hit scores by the question's difficulty (5/10/15/20/25, unset counts as 3), fleeing reveals the old question's answer, a team whose phones step away keeps its turn, and the README names the four songs (title, tavern lobby, boss, victory) and when each plays. The overview screenshot is retaken with the dungeon art, and the question-bank guide now says an unset boss difficulty is 3, not 5 (#327).
+
+## [0.103.1.0] - 2026-11-19
+
+### Changed
+- `scripts/balance-sim.ts` (tooling only, no game change) now models 抓包與神諭 (oracle use, a cheating team, catches upheld or dismissed, with the `CATCH_PAY` values as knobs), rates boss questions the way the game does (unset = difficulty 3, plus `BOSSD` / `BUZZD` for a bank's ratings), takes the room layout as `ROOMS`, and prints a 95% interval next to each win share.
+
+## [0.103.0.1] - 2026-11-19
+
+### Added
+- Tests for the lucky potion on a mage's fill-in: refused once the skill is cast or the answer is in (#345).
+
+### Fixed
+- The host page's 「選擇播放段落」 timeline now reaches the end of a long video: the big screen reports the video's length, so after the answer reveal the whole video can be scrubbed (before it, the timeline covers only the question clip). It used to stop at 10 minutes.
+
 ## [0.103.0.0] - 2026-11-19
 
 ### Added

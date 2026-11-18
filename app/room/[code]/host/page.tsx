@@ -40,7 +40,7 @@ import { QuestionPicker } from "@/components/question-picker";
 import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
-import { formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
+import { FALLBACK_SEEK_S, formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
@@ -167,6 +167,8 @@ export default function HostPage() {
   /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
   const [screenKey, setScreenKey] = useState("");
   /** The room's closing warning (HOST_ROOM_CLOSING), counted down here a minute at a time (never below 1). */
+  /** SCREEN_VIDEO's timeline bounds, for the question they came with (host-only: not in STATE). */
+  const [videoRange, setVideoRange] = useState<{ questionId: string; min: number; max: number } | null>(null);
   const [closing, setClosing] = useState<{ minutesLeft: number; canExtend: boolean; sent?: true } | null>(null);
   useEffect(() => {
     if (!closing || closing.minutesLeft <= 1) return;
@@ -272,6 +274,9 @@ export default function HostPage() {
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           break;
         }
+        case "SCREEN_VIDEO":
+          setVideoRange(msg.range ? { questionId: msg.questionId, ...msg.range } : null);
+          break;
         case "HOST_ANSWER":
           setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question, tap: msg.tap });
           break;
@@ -732,7 +737,7 @@ export default function HostPage() {
       {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} measured={game.reveal.timing.latencyMs ?? 0} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
       {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
-          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
+          <MediaControls questionId={game.reveal.questionId} media={game.media} range={videoRange?.questionId === game.reveal.questionId ? videoRange : undefined} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
           {game.clipError && (
             <div data-testid="host-reveal-clip-error" role="alert" className="mt-2 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
               大螢幕：這支影片放不出來，按 ▶ 再試一次
@@ -1267,7 +1272,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
@@ -1782,7 +1787,7 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
  * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
  * the clip stop at its end. */
-function MediaControls({ questionId, media, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
+function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK_S }, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; range?: { min: number; max: number }; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const [picked, setPicked] = useState<{ questionId: string; seq: number; at: number } | null>(null);
@@ -1790,7 +1795,8 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
     send({ type: "HOST_MEDIA", questionId, action });
     setPicked(null);
   };
-  const at = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0;
+  // Inside the timeline: a clip with no seek yet plays from its start, not 0:00.
+  const at = Math.min(range.max, Math.max(range.min, picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0));
   // Only a value the host moved since the last command: a stray tap must not seek (and clear a timing round's taps).
   const moved = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0);
   const seek = (value: string) => {
@@ -1808,8 +1814,8 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
       {!instagram && (
         <label className="mt-2 block text-[14px]">
           <span>選擇播放段落：{formatClipTime(at)}</span>
-          {/* shortcut: the host page does not know the clip's bounds or the video's length, so 10 minutes; the room clamps a question clip's seek to it. */}
-          <input type="range" aria-label="選擇播放段落" min={0} max={600} step={1} value={at} disabled={disabled}
+          {/* The room sends the clip's bounds before the reveal and the video's length the big screen reported (seekRange). */}
+          <input type="range" aria-label="選擇播放段落" min={range.min} max={range.max} step={1} value={at} disabled={disabled}
             onChange={(e) => setPicked({ questionId, seq: media?.seq ?? 0, at: Number(e.currentTarget.value) })}
             onPointerUp={(e) => seek(e.currentTarget.value)}
             // Only the keys that move a range: 1, Enter or Space released here must not seek (and clear a timing round's taps).
