@@ -1289,7 +1289,7 @@ export default function HostPage() {
                   {/* The buzzing team may also type its answer (boss-music-buzzer.md M2). */}
                   {buzz.teamId && (
                     <div data-testid="host-typed-answer" className="text-[18px] [overflow-wrap:anywhere]">
-                      {/* Host-only (HOST_ANSWER): STATE hides it from the other teams (multi-field.md E4). */}
+                      {/* From HOST_ANSWER; STATE carries the same text to the big screen (#368), the fields stay host-only. */}
                       {((typed) => (typed ? `隊伍打字：${typed}` : "（口頭作答，或等他們打字）"))(answer?.typed?.teamId === buzz.teamId ? answer.typed.text : undefined)}
                     </div>
                   )}

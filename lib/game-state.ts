@@ -2382,9 +2382,10 @@ function patchTeam(teams: Team[], teamId: string, patch: (t: Team) => Partial<Te
 /** Mark a team offline/online — a disconnected team is skipped by advanceTurn (T7). */
 export function setTeamOnline(game: GameState, teamId: string, online: boolean): GameState {
   getTeam(game, teamId); // throws if unknown
-  // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz.
-  const drops = !online && game.buzz?.teamId === teamId;
-  // Its typed answer goes with the buzz (boss-music-buzzer.md M2): it may buzz and type again.
+  // A buzzing team that drops lets go of the buzz, not judged (boss-buzzer.md): another team may buzz. Not once it has
+  // sent a typed answer: the big screen already shows it (#368), and the team puts the phone down to wait for the host.
+  const drops = !online && game.buzz?.teamId === teamId && getTeam(game, teamId).typedAnswer === undefined;
+  // An unsent buzz's state goes with it (boss-music-buzzer.md M2): it may buzz and type again.
   const dropped = { ...game, ...(drops ? { buzz: { ...game.buzz!, teamId: undefined } } : {}), teams: patchTeam(game.teams, teamId, () => ({ online, ...(drops ? { typedAnswer: undefined, typedFields: undefined } : {}) })) };
   // The last unstunned team dropping leaves every online boss-room team stunned: latched for the round (timing-tap.md).
   // Only when this drop makes it true: a stunned team blipping after stunned teams reconnected into an empty room does not.

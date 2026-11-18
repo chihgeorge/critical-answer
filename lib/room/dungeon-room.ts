@@ -1580,9 +1580,8 @@ export class DungeonRoom {
     // So does the first character an earlier team's own check earned on it.
     const earlier = held === undefined ? [] : this.game.teams.map((t) => checkKey(held, t.id)).filter((k) => view.checks?.[k]?.hint !== undefined);
     if (earlier.length) view.checks = Object.fromEntries(Object.entries(view.checks!).map(([k, c]) => (earlier.includes(k) ? [k, { ...c, hint: undefined }] : [k, c])));
-    // A buzzer phase's typed answer goes to the host only (HOST_ANSWER): the other teams could still buzz on it
-    // (multi-field.md E4). "" still tells the team's own phone it was sent. A game ended mid-buzz keeps it hidden too.
-    if (isBuzzPhase(this.game) || this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
+    // Submitted player text is public during play; finished games no longer show it.
+    if (this.game.phase === "finished") view.teams = view.teams.map((t) => (t.typedAnswer === null ? t : { ...t, typedAnswer: "" }));
     return {
       type: "STATE",
       view,
@@ -3563,6 +3562,8 @@ export class DungeonRoom {
     const prev = this.game!;
     const holding = prev.buzz?.teamId === teamId;
     this.keepUndoOpen(setTeamOnline(prev, teamId, online));
+    // A team that sent its typed answer keeps the buzz while its phone sleeps (#368): the music stays stopped.
+    if (holding && this.game!.buzz?.teamId === teamId) return;
     if (online) return;
     // The last team still in dropped (holding the buzz or not) and the same song reopened to all: as after all-wrong,
     // the music waits for the host's ▶ and the owl says so (boss-music-buzzer.md M1).
