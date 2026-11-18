@@ -118,7 +118,7 @@ export const BOSS_HIT_REWARDS = [5, 10, 15, 20, 25] as const;
 export function bossQuestionDifficulty(game: GameState, questionId: string | null | undefined): Difficulty {
   // Own keys only (an id like "constructor" must not read Object.prototype); a damaged value falls back to the default.
   const d = questionId && game.bossDifficulties && Object.hasOwn(game.bossDifficulties, questionId) ? game.bossDifficulties[questionId] : DEFAULT_BOSS_DIFFICULTY;
-  return BOSS_HIT_REWARDS[d - 1] === undefined ? DEFAULT_BOSS_DIFFICULTY : d;
+  return Number.isInteger(d) && BOSS_HIT_REWARDS[d - 1] !== undefined ? d : DEFAULT_BOSS_DIFFICULTY;
 }
 
 /** What one hit on the boss's current question pays (BOSS_HIT_REWARDS by its difficulty). */
@@ -744,7 +744,8 @@ export function createGame(
   config: GameConfig,
   bossMaxHp: number,
   rng: () => number = Math.random,
-  bossHitReward = DEFAULT_BOSS_HIT_REWARD,
+  /** The bank's old flat hitReward: kept in the state and the game log only; a hit pays bossHitReward. */
+  storedHitReward = DEFAULT_BOSS_HIT_REWARD,
   optionOrder: Record<string, number[]> = {},
   /** Phases after the first, which is `bossQuestionIds` and `bossMaxHp`. */
   laterBossPhases: BossPhaseState[] = [],
@@ -809,7 +810,7 @@ export function createGame(
     pendingWrong: null,
     boss: {
       maxHp: bossMaxHp,
-      hitReward: bossHitReward,
+      hitReward: storedHitReward,
       ...(bossDish ? { dish: bossDish } : {}),
       hp: bossMaxHp,
       killedByTeamId: null,

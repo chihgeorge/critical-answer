@@ -1647,7 +1647,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
     const inBoss = { ...b, bossDifficulties: { [b.boss.currentQuestionId]: 2 as const }, teams: b.teams.map((t) => ({ ...t, reward: 25 })) };
     const hit = warriorRoll(inBoss, "T0", b.boss.currentQuestionId, 1, first);
     expect(hit.outcome).toMatchObject({ type: "incorrect-retry", penalty: 10 });
-    expect(hit.game.teams[0].reward).toBe(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(hit.game.teams[0].reward).toBe(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share; 25 − 10
   });
 
   it("the final blow still rolls the 4d20 kill bonus", () => {
