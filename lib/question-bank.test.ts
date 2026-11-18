@@ -3,6 +3,7 @@ import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, question
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
+import { DEFAULT_GAME_CONFIG } from "./game-state";
 
 const UUID_A = "11111111-1111-1111-1111-111111111111";
 const UUID_B = "22222222-2222-2222-2222-222222222222";
@@ -150,11 +151,13 @@ describe("boss phases", () => {
 describe("shipped bank", () => {
   const all = allQuestions(BANK);
 
-  it("has 8 rooms of difficulty 1/2/2/3/4/4/5/5 paying 10/20/20/30/40/40/50/50 (scoring-and-score-pools.md S9, S12)", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-    expect(BANK.rooms.map((r) => r.difficulty)).toEqual([1, 2, 2, 3, 4, 4, 5, 5]);
-    expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 40, 40, 50, 50]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-    // Eight different room monsters (monster-catalog.md PR2 item 5).
-    expect(new Set(BANK.rooms.map((r) => r.monster)).size).toBe(8);
+  it("has 6 rooms of difficulty 1/2/2/3/3/4 paying 10/20/20/30/30/40, a boss of 8 hearts (issue #371)", () => {
+    expect(BANK.rooms.map((r) => r.difficulty)).toEqual([1, 2, 2, 3, 3, 4]);
+    expect(BANK.rooms.map((r) => r.reward)).toEqual([10, 20, 20, 30, 30, 40]);
+    // Six rooms whose difficulties add up to the default 進王門檻: a team without a flee walks in after room 6.
+    expect(BANK.rooms.reduce((n, r) => n + r.difficulty, 0)).toBe(DEFAULT_GAME_CONFIG.bossThreshold);
+    expect(new Set(BANK.rooms.map((r) => r.monster)).size).toBe(6);
+    expect(BANK.boss.phases[0].maxHp).toBe(8);
     expect(BANK.boss.monster).toBe("dragon");
   });
 

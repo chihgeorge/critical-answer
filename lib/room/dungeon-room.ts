@@ -90,6 +90,7 @@ import {
   tapEligible,
   tapIn,
   tapWinner,
+  serveFeast,
 } from "../game-state";
 import {
   DEFAULT_AI_LIMIT,
@@ -139,7 +140,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, initiativeOrder,
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, questionType, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
+import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, questionType, TIMING_CATEGORY, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_EARLY_MS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_SKIP, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
@@ -1321,7 +1322,7 @@ export class DungeonRoom {
 
   /** The turn's question is what the big screen shows now: no reveal, card, door, fortune or check in front of it. */
   private questionOnScreen(): boolean {
-    return this.game?.phase === "playing" && !this.paused() && !this.awaitingCheck() && !!this.currentQuestion();
+    return this.game?.phase === "playing" && !this.paused() && !this.awaitingCheck() && !this.pickHold() && !!this.currentQuestion();
   }
 
   /** Starts an image memory question's seconds the first time it is on screen, and ends them once they ran out.
@@ -1377,6 +1378,7 @@ export class DungeonRoom {
     if (!this.requireHost(conn)) return;
     if (this.memoryEnded(questionId)) return questionId === this.currentQuestion()?.pub.id ? this.broadcastState() : undefined;
     if (!this.memorizing() || this.currentQuestion()?.pub.id !== questionId) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    if (this.pickHold()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "pick_pending" });
     this.endMemory(questionId);
     // A buzzer phase's clip the host never got to play: its question is up now, so buzzing opens (boss-buzzer.md D5).
     if (this.game) this.keepUndoOpen(openBuzz(this.game, questionId));
@@ -1500,6 +1502,8 @@ export class DungeonRoom {
     // So does a memory question's watching phase: the host's copy is the whole question, marked.
     const question = this.awaitingCheck()
       ? { question: { ...q.full, checkFirst: true as const } }
+      : this.pickHold()
+        ? { question: q.full }
       : q.pub.memorize
         ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
         : {};
@@ -1511,12 +1515,14 @@ export class DungeonRoom {
     const game = this.game;
     if (!game || game.phase !== "playing") return null;
     const bankQuestions = new Map(allQuestions(this.bank).map((q) => [q.id, q]));
+    const categoryOf = this.categoryOf();
     const questions: HostPick[] = [...game.pools.flat(), ...game.boss.questionIds].flatMap((id) => {
       const q = bankQuestions.get(id);
       if (!q) return [];
       const label = q.content.kind === "text" ? q.content.value : q.content.kind === "image" ? "（圖片題）" : q.content.kind === "video" ? "（影片題）" : q.content.kind === "audio" ? "（聲音題）" : "（YouTube 題）";
       const block = pickBlock(game, id);
-      return [{ id, label, answer: answerText(q), type: questionType(q), ...(block ? { block } : {}) }];
+      const category = categoryOf[id];
+      return [{ id, label, answer: answerText(q), type: questionType(q), ...(category ? { category } : {}), ...(block ? { block } : {}) }];
     });
     const targets = [...game.teams.filter((t) => !t.inBoss).map((t) => t.id), "boss"];
     const options = Object.fromEntries(targets.map((t) => [t, pickableQuestionIds(game, t)]));
@@ -1570,7 +1576,9 @@ export class DungeonRoom {
     if (rolling && view.checks) view.checks = Object.fromEntries(Object.entries(view.checks).filter(([k]) => k !== rolling));
     // Check first, question after: a first character an earlier team's mage got on this (shared boss) question waits too.
     // And while a memory question's media plays: no hint shows over it (memory-questions.md).
-    const held = this.awaitingCheck() || this.memorizing() ? this.currentQuestion()?.pub.id : undefined;
+    // And a buzzer question waiting for the winner's category (#370).
+    const hold = this.pickHold();
+    const held = this.awaitingCheck() || this.memorizing() || hold ? this.currentQuestion()?.pub.id : undefined;
     if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
     // So does the first character an earlier team's own check earned on it.
     const earlier = held === undefined ? [] : this.game.teams.map((t) => checkKey(held, t.id)).filter((k) => view.checks?.[k]?.hint !== undefined);
@@ -1584,7 +1592,8 @@ export class DungeonRoom {
       winners: this.game.winners,
       roomEpoch: this.roomEpoch,
       // The card holds the new phase's first question back until the host's 下一題.
-      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() ? null : this.shownQuestion(),
+      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold ? null : this.shownQuestion(),
+      ...(hold ? { pickHold: true as const } : {}),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
@@ -2493,9 +2502,6 @@ export class DungeonRoom {
           break;
         case "TEAM_PICK_CATEGORY":
           this.handleTeamPickCategory(sender, msg.category);
-          break;
-        case "TEAM_PICK_TYPE":
-          this.handleTeamPickType(sender, msg.qtype);
           break;
         case "HOST_BUZZ_PICK":
           this.handleHostBuzzPick(sender, msg);
@@ -4010,7 +4016,7 @@ export class DungeonRoom {
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
     if (this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides()) return null;
     // Not before the check: the video is part of the question.
-    const pub = this.awaitingCheck() ? null : this.currentQuestion()?.pub;
+    const pub = this.awaitingCheck() || this.pickHold() ? null : this.currentQuestion()?.pub;
     return pub?.content.kind === "youtube" ? pub.id : null;
   }
 
@@ -4111,6 +4117,7 @@ export class DungeonRoom {
     if (this.paused() || this.pendingRoll || this.pendingLock) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "reveal_pending" });
     if (this.question(questionId)?.kind === "timing") return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "tap_closed" });
     if (this.memorizing()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
+    if (this.pickHold()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "pick_pending" });
     const open = !isClip(this.question(questionId)?.content);
     try {
       this.game = buzzIn(this.game, teamId, questionId, open);
@@ -4154,20 +4161,34 @@ export class DungeonRoom {
   private handleHostBuzzOpen(conn: Conn, questionId: string) {
     if (!this.requireHost(conn) || !this.game) return;
     if (this.paused() || questionId !== this.game.boss.currentQuestionId || !isBuzzPhase(this.game)) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "stale_question" });
+    if (this.pickHold()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "pick_pending" });
     // A timing question needs the big screen's clock: there is nothing to time a song played elsewhere against.
     if (this.question(questionId)?.kind === "timing") return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "timing_needs_screen" });
     this.keepUndoOpen(openBuzz(this.game, questionId));
     this.broadcastState();
   }
 
-  /** Each question's bank category, for the buzz winner's pick (boss-music-buzzer.md M5). */
+  /** Each question's bank category, for the buzz winner's pick (boss-music-buzzer.md M5). In a bank that uses
+   * categories, every timing question is one more category, 卡點題 (#370). */
   private categoryOf(): Record<string, string | undefined> {
-    return Object.fromEntries(allQuestions(this.bank).map((q) => [q.id, q.category]));
+    const qs = allQuestions(this.bank);
+    const any = qs.some((q) => q.category);
+    return Object.fromEntries(qs.map((q) => [q.id, any && q.kind === "timing" ? TIMING_CATEGORY : q.category]));
   }
 
   /** Whether the boss question is open to buzzing without a ▶: shown, and not a video (as handleTeamBuzz decides). */
   private openWithoutPlay(): boolean {
-    return !this.paused() && !!this.game && !isClip(this.question(this.game.boss.currentQuestionId)?.content);
+    return !this.paused() && !!this.game && !this.pickHold() && !isClip(this.question(this.game.boss.currentQuestionId)?.content);
+  }
+
+  /** #370: after a correct buzz the next question waits, hidden, until the winner picks a category or the host picks
+   * (下一步 keeps the dealt one). Derived, never saved: it ends for good once a pick is set. */
+  private pickHold(): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || this.paused() || !isBuzzPhase(game)) return false;
+    const b = game.buzz;
+    if (!b?.picker || b.questionId !== game.boss.currentQuestionId || b.category || b.qtype || b.hostPicked) return false;
+    return pickableCategories(game, this.categoryOf(), false).length > 0;
   }
 
   private buzzCategories(): { buzzCategories?: string[] } {
@@ -4195,18 +4216,6 @@ export class DungeonRoom {
   private buzzTypes(): { buzzTypes?: { type: string; left: boolean }[] } {
     const types = this.game ? pickableTypes(this.game, this.typeOf(), this.openWithoutPlay()) : [];
     return types.length ? { buzzTypes: types } : {};
-  }
-
-  /** The buzz winner picks the next question's type (#321), until the host's ▶ opens buzzing or the host picks. */
-  private handleTeamPickType(conn: Conn, qtype: string) {
-    const teamId = this.playingTeam(conn);
-    if (!teamId || !this.game) return;
-    try {
-      this.game = pickNextQuestion(this.game, teamId, "qtype", qtype, this.typeOf(), this.openWithoutPlay());
-    } catch (err) {
-      return this.sendInvalid(conn, err);
-    }
-    this.broadcastState();
   }
 
   /** The host sets the next buzzer question's type, or the question itself (#321), overriding the winner's pick. */
@@ -4658,6 +4667,7 @@ export class DungeonRoom {
       const pool = MONSTERS.filter((m) => !m.boss && this.sayable(m.dish.name));
       const m = result.outcome === "feast" && pool.length ? pool[Math.floor(this.rng() * pool.length)] : undefined;
       reveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
+      if (m) this.game = serveFeast(this.game, teamId, m.dish.name);
     } else {
       // ⚔️'s line follows the fork narration on screen (no new eventId: nothing new is narrated by the AI).
       const monster = this.currentQuestion()?.pub.monster.name ?? "";

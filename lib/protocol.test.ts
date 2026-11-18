@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanTypedAnswer, INTRO_PAGES, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
+import { byCategory, cleanTypedAnswer, INTRO_PAGES, MAX_RAW_TEXT, parseClientMessage, sanitizeText } from "./protocol";
 import { MAX_LINE } from "./narration/runner";
 
 const TOKEN = "host-token-0123456789abcdef";
@@ -47,8 +47,8 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "" })).toBeNull();
     expect(parseClientMessage({ type: "TEAM_PICK_CATEGORY", category: "x".repeat(65) })).toBeNull();
     // #321: the type pick, and the host's pick by type or by question (exactly one).
-    expect(parseClientMessage({ type: "TEAM_PICK_TYPE", qtype: "聽歌" })).toEqual({ type: "TEAM_PICK_TYPE", qtype: "聽歌" });
-    expect(parseClientMessage({ type: "TEAM_PICK_TYPE", qtype: "" })).toBeNull();
+    // #370: the phone picks by category only; the type pick is host-only.
+    expect(parseClientMessage({ type: "TEAM_PICK_TYPE", qtype: "聽歌" })).toBeNull();
     expect(parseClientMessage({ type: "HOST_BUZZ_PICK", qtype: "卡點" })).toEqual({ type: "HOST_BUZZ_PICK", qtype: "卡點" });
     expect(parseClientMessage({ type: "HOST_BUZZ_PICK", questionId: "q1" })).toEqual({ type: "HOST_BUZZ_PICK", questionId: "q1" });
     expect(parseClientMessage({ type: "HOST_BUZZ_PICK", qtype: "卡點", questionId: "q1" })).toBeNull();
@@ -469,5 +469,18 @@ describe("TEAM_SUBMIT_TEXT (fill-in, #104)", () => {
     expect(cleanTypedAnswer("\u202Eabc\u2066")).toBe("abc");
     expect(cleanTypedAnswer("\u200B\u200B \u200D")).toBe("");
     expect(cleanTypedAnswer("👩\u200D💻")).toBe("👩\u200D💻");
+  });
+});
+
+describe("byCategory (#370: the host's 指定題目 grouped by category)", () => {
+  it("keeps first-seen order, puts the team's category first and the uncategorized last", () => {
+    const row = (id: string, category?: string) => ({ id, label: id, answer: "", ...(category ? { category } : {}) });
+    const groups = byCategory([row("a"), row("b", "動畫"), row("c", "卡點題"), row("d", "動畫"), row("e", "遊戲")], "遊戲");
+    expect(groups.map((g) => [g.name, g.rows.map((r) => r.id)])).toEqual([
+      ["遊戲", ["e"]],
+      ["動畫", ["b", "d"]],
+      ["卡點題", ["c"]],
+      ["未分類", ["a"]],
+    ]);
   });
 });

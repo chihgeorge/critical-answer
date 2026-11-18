@@ -621,7 +621,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     expect(room.game!.phase).toBe("playing");
     vi.advanceTimersByTime(1);
     expect(room.game!.phase).toBe("finished");
-    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before + 10 + 44);
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(before + 25 + 44); // an unrated boss question hits for 25
   });
 
   it("refuses another judgment during the beat", () => {
@@ -678,7 +678,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     judge();
     expect(lastBroadcast(room).pendingRoll ?? null).toBeNull();
     expect(room.game!.boss.hp).toBe(2);
-    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(10);
+    expect(room.game!.teams.find((t) => t.id === turn)!.reward).toBe(25); // an unrated boss question
   });
 });
 
@@ -1149,8 +1149,8 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill", values: [20, 20, 20, 20], value: 80 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       expect(room.game!.phase).toBe("playing");
       vi.advanceTimersByTime(4000);
-      // hitReward 10 + half of it 5 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
-      expect(room.game!.teams[0].reward).toBe(95);
+      // An unrated boss question's 25 + half of it 13 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
+      expect(room.game!.teams[0].reward).toBe(118);
       expect(room.game!.phase).toBe("finished");
       // The kill's dice roll with their own cue, then the kill keeps its boss-kill cue.
       expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 2 });
@@ -1170,7 +1170,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "kill" });
       vi.advanceTimersByTime(4000);
       expect(room.game!.phase).toBe("finished");
-      expect(room.game!.teams[0]).toMatchObject({ reward: 95, online: false });
+      expect(room.game!.teams[0]).toMatchObject({ reward: 118, online: false });
     });
   });
 

@@ -21,7 +21,7 @@
 // - A potion a team holds (a fortune's) goes on its next check, mage or prayer die, or the crit die of an answer it knows.
 // Not modelled: memory questions (they only hide the question while the media plays; no score or ability rule), the
 // host handing out potions, 抓包與神諭 (off unless the host opens it), multi-field songs, late teams, offline phones.
-// Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD GUESSB GUESSOK EVENTS=0 THRESH HP1 HP2 HIT KB MAGE_MIN WAR_MIN
+// Env knobs: TEXT TEXTK HINT SORT SORTK SORTHINT SORTFIX TAP TAPSD GUESSB GUESSOK EVENTS=0 THRESH HP1 HP2 KB MAGE_MIN WAR_MIN
 // THIEF_MIN (see the defaults below). The event bank (2026-11-13): TEXT=0.1 SORT=0.25 HP2=20 TAP=0.03.
 import { registerHooks } from "node:module";
 import type * as GT from "../lib/game-state";
@@ -44,11 +44,12 @@ const SORT = env("SORT", 0.2), SORTK = env("SORTK", 0.6), SORTHINT = env("SORTHI
 const GUESSB = env("GUESSB", 0), GUESSOK = env("GUESSOK", 0.25);
 const TAP = env("TAP", 0.1), TAPSD = env("TAPSD", 300), TAPAT = 30_000;
 const gauss = () => Math.sqrt(-2 * Math.log(1 - R())) * Math.cos(2 * Math.PI * R());
-const THRESH = env("THRESH", 15), HP1 = env("HP1", 5), HP2 = env("HP2", 3), HIT = env("HIT", 10), KB = env("KB", 0.5);
+const THRESH = env("THRESH", 15), HP1 = env("HP1", 8), HP2 = env("HP2", 3), KB = env("KB", 0.5);
 // Lowest room difficulty an ability is used on (always once a team is in the boss room).
 // With 3 uses a thief sneaks from difficulty 2 (2026-11-09 balance).
 const MAGE_MIN = env("MAGE_MIN", 2), WAR_MIN = env("WAR_MIN", 2), THIEF_MIN = env("THIEF_MIN", 2), WEAK = env("WEAK", 0.1);
-const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 4, 4, 5, 5].map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
+// The default layout (issue #371): six rooms of difficulty 1–4 that add up to the 進王門檻. Boss questions are unrated (difficulty 5).
+const rooms: GT.RoomTemplate[] = [1, 2, 2, 3, 3, 4].map((d) => ({ baseDifficulty: d as GT.Difficulty, reward: d * 10 }));
 // Big pools: a team that cannot answer keeps fleeing, and a small pool would deal it the same unknown question again.
 const pools = [1, 2, 3, 4, 5].map((p) => Array.from({ length: 80 }, (_, j) => `p${p}-${j}`));
 const boss = Array.from({ length: 160 }, (_, j) => `b${j}`);
@@ -57,7 +58,7 @@ const songs = Array.from({ length: 80 }, (_, j) => `s${j}`);
 function play(classes: C[], maxTurns = 600) {
   const teams = classes.map((c, i) => ({ id: `T${i}`, name: `T${i}`, ...(c ? { classId: c } : {}) }));
   const later = HP2 > 0 ? [{ maxHp: HP2, questionIds: songs, buzzer: true as const }] : [];
-  let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, HIT, {}, later);
+  let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, undefined, {}, later);
   const latent = new Map<string, { known: boolean; hintable: boolean; weak: boolean }>();
   // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
   const songKnown = new Map<string, boolean>();

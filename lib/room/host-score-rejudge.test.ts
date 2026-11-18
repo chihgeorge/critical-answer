@@ -6,7 +6,7 @@ import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
 import { gameLog } from "../game-log";
 import { parseClientMessage } from "../protocol";
-import { checkKey, type GameState } from "../game-state";
+import { bossHitReward, checkKey, type GameState } from "../game-state";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
 const [A, B] = IDS;
@@ -223,13 +223,14 @@ describe("the 改判 ledger", () => {
     expect(g.ledger()).toEqual([]);
   });
 
-  it("a killing blow adds one entry, its 4d20 in N; a wrong boss answer's N is the boss's hitReward", () => {
+  it("a killing blow adds one entry, its 4d20 in N; a wrong boss answer's N is that question's hit", () => {
     const g = started([null, null]);
     send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
     const judgeNow = (g.room as unknown as { judgeNow: (...a: unknown[]) => void }).judgeNow.bind(g.room);
     const bossQ = () => g.room.game!.boss.currentQuestionId;
+    const hit = bossHitReward(g.room.game!); // what the question just missed would have paid, by its difficulty
     judgeNow(A, bossQ(), false, "retry");
-    expect(g.ledger().at(-1)).toEqual({ teamId: A, questionId: expect.any(String), correct: false, points: g.room.game!.boss.hitReward });
+    expect(g.ledger().at(-1)).toEqual({ teamId: A, questionId: expect.any(String), correct: false, points: hit });
     g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp: 1 }, currentTurnIndex: g.room.game!.turnOrder.indexOf(A) };
     const before = g.team(A).reward;
     judgeNow(A, bossQ(), true, "retry", undefined, [5, 5, 5, 5]);

@@ -107,8 +107,7 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(0);
     g.judge(IDS[0], true);
     expect(g.state()).toMatchObject({ cue: "boss-hit", reveal: { questionId: "b-a" }, view: { bossHp: 1 } });
-    // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(20); // a phase-1 hit and this one
+    expect(g.room.game!.teams.find((t) => t.id === IDS[0])!.reward).toBe(50); // a phase-1 hit and this one, 25 each (unrated)
   });
 
   it("沒人答對，換下一題 moves to a new question, refuses a stale id, and drops a 答對 pressed for the old question", () => {
@@ -371,9 +370,9 @@ describe("buzzer boss phase in the room", () => {
     const before = g.room.game!.teams[1].reward;
     judge([true, false]);
     const s = g.state();
-    // One right field hits for 1 HP (D2); the 10-point hit reward × ½ is 5.
+    // One right field hits for 1 HP (D2); an unrated question's 25-point hit × ½ is 12.5 → 13.
     expect(s.view.bossHp).toBe(1);
-    expect(g.room.game!.teams[1].reward - before).toBe(5);
+    expect(g.room.game!.teams[1].reward - before).toBe(13);
     expect(s.reveal).toMatchObject({ answer: "歌 b-a／人 b-a", fields: { teamId: IDS[1], marks: [{ label: "歌名", answer: "歌 b-a", right: true }, { label: "歌手", answer: "人 b-a", right: false }] } });
     // A partial answer still earns the category pick (F6).
     expect(s.view.buzz).toMatchObject({ picker: IDS[1] });
@@ -412,8 +411,8 @@ describe("buzzer boss phase in the room", () => {
     }
     const s = g.state();
     expect(s.reveal.fields.marks.map((f: { right: boolean }) => f.right)).toEqual([true, false]);
-    // Half the 10-point hit, plus the whole kill bonus (rng 0 → four 1s).
-    expect(g.room.game!.teams[1].reward - before).toBe(5 + 4);
+    // Half the 25-point hit (→ 13), plus the whole kill bonus (rng 0 → four 1s).
+    expect(g.room.game!.teams[1].reward - before).toBe(13 + 4);
   });
 
   it("HOST_JUDGE with fields on a question without them is refused", () => {
@@ -511,20 +510,18 @@ describe("buzzer boss phase in the room", () => {
   // #321: b-a and b-c are music (聽歌), b-b a fill-in (填空).
   const typed = (id: string) => (id === "b-b" ? text(id) : video(id));
 
-  it("the winner picks the next question's type; a used-up type is greyed and refused; only type names reach STATE (#321)", () => {
+  it("the host picks the next question's type; only type names reach STATE (#321)", () => {
     const g = buzzerGame(typed);
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     expect(g.state().buzzTypes).toBeUndefined();
     g.buzz(1);
     g.judge(IDS[1], true);
     expect(g.state()).toMatchObject({ buzzTypes: [{ type: "聽歌", left: true }, { type: "填空", left: true }], view: { buzz: { picker: IDS[1] } } });
-    send(g.room, g.phones[0], { type: "TEAM_PICK_TYPE", qtype: "填空" });
-    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "not_picker" });
-    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "填空" });
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "填空" });
     expect(g.state()).toMatchObject({ view: { buzz: { questionId: "b-b", qtype: "填空" } } });
     expect(JSON.stringify(g.state())).not.toContain("答案 b-b");
-    // The winner may change its mind; the latest pick wins.
-    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    // The host may change its mind; the latest pick wins.
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "聽歌" });
     expect(g.room.game!.boss.currentQuestionId).toBe("b-c");
   });
 
@@ -534,8 +531,8 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(1);
     g.judge(IDS[1], true);
     expect(g.state().buzzTypes).toEqual([{ type: "聽歌", left: false }, { type: "填空", left: true }]);
-    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
-    expect(g.lastError(g.phones[1])).toMatchObject({ detail: "no_such_type" });
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "聽歌" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "no_such_type" });
   });
 
   it("the host may pick before any winner, and a host pick also ends the winner's category pick (#321)", () => {
@@ -563,7 +560,7 @@ describe("buzzer boss phase in the room", () => {
     expect(g.room.game!.buzz?.hostPicked).toBeUndefined();
     send(g.room, g.host, { type: "HOST_BUZZ_PICK", qtype: "填空" });
     expect(g.state()).toMatchObject({ view: { buzz: { questionId: "b-b", qtype: "填空", hostPicked: true, picker: IDS[1] } } });
-    send(g.room, g.phones[1], { type: "TEAM_PICK_TYPE", qtype: "聽歌" });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "x" });
     expect(g.lastError(g.phones[1])).toMatchObject({ detail: "not_picker" });
     send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-a" });
     expect(g.lastError(g.host)).toMatchObject({ detail: "no_such_question" });
@@ -592,6 +589,84 @@ describe("buzzer boss phase in the room", () => {
     expect(g.lastError(g.phones[1])).toMatchObject({ detail: "too_late" });
     g.buzz(0);
     expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("#370: the next question waits, hidden, until the winner picks a category; a buzz or 現場放歌 meanwhile is refused", () => {
+    const mixed = (id: string) => (id === "b-c" ? { ...text(id), category: "遊戲" } : { ...video(id), category: "動漫" });
+    const g = buzzerGame(mixed);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next(); // the reveal closes before any pick
+    expect(g.state()).toMatchObject({ question: null, pickHold: true, buzzCategories: ["動漫", "遊戲"] });
+    expect(JSON.stringify(g.state())).not.toContain("題目 b-b");
+    // The host still reads the question that would come next.
+    expect(g.lastHostAnswer()).toMatchObject({ questionId: "b-b", question: { id: "b-b" } });
+    g.buzz(0, "b-b");
+    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "pick_pending" });
+    send(g.room, g.host, { type: "HOST_BUZZ_OPEN", questionId: "b-b" });
+    expect(g.lastError(g.host)).toMatchObject({ detail: "pick_pending" });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "遊戲" });
+    expect(g.state().pickHold).toBeUndefined();
+    expect(g.state().question.id).toBe("b-c");
+    expect(g.lastHostAnswer()).toMatchObject({ questionId: "b-c" });
+    g.buzz(0);
+    expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("#370: a held non-video question still takes the pick (buzzing is not open), then opens at once", () => {
+    const g = buzzerGame((id) => (id === "b-a" ? { ...video(id), category: "動漫" } : { ...text(id), category: id === "b-b" ? "動漫" : "遊戲" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state()).toMatchObject({ question: null, pickHold: true });
+    send(g.room, g.phones[1], { type: "TEAM_PICK_CATEGORY", category: "動漫" });
+    expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { category: "動漫" } } });
+    g.buzz(0);
+    expect(g.state().view.buzz.teamId).toBe(IDS[0]);
+  });
+
+  it("#370: with categories left none, there is no hold", () => {
+    const g = buzzerGame((id) => (id === "b-b" ? { ...video(id), category: "動漫" } : video(id)));
+    g.room.game = { ...g.room.game!, revealedQuestionIds: [...g.room.game!.revealedQuestionIds, "b-b"] };
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state().pickHold).toBeUndefined();
+    expect(g.state().question).not.toBeNull();
+  });
+
+  it("#370: the host's 下一步 (HOST_BUZZ_PICK of the dealt question) ends the hold in order", () => {
+    const g = buzzerGame((id) => ({ ...video(id), category: "動漫" }));
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state().pickHold).toBe(true);
+    send(g.room, g.host, { type: "HOST_BUZZ_PICK", questionId: "b-b" });
+    expect(g.state()).toMatchObject({ question: { id: "b-b" }, view: { buzz: { hostPicked: true } } });
+    expect(g.state().pickHold).toBeUndefined();
+  });
+
+  it("#370: no categories in the bank, no hold; with categories a timing question counts as 卡點題", () => {
+    const g = buzzerGame(video);
+    send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    g.buzz(1);
+    g.judge(IDS[1], true);
+    g.next();
+    expect(g.state()).toMatchObject({ question: { id: "b-b" } });
+    expect(g.state().pickHold).toBeUndefined();
+
+    const timing = (id: string) => (id === "b-c" ? { kind: "timing", id, category: "外語歌", content: { kind: "youtube", value: "dQw4w9WgXcQ", start: 5, end: 20 }, target: 10 } : { ...video(id), category: "動漫" });
+    const h = buzzerGame(timing);
+    send(h.room, h.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
+    h.buzz(1);
+    h.judge(IDS[1], true);
+    expect(h.state().buzzCategories).toEqual(["動漫", "卡點題"]);
+    send(h.room, h.phones[1], { type: "TEAM_PICK_CATEGORY", category: "卡點題" });
+    expect(h.room.game!.boss.currentQuestionId).toBe("b-c");
   });
 
   it("restart in the pick window keeps the picker and the categories; restart after all-wrong keeps out [] and open", async () => {
