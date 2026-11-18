@@ -22,6 +22,13 @@ export function isPending(stateEventId: number, narration: NarrationState): bool
   return stateEventId > (narration?.eventId ?? 0);
 }
 
+/** A reveal owns the screen until the host advances, and a clip owns its sound while playing. */
+export function narrationCanSpeak(sceneEventId: number, narrationEventId: number, revealing: boolean, videoPlaying: boolean): boolean {
+  return sceneEventId === narrationEventId && !revealing && !videoPlaying;
+}
+
+export const revealDialogue = (scored: boolean): string => scored ? "答對！" : "……";
+
 /** The first index where two sets of lines differ (a length change counts), or -1 when they are the same. */
 export function firstChange(prev: readonly string[], next: readonly string[]): number {
   const n = Math.max(prev.length, next.length);

@@ -24,7 +24,7 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, isPending, keepLatest, readCount, type NarrationState } from "@/lib/narration/client";
+import { firstChange, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
@@ -582,7 +582,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
   // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line. Not over an
   // answer, a card or a held line on show: the host's 下一題 or ruling still moves those on.
   const paused = pausedOffline(view) && !reveal && !card && !held;
-  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
+  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : reveal ? [revealDialogue(!!reveal.scored)] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "var(--boss)" : undefined }}>
       {/* A very long custom name ends in … at 360 px (16 characters at 22 px), so the plate stays on the stage and clear of
@@ -867,10 +867,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, wrongSlots,
       <DialogueBox
         className="relative"
         accent={bossScene ? "var(--boss)" : undefined}
-        loading={!served && !paused && !held && isPending(eventId, narration)}
+        loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -1313,6 +1313,8 @@ export default function ScreenPage() {
    * spoken) would never update it, and a correction to it would have nothing to compare against
    * (adversarial review finding — see shouldSpeakNarration's doc comment for the fixed bug). */
   const lastSpokenNarration = useRef<SpokenNarration | null>(null);
+  const deferredNarration = useRef<{ eventId: number; lines: string[] } | null>(null);
+  const latestSceneId = useRef(0);
 
   useEffect(() => {
     if (!ttsSupported()) return;
@@ -1554,6 +1556,13 @@ export default function ScreenPage() {
     if (playing && ttsSupported()) {
       window.speechSynthesis.cancel();
       pendingLines.current = null;
+      speech.current = null;
+    } else if (!playing && !revealUp.current) {
+      const waiting = deferredNarration.current;
+      if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
+        deferredNarration.current = null;
+        speak(waiting.lines, waiting.eventId);
+      }
     }
   }
 
@@ -1841,6 +1850,7 @@ export default function ScreenPage() {
       // The room drops a test run when its screen reconnects: the host presses again.
       setScreenTest(null);
       narrationBaseline.current = null;
+      deferredNarration.current = null;
       sfxSeen.current = null;
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
@@ -1894,6 +1904,7 @@ export default function ScreenPage() {
           // A room reset can arrive without a socket reconnect, and the next game's eventIds
           // start over from 0 — re-arm the baseline the same way onOpen does.
           narrationBaseline.current = null;
+          deferredNarration.current = null;
           sfxSeen.current = null;
           pendingLines.current = null;
           speech.current = null;
@@ -1917,6 +1928,18 @@ export default function ScreenPage() {
           setCalibCard(false);
           setBeepRun(null);
           setGame(msg);
+          latestSceneId.current = msg.eventId;
+          if (deferredNarration.current && deferredNarration.current.eventId < msg.eventId) deferredNarration.current = null;
+          if (msg.reveal && !revealUp.current) {
+            speech.current = null;
+            pendingLines.current = null;
+            if (ttsSupported()) window.speechSynthesis.cancel();
+          }
+          if (!msg.reveal && revealUp.current && !videoPlaying.current) {
+            const waiting = deferredNarration.current;
+            deferredNarration.current = null;
+            if (waiting && narrationCanSpeak(msg.eventId, waiting.eventId, false, false) && !msg.phaseCard) speak(waiting.lines, waiting.eventId);
+          }
           applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
           if (clipResendDue.current) {
@@ -2002,6 +2025,7 @@ export default function ScreenPage() {
           }
           break;
         case "NARRATION":
+          if (msg.eventId < latestSceneId.current) break;
           setNarration((n) => keepLatest(n, msg));
           {
             let speakIt = false;
@@ -2011,7 +2035,9 @@ export default function ScreenPage() {
             }
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
             const added = !revealUp.current && progress.current?.eventId === msg.eventId;
-            trackNarration(msg, speakIt && (msg.eventId !== servedEvent.current || added));
+            const voice = speakIt && (msg.eventId !== servedEvent.current || added);
+            if (voice && (revealUp.current || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
+            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, revealUp.current, videoPlaying.current));
           }
           break;
         case "EPILOGUE":

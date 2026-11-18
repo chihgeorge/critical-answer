@@ -1,5 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { editedLine, firstChange, keepLatest, isPending, narrationSummary, readCount, resumeFrom } from "./client";
+import { editedLine, firstChange, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue } from "./client";
+
+describe("narration on a reveal", () => {
+  it("shows only the result before the host advances, not the ingredient narration", () => {
+    expect(revealDialogue(true)).toBe("答對！");
+    expect(revealDialogue(false)).toBe("……");
+  });
+  it("waits for the reveal and video to close and drops a line from an older room event", () => {
+    expect(narrationCanSpeak(4, 4, true, false)).toBe(false);
+    expect(narrationCanSpeak(4, 4, false, true)).toBe(false);
+    expect(narrationCanSpeak(5, 4, false, false)).toBe(false);
+    expect(narrationCanSpeak(4, 4, false, false)).toBe(true);
+  });
+});
 
 describe("keepLatest", () => {
   it("takes the first narration, then only narrations with a higher eventId", () => {
