@@ -36,6 +36,7 @@ import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
 import { isAnswerSeconds } from "./answer-clock";
 import { isLook } from "./team-look";
+import { MAX_SEEK_S } from "./youtube";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -225,7 +226,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "crit-intro" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -244,7 +245,7 @@ export type ClientMessage =
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
   /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off.
    * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number }
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number; hideCritRoll?: boolean }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -292,6 +293,9 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
+  /** /screen: the length (s) of the video it loaded for that question, so the host's timeline reaches its end. Same trust
+   * as above; one for another question than the one whose video is on screen is dropped. */
+  | { type: "SCREEN_CLIP_DURATION"; questionId: string; seconds: number }
   /** /screen: test clip `index` of SCREEN_TEST `runId` loaded (error null) or failed. Same trust as above; the room also
    * drops a result from another screen than the one it asked, an old run, or an index it already has. */
   | { type: "SCREEN_TEST_RESULT"; runId: number; index: number; error: ScreenTestError | null }
@@ -605,6 +609,8 @@ export type ServerMessage =
       /** The host switched the room to manual (HOST_PACING); absent means auto. `hold`: the step it waits on now. */
       pacing?: "manual";
       hold?: Hold;
+      /** A narrated pause before the next question or die. */
+      stageBeat?: "crit-intro" | "check-success" | "kill-defeated";
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
       late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };
@@ -652,7 +658,9 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo }
+  /** `range`: the host's 選擇播放段落 bounds (s), lib/youtube.ts seekRange. Here, not in STATE: before the reveal the clip's
+   * bounds and the video's length point at a music question's song. Absent from older servers: 0 to 10 minutes. */
+  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo; range?: { min: number; max: number } }
   /** To the one keyed big screen that runs the test (screen-media-test.md D2): every distinct clip in the bank, never an
    * answer. It answers each with SCREEN_TEST_RESULT. */
   | { type: "SCREEN_TEST"; runId: number; items: ScreenVideo[] }
@@ -899,6 +907,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
       if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
       if (m.bossThreshold !== undefined && !isBossThreshold(m.bossThreshold)) return null;
+      if (m.hideCritRoll !== undefined && typeof m.hideCritRoll !== "boolean") return null;
       return {
         type: "HOST_START",
         aiNarration: m.aiNarration,
@@ -906,6 +915,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         ...(m.initiative ? { initiative: true } : {}),
         ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
         ...(m.bossThreshold !== undefined ? { bossThreshold: m.bossThreshold } : {}),
+        ...(m.hideCritRoll ? { hideCritRoll: true } : {}),
       };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
@@ -959,6 +969,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.type === "SCREEN_CLIP_ERROR") return { type: m.type, questionId };
       if (m.seq !== undefined && !isCount(m.seq)) return null;
       return { type: m.type, questionId, ...(m.seq !== undefined ? { seq: m.seq } : {}) };
+    }
+    case "SCREEN_CLIP_DURATION": {
+      const questionId = str(m.questionId, MAX_RAW_TEXT);
+      return questionId && isFiniteNumber(m.seconds) && m.seconds > 0 ? { type: m.type, questionId, seconds: m.seconds } : null;
     }
     case "SCREEN_TAP_CLOCK": {
       const questionId = str(m.questionId, MAX_ID);
@@ -1068,7 +1082,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (questionId === null || !action) return null;
       if (action !== "seek") return { type: "HOST_MEDIA", questionId, action };
       const at = m.at;
-      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= 21600 ? { type: "HOST_MEDIA", questionId, action, at } : null;
+      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= MAX_SEEK_S ? { type: "HOST_MEDIA", questionId, action, at } : null;
     }
     case "HOST_MEMORY_DONE": {
       const questionId = str(m.questionId, MAX_ID);

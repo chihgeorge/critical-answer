@@ -19,6 +19,7 @@ export function FilePlayer({
   onPlayingChange,
   onEnded,
   onError,
+  onDuration,
   errorNote,
   title = "題目影片",
   timeRef,
@@ -38,6 +39,8 @@ export function FilePlayer({
   onPlayingChange?: (playing: boolean) => void;
   onEnded?: () => void;
   onError?: () => void;
+  /** The file's length (s) once it is known: the host's timeline reaches its end. */
+  onDuration?: (seconds: number) => void;
   errorNote?: string;
   title?: string;
   /** Set to a reader of the file's time (s) while it plays, null otherwise: a timing question's clock (timing-tap.md). */
@@ -150,6 +153,7 @@ export function FilePlayer({
         onPause={() => !el.current?.ended && show("paused")}
         onEnded={() => show("ended")}
         onError={() => show("error")}
+        onLoadedMetadata={(e) => e.currentTarget.duration > 0 && Number.isFinite(e.currentTarget.duration) && onDuration?.(e.currentTarget.duration)}
       />
       {cover && status !== "error" && <MusicCard status={status} start={0} title={cardTitle} />}
       {status === "error" && (
