@@ -7,6 +7,7 @@ import { freshHostPath, generateRoomCode, newHostToken } from "@/lib/room-code";
 import { MAX_PASSWORD } from "@/lib/protocol";
 import { rememberJoinPassword } from "@/lib/stored";
 import { HomeBackground, LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
+import { TitleMusic } from "@/components/title-music";
 
 const inputClass =
   "w-full border-4 border-[var(--k)] bg-white px-4 py-3 text-[17px] text-[var(--ink)] outline-none focus:bg-[var(--turn)] md:text-[20px]";
@@ -56,8 +57,10 @@ function HomeForm() {
             <p className="px-num mt-3 text-[11px] md:text-[14px]">CRITICAL ANSWER</p>
             <p className="mt-2 text-[16px] md:text-[20px]">地城問答派對遊戲</p>
           </div>
-          {/* Slot for the title music (TITLE_THEME: plays after the first tap, with a mute toggle), built in its own lane. */}
-          <div id="title-theme-slot" className="absolute right-2 top-2" />
+          {/* The title music (components/title-music.tsx): plays after the first tap, with its mute toggle. */}
+          <div id="title-theme-slot" className="absolute right-2 top-2">
+            <TitleMusic />
+          </div>
         </Panel>
         <div className="flex items-end justify-center gap-2 md:gap-4" aria-hidden="true">
           {PARADE.map((kind, i) => (

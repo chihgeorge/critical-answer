@@ -31,7 +31,7 @@ import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
 import { createBgmPlayer, holdBgmForBuzz, type BgmPlayer } from "@/lib/bgm-player";
 import { ANSWER_TICK, ANSWER_TIME_UP, BOSS_ALARM, BOSS_PARRY, BOSS_RUMBLE, CALIBRATE_BEEP, CHEF_SIZZLE, CLERIC_PRAYER, DOOR_CREAK, EAT_DONE, GROWL, HEARTBEAT, MAGE_SPELL, SFX, SOUND_ON, SPRINT_FANFARE, THIEF_SNEAK, THUNDER } from "@/lib/sfx";
-import { BOSS_RAGE_THEME, DUNGEON_THEME } from "@/lib/bgm";
+import { DUNGEON_THEME, songFor, type Song } from "@/lib/bgm";
 import { bossClock, heartbeatTimes, PARRY_MS, parryFor, rageNow } from "@/lib/boss-fx";
 import { CLASS_COLOR, CLASS_PULSE, CLASS_TINT, createFlashBudget, DIM_ALPHA, GROWL_TINT, HEART_TINT, PARRY_TINT, THUNDER_PULSE, THUNDER_TINT } from "@/lib/flash-budget";
 import { dimVisible, playHostEffect, type HostFxLook } from "@/lib/host-fx";
@@ -1657,8 +1657,8 @@ export default function ScreenPage() {
     });
     at(PARRY_MS.end, endParry);
   }
-  /** ④ The song the last STATE asked for: rage or not, null until the first STATE after connecting. */
-  const rageMusic = useRef<boolean | null>(null);
+  /** The song the last LOBBY or STATE asked for (songFor), null until the first one after connecting. */
+  const music = useRef<Song | null>(null);
   /** ③ The boss clock's turn (`teamId:questionId`) while one runs, and the heartbeat playing for it. */
   const heartKey = useRef<string | null>(null);
   const heart = useRef<{ key: string; cancel: () => void } | null>(null);
@@ -1900,7 +1900,7 @@ export default function ScreenPage() {
       cheatSeen.current = null;
       stopTransitions();
       prevState.current = null;
-      rageMusic.current = null;
+      music.current = null;
       parryKey.current = null;
       parryRetry.current = false; // a buzz from before the drop would come in late
       endParry();
@@ -1934,8 +1934,8 @@ export default function ScreenPage() {
           cheatSeen.current = null;
           stopTransitions();
           prevState.current = null;
-          rageMusic.current = false;
-          player().setSong(DUNGEON_THEME);
+          music.current = songFor("lobby", false);
+          player().setSong(music.current);
           parryKey.current = null;
           parryRetry.current = false; // no wrong-answer buzz over the lobby
           endParry();
@@ -2026,11 +2026,13 @@ export default function ScreenPage() {
             const cfx = classFxFor(prev, msg);
             if (msg.phase !== "playing") clearClassFx();
             else if (cfx) onClassFx(cfx);
-            // ④ Rage music, game-wide: the 0.5 s silence only when rage starts live; a (re)connect just picks the song.
+            // The phase's song (songFor). ④ Rage gets the boss song, with the 0.5 s silence only when rage starts live
+            // over the dungeon tune; a (re)connect just picks the song. The game's end, early or not, gets the victory song.
             const rage = rageNow(msg);
-            if (rage !== rageMusic.current) {
-              player().setSong(rage ? BOSS_RAGE_THEME : DUNGEON_THEME, rage && rageMusic.current === false ? 0.5 : 0);
-              rageMusic.current = rage;
+            const song = songFor(msg.phase, rage);
+            if (song !== music.current) {
+              player().setSong(song, rage && music.current === DUNGEON_THEME ? 0.5 : 0);
+              music.current = song;
             }
             // ③ A heartbeat belongs to one boss clock: another turn, no clock or no boss scene ends it.
             const turn = describeTurn(msg.view, msg.question, msg.phaseCard?.monster);
