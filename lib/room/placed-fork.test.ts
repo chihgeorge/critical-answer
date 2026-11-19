@@ -3,6 +3,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DungeonRoom, FORK_BEAT_MS } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
+import { sendSettled } from "./test-send";
 import { parseBank, poolCategories, roomForkProblem, roomTemplates } from "../question-bank";
 import { bankProblems } from "../bank-editor-problems";
 import { FORK_MS, type ForkDoorSpec } from "../game-state";
@@ -25,7 +26,7 @@ const DOORS: ForkDoorSpec[] = [{ kind: "hard" }, { kind: "category", category: "
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn;
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const state = (room: DungeonRoom) =>
   (room.room.broadcast as Spy).mock.calls
     .map((c) => JSON.parse(c[0]))

@@ -2,6 +2,7 @@
 // The room side of the how-to-play intro (docs/designs/how-to-play.md, eng D2–D5): INTRO_PAGES pages the host
 // turns one at a time, with the first question, the start cue and the start narration held until the page after the last.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import { SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
@@ -20,7 +21,7 @@ const bank = () =>
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });

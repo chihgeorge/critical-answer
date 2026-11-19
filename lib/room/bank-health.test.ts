@@ -1,5 +1,6 @@
 // HOST_BANK_CHECK (docs/designs/bank-health-check.md): the host checks the room's bank in the lobby.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import type { Bank } from "../question-bank";
@@ -25,7 +26,7 @@ function setup(opts: { loadBank?: (id: string) => Promise<Bank>; checkMedia?: (b
   const io = { broadcast: vi.fn(), env: {}, loadBank, checkMedia } as unknown as RoomIO;
   const room = new DungeonRoom(io, () => 0);
   const host = conn("host");
-  const send = (c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+  const send = (c: Conn, msg: object) => sendSettled(room, c, msg);
   send(host, { type: "HOST_CLAIM", token: TOKEN });
   return { room, host, send, loadBank, checkMedia };
 }

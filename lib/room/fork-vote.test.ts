@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { DungeonRoom, FORK_BEAT_MS } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
+import { sendSettled } from "./test-send";
 import { parseBank } from "../question-bank";
 import { FORK_MS } from "../game-state";
 import { FORK_VOTE_GAP_MS, parseClientMessage } from "../protocol";
@@ -18,7 +19,7 @@ const bank = parseBank({
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: Spy };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const broadcasts = (room: DungeonRoom) => (room.room.broadcast as Spy).mock.calls.map((c) => JSON.parse(c[0]));
 const state = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
 const tallies = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "FORK_VOTES");

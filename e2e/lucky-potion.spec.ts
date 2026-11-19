@@ -6,9 +6,9 @@ closeLeftoverContexts();
 restoreRoom0AfterEach();
 
 // Value: protects=the 🧪 幸運藥水 path end to end (docs/designs/lucky-potion.md): the host gives one, the pawn and the phone show it,
-// the team drinks it, and its crit die rolls as two dice on the big screen; fails_when=a screen misses the item or the roll
+// the team drinks it, and its dish die rolls as two dice on the big screen; fails_when=a screen misses the item or the roll
 // shows one die; seam=none; no_claim=which values land (unit tests)
-test("lucky potion: host gives it, the team drinks it, the crit rolls two dice and the potion is gone", async ({ browser }) => {
+test("lucky potion: host gives it, the team drinks it, the dish die rolls two dice and the potion is gone", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   // Every message the host page sends, to prove 取消 sent no HOST_GIVE_ITEM.
   const sent: string[] = [];
@@ -60,7 +60,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await host.getByRole("button", { name: /公布答案/ }).click();
 
   const overlay = screen.getByTestId("roll-overlay");
-  await expect(overlay).toHaveAttribute("data-kind", "crit");
+  await expect(overlay).toHaveAttribute("data-kind", "dish");
   await expect(overlay).toContainText("幸運藥水！擲兩次取高");
   await expect(screen.getByTestId("potion-die")).toHaveCount(2);
   await expect(screen.getByTestId("roll-result")).toHaveText(/^取高：\d+/);

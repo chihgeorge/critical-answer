@@ -7,9 +7,9 @@
 import { useEffect, useRef, useState } from "react";
 import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, EAT_AT_MS, EAT_BITE_MS, EAT_MS, FINISH_PODIUM_MS, type AnswerReveal, type PodiumReveal } from "@/lib/protocol";
 import { revealMarks } from "@/lib/podium";
-import { DISH_SPRITE } from "@/lib/sprite-kind";
+import { DISH_SPRITE, type SpriteKind } from "@/lib/sprite-kind";
 import type { ClassId } from "@/lib/game-state";
-import { signed } from "@/lib/event-text";
+import { dishChangeLabel } from "@/lib/class-dice";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
 import { dishScale, emptyPlateScale } from "@/lib/pixel-art";
@@ -167,7 +167,9 @@ export function CookFrame({ step, bottom }: { step: 1 | 2; bottom: number }) {
  * The picture is at most about 130px tall so it clears the card. From step 4 the eater (`eater`, the team's look index;
  * none when the team has left) stands left of it and eats it in three bites, then the empty plate (eat-dish.md). */
 export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, step = 3, eater = -1, eaterClass }: { dish: Dish; title?: string; cardTop: number; bottom: number; step?: ServeStep; eater?: number; eaterClass?: ClassId }) {
-  const kind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
+  const plainKind = Object.hasOwn(DISH_SPRITE, dish.monster.sprite) ? DISH_SPRITE[dish.monster.sprite] : DISH_SPRITE.slime; // a newer server's sprite: the slime's dish
+  // The dish die's 1 serves the burnt remains, its 20 the legendary version (class-dice-rework.md).
+  const kind: SpriteKind = dish.look === "burnt" ? "dish-burnt" : dish.look === "legend" ? `${plainKind}-legend` : plainKind;
   const bites = Math.max(0, step - 3);
   const scale = bites >= 4 ? emptyPlateScale(kind) : dishScale(kind);
   // The catalog's own hue: a repeat appearance's recolor stays on the monster (monster-catalog.md §3).
@@ -179,7 +181,11 @@ export function DishOnStage({ dish, title = "今晚的菜", cardTop, bottom, ste
       <div className="absolute flex justify-center" style={{ left: 0, right: 0, top: cardTop, zIndex: 5 }}>
         <DishCard dish={dish} title={title} />
       </div>
-      <div className="absolute" style={at(480, bottom)}>
+      <div className="absolute" style={at(480, bottom)} data-look={dish.look}>
+        {/* A legendary dish glows softly behind it (the owner's pick, option B): CSS only. */}
+        {dish.look === "legend" && bites < 4 && (
+          <div data-testid="dish-glow" aria-hidden className="absolute" style={{ left: "50%", bottom: -15 * scale, width: 60 * scale, height: 60 * scale, transform: "translateX(-50%)", zIndex: -1, background: "radial-gradient(circle, #ffd23ecc 0%, #ffb04a77 38%, #0000 70%)", pointerEvents: "none" }} />
+        )}
         {/* Step 7 is 4 bites: the dish's own plate on its own canvas, empty. A dish with no plate of its own is shown
             bigger there, so its plate is about as wide as the others' (emptyPlateScale). */}
         <Sprite kind={kind} scale={scale} hue={hue} bites={bites} />
@@ -228,12 +234,17 @@ function DishCard({ dish, title }: { dish: Dish; title: string }) {
         </div>
         <div className="text-[20px]">「{dish.comment}」</div>
         <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>
-          <span className="px-num">+{dish.points}</span> 飽足感
-          {dish.chefBonus ? (
-            <span style={{ color: "#a8470f" }}>
-              （🍳 廚師 <span className="px-num">{signed(dish.chefBonus)}</span>）
+          {/* A dish die that changed the score reads 「原本 → 現在」 (owner, 2026-11-18): a delta next to the total read as a sum. */}
+          {dish.dishBonus ? (
+            <span data-testid="dish-change">
+              <span style={{ color: dish.dishBonus < 0 ? "var(--danger)" : dish.dishDie === 20 ? "#b07a00" : "#a8470f" }}>{dishChangeLabel(dish.dishDie)}</span>{" "}
+              <span className="px-num">{dish.points - dish.dishBonus}</span> → <span className="px-num">{dish.points}</span> 飽足感
             </span>
-          ) : null}
+          ) : (
+            <>
+              <span className="px-num">+{dish.points}</span> 飽足感
+            </>
+          )}
         </div>
       </div>
     </Panel>

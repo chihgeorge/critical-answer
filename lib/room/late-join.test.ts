@@ -1,5 +1,6 @@
 // 中途加入 in the room (docs/designs/late-join.md): a team that JOINs after the start waits for the host's 收這隊 / 不收.
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -18,7 +19,7 @@ const bank = parseBank({
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (cid: string) => ({ id: cid, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: Spy };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const state = (room: DungeonRoom) => (room.room.broadcast as Spy).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "STATE" || m.type === "LOBBY").at(-1);
 const last = (conn: Conn) => JSON.parse((conn.send as unknown as Spy).mock.calls.at(-1)![0]);
 

@@ -114,7 +114,7 @@ export async function answerCorrectly(host: Page) {
     await phone.getByRole("button", { name }).click();
     await phone.getByRole("button", { name: "鎖定答案" }).click();
     await revealLock(host);
-    // A right lock is judged after two beats: the reveal (2 s), then the crit die (2 s). Wait them out here, so
+    // A right lock is judged after two beats: the reveal (2 s), then the dish die (2 s). Wait them out here, so
     // callers see the judged state with their own default timeouts.
     return expect(host.getByTestId("host-mc-status")).toHaveCount(0, { timeout: 10_000 });
   }

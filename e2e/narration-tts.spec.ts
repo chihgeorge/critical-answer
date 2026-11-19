@@ -433,11 +433,11 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await openSettings(host);
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
   await clickStart(host);
-  const page1 = "冒險者們，先聽我說規則……主持人會唸題目。";
-  const page2 = "選擇題點了要鎖定，填空題打字送出。擲骰的事，接下來三頁說給你聽。";
+  const page1 = "輪到誰，怪物就找誰。選擇題點了要鎖定，填空題打字送出。";
+  const page2 = "說服擲到 20 免答！料理骰擲到 20 是傳說級料理，擲到 1 就燒焦了！";
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);
 
   await host.getByRole("button", { name: "下一頁 ▶" }).click();
-  await expect(screen.getByTestId("how-to-play")).toContainText("2/7");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1, page2]);
 });
