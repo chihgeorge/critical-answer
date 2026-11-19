@@ -80,7 +80,7 @@ test("cleric: after a wrong lock the team prays, spends a use and retries (keep-
   await option(team, "紅色").click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByRole("button", { name: /祈禱.*現在再答一次/ })).toBeVisible({ timeout: 5000 });
+  await expect(team.getByRole("button", { name: /祈禱.*現在再答一次/ })).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await expect(screen.getByText(/牧師祈禱中/)).toBeVisible();
   await team.getByRole("button", { name: /祈禱.*現在再答一次/ }).click();
   await expect(team.getByText("祈禱了！這回合再答一次")).toBeVisible();

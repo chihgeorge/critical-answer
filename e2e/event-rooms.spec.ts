@@ -121,7 +121,7 @@ test("a team at a fork takes ⚔️ and then faces the room's monster", async ({
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "monster");
   await expect(screen.getByTestId("fork-door-open")).toContainText("⚔️ 怪物房");
   expect(await answerUpDuringOpening).toBe(false); // resolves when the opening ends
-  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 });
+  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await expect(screen.getByTestId("fork-doors")).toHaveCount(0);
   await expect(host.getByText("輪到：EventTeam")).toBeVisible();
 });
