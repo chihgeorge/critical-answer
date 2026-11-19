@@ -231,7 +231,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
   it("the kill's 4d20, then the podium: the reveal waits though its lines are in", async () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
-    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, hold: { kind: "kill-defeated" } });
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, hold: { kind: "kill-defeated" } });
     step(s);
     expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
     await vi.advanceTimersByTimeAsync(LONG);

@@ -380,8 +380,8 @@ export type ClientMessage =
       questionId: string;
       correct: boolean;
       /** With correct: false. "team": a cleric's fill-in waits for 祈禱 / 重答 / 逃跑 (#106); "pray": the host
-       * picks 祈禱 for it. */
-      fleeChoice?: "flee" | "retry" | "switch" | "team" | "pray";
+       * picks 祈禱 for it. "switch" is the one 逃跑 (a new monster outside the boss room). */
+      fleeChoice?: "retry" | "switch" | "team" | "pray";
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
       /** A music question with fields: each field right or not (docs/designs/multi-field.md F5); `correct` is then
@@ -398,8 +398,9 @@ export type ClientMessage =
   /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
    * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
   | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
-  /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question (逃跑・同房), or flee to a new monster (逃跑・換房, "switch"). */
-  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" | "switch" }
+  /** The team's choice after a wrong lock: answer again next turn, or 逃跑 ("switch": a new monster and an easier question;
+   * the boss room's 逃跑 is a new boss question). */
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "switch" }
   /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Lobby only (#320): the team's colour, an index into TEAM_LOOKS. A colour another team holds is ignored. */
@@ -653,7 +654,9 @@ export type ServerMessage =
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
    * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
    * text never locks the new one (host-narration-edit.md D14). */
-  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
+  /** `jump`: the last line overrides one already said (送王房, 撤回裁決): the big screen shows it at once, without its
+   * reading pause (#405). */
+  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number; jump?: true }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
   | { type: "EPILOGUE"; text: string; replay?: true }
@@ -719,7 +722,8 @@ export type ServerMessage =
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
    * STATE also carries the submitted text for the big screen; structured fields stay host-only.
-   * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
+   * `question`: the whole question while STATE holds it back (the persuasion check's `checkFirst`, a memory question,
+   * the #370 pick, or blank text under a reveal, #362); absent after. */
   /** `tap`: a timing question's round as only the host sees it: teams tapped of those that may (timing-tap.md). */
   | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion; tap?: { count: number; eligible: number } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
@@ -858,7 +862,7 @@ export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as con
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
-export const INTRO_PAGES = 4;
+export const INTRO_PAGES = 8;
 /** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
 export const HANDOFF_MS = 5 * 60 * 1000;
 
@@ -1143,8 +1147,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
-      if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry" && m.fleeChoice !== "switch" && m.fleeChoice !== "team" && m.fleeChoice !== "pray") return null;
-      if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
+      const fleeChoice = m.fleeChoice === "flee" ? "switch" : m.fleeChoice;
+      if (fleeChoice !== undefined && fleeChoice !== "retry" && fleeChoice !== "switch" && fleeChoice !== "team" && fleeChoice !== "pray") return null;
+      if (m.correct && (fleeChoice === "team" || fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       // Per-field verdicts must agree with `correct`: right when at least one field is (multi-field.md F6).
       const fields = m.fields;
@@ -1154,7 +1160,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         teamId,
         questionId,
         correct: m.correct,
-        fleeChoice: m.fleeChoice,
+        fleeChoice,
         ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}),
         ...(fields !== undefined ? { fields: fields as boolean[] } : {}),
       };
@@ -1195,8 +1201,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_WRONG_CHOICE": {
       const questionId = str(m.questionId, MAX_ID);
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
       if (questionId === null || (m.choice !== "retry" && m.choice !== "flee" && m.choice !== "switch")) return null;
-      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
+      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice === "retry" ? "retry" : "switch" };
     }
     case "TEAM_PICK_CLASS":
       return m.classId === null || isClassId(m.classId) ? { type: "TEAM_PICK_CLASS", classId: m.classId } : null;

@@ -4,7 +4,7 @@
 // Class balance for the d20 skill tiers (design: 職業技能改成擲骰, approved 2026-11-09), ported onto today's
 // scripts/balance-sim.ts (same game model, knobs and player policies; read its header). RULES=today plays lib's rules
 // as they are and reproduces balance-sim.ts; RULES=dice adds a rules layer for the approved tiers around lib:
-// 1 大失敗 / 2–6 小失敗 / 7–19 成功 / 20 大成功 (Cfg.small), 3 uses for every active class.
+// 1 大失敗 / 2–6 失敗 / 7–19 成功 / 20 大成功 (Cfg.small), 3 uses for every active class.
 // shortcut: the rules layer patches reward, uses and removed options after the lib call. Once lib/ has the tiers, delete
 // the layer and run balance-sim.ts.
 // Run: RULES=today|dice node scripts/balance-sim-dice.ts [games]. CFG='{"chefMul":[0.1,0.8,1.35,2]}' overrides any Cfg
@@ -252,7 +252,7 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
-    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
+    g = G.answerQuestion(g, id, q, false, flee ? "switch" : "retry", R).game;
   }
   return g;
 }

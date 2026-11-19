@@ -49,6 +49,8 @@ import {
   hostSetScore,
   recordJudgment,
   type HostFix,
+  type Judgment,
+  SNEAK_REWARD_MULTIPLIER,
   drinkPotion,
   potionArmed,
   spendPotion,
@@ -372,7 +374,15 @@ function restoredJudgments(g: GameState): GameState["judgments"] {
   const list = g.judgments;
   if (list === undefined) return undefined;
   const ok = Array.isArray(list) && list.every((j) => typeof j?.teamId === "string" && typeof j.questionId === "string" && typeof j.correct === "boolean" && Number.isInteger(j.points) && j.points >= 0 && (j.taken === undefined || (Number.isInteger(j.taken) && j.taken >= 0)) && (j.flipped === undefined || j.flipped === true));
-  return ok ? list : [];
+  return ok ? list.map(legacyDish) : [];
+}
+
+/** A v0.104 entry's `reads` (the answer die a chef or an armed thief read on 改成答對) becomes its `dish`, so 改成答對 still
+ * rolls. Any other older entry pays plain N, as when it was judged: a buzzer phase's answer looks the same there. */
+function legacyDish(j: Judgment): Judgment {
+  const { reads, ...rest } = j as Judgment & { reads?: unknown };
+  if (reads === undefined || j.dish) return reads === undefined ? j : rest;
+  return reads === "chef" ? { ...rest, dish: { chef: true } } : reads === "thief" ? { ...rest, dish: { sneak: SNEAK_REWARD_MULTIPLIER } } : rest;
 }
 
 /** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's room question, or it is
@@ -1257,8 +1267,9 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     try {
       this.restoreBeats(s);
-    } catch {
+    } catch (err) {
       // a damaged save (a null team) restores without its beats
+      console.error(JSON.stringify({ event: "restore_beats_failed", error: err instanceof Error ? err.stack ?? err.message : String(err) }));
     }
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
@@ -1325,7 +1336,9 @@ export class DungeonRoom {
     if (!e || n?.eventId !== e.eventId) return;
     // appendLine's cut and line cap, but not appendLine itself: its broadcast would save a half-restored room.
     const lines = this.bossEntryLines(e.teamId, !!e.sprint).map((line) => sanitizeText(line, MAX_EDIT_LINE)).filter(Boolean).slice(0, NARRATION_MAX_LINES - n.lines.length);
-    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
+    // Before the handoff restore() just added back, as closeReveal orders them (#394).
+    const at = s.heldHandoff?.eventId === n.eventId && n.lines.at(-1) === s.heldHandoff.line ? n.lines.length - 1 : n.lines.length;
+    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines.slice(0, at), ...lines, ...n.lines.slice(at)], rev: n.rev + 1 };
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
@@ -1588,6 +1601,8 @@ export class DungeonRoom {
         ? { question: q.full }
       : q.pub.memorize
         ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
+      : this.reveal
+        ? { question: q.full } // STATE blanks the next question's text under a reveal (#362)
         : {};
     this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question, ...this.tapCount(q.pub.id) });
   }
@@ -1641,6 +1656,11 @@ export class DungeonRoom {
   /** STATE's question: the turn's, without its text, media, prompt and field labels while its check is not done. */
   private shownQuestion(): PublicQuestion | null {
     const pub = this.currentQuestion()?.pub ?? null;
+    if (pub && this.reveal && !this.awaitingCheck()) {
+      // #362: under a reveal the turn has moved on, but the next question's text waits for 下一題. Its shape (kind,
+      // media, option count) still goes out, so no screen changes course; the host pages get it with HOST_ANSWER.
+      return { ...pub, prompt: undefined, ...(pub.content.kind === "text" ? { content: { kind: "text", value: "" } } : {}), ...(pub.options ? { options: pub.options.map(() => "") } : {}), ...(pub.items ? { items: pub.items.map(() => "") } : {}) };
+    }
     if (!pub || !this.awaitingCheck()) return pub;
     const { id, difficulty, boss, monster } = pub;
     return { id, content: { kind: "text", value: "" }, difficulty, boss, monster, checkFirst: true };
@@ -1729,7 +1749,8 @@ export class DungeonRoom {
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
-      pendingRoll: this.stageBeat === "kill-defeated" ? null : this.pendingRoll,
+      // Sent during the kill-defeated beat too, so host and phone stay held (#394); the big screen hides its dice then.
+      pendingRoll: this.pendingRoll,
       ...this.wrongSlots(),
       ...this.podiumView(),
       ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
@@ -3090,8 +3111,11 @@ export class DungeonRoom {
     this.broadcastState();
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
+    // The entrance before the handoff to the next team (#394), leaving the handoff a slot under the line cap.
+    const shown = this.lastNarration?.eventId === this.eventSeq ? this.lastNarration.lines.length : 0;
+    const room = NARRATION_MAX_LINES - shown - (held && line ? 1 : 0);
+    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint).slice(0, Math.max(0, room))) this.appendLine(this.eventSeq, entry);
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
-    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint)) this.appendLine(this.eventSeq, entry);
   }
 
   /** What the narrator says once a boss-entry dish is eaten (#364): the entrance, then the 最後衝刺 line it held back. */
@@ -3247,7 +3271,7 @@ export class DungeonRoom {
   /** Adds a scripted line after narration `eventId` (last-sprint.md E5, shared with lucky-potion.md E5): at once with
    * `rev + 1`, as a host edit goes out, or held until that narration lands. Cut to MAX_EDIT_LINE (team names are user
    * text); dropped once the game is over. */
-  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE) {
+  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE, jump = false) {
     const line = sanitizeText(raw, max);
     if (!line || this.game?.phase !== "playing") return;
     const n = this.lastNarration;
@@ -3255,7 +3279,7 @@ export class DungeonRoom {
       // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
       if (n.lines.length >= NARRATION_MAX_LINES) return void console.log(JSON.stringify({ event: "narration_line_dropped", eventId, lines: n.lines.length }));
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
-      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
+      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1, ...(jump ? { jump: true as const } : {}) });
     } else if (!n || n.eventId < eventId) {
       this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
     }
@@ -3925,7 +3949,8 @@ export class DungeonRoom {
       if (next && this.reveal) {
         this.heldHandoff = { eventId: this.eventSeq, line: this.scripted.nextLine(next), next };
         this.persist();
-      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
+        // It overrides the handoff already said: the big screen shows it at once (#405).
+      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next), MAX_EDIT_LINE, true);
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -4090,10 +4115,10 @@ export class DungeonRoom {
     const before = prev.teams.find((t) => t.id === teamId);
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
-    // The dish die behind this answer renames a cooked dish on a 1, 2–6 or 20 (a gift stays as the monster gave it).
+    // The dish die behind this answer renames a cooked dish on a 1, a chef's 2–6 or a 20 (a gift stays as the monster gave it).
     const dishDie = roll?.kind === "dish" ? roll.value : roll?.dish;
     const cooked = ateFrom && !persuaded ? catalogMonster(ateFrom).dish : undefined;
-    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random) : undefined;
+    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random, before?.classId === "chef") : undefined;
     const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : rolled ? { ...cooked!, name: rolled.name, comment: rolled.comment, ...(rolled.look === "burnt" || rolled.look === "legend" ? { look: rolled.look } : {}) } : cooked;
     // A phase card, not the next team, follows this answer. In a buzzer phase there is no team on turn.
     const narrated = toNarrationEvent(prev, outcome, monster, game.boss.phasePending ? undefined : this.nextTurn() ?? undefined, phaseName);
@@ -4828,15 +4853,20 @@ export class DungeonRoom {
   private resolveSneak(teamId: string, value: number) {
     const { game, penalty } = sneakRoll(this.game!, teamId, value);
     this.game = game;
+    // No judgment carries this loss, so the transcript's score trail says where it went.
+    if (penalty) {
+      const team = game.teams.find((t) => t.id === teamId)!;
+      this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} sneak d20=${value} ${team.reward + penalty}→${team.reward}` });
+    }
     this.sayDie("thief", teamId, value, penalty ? `（−${penalty} 分）` : "");
     this.setCue(skillCue(value));
     this.broadcastState();
   }
 
   /** 🧪 A potion's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
-   * good. Good: a check that passes, any other die 7 or more (skillTier). */
+   * good. Good: a check that passes, a dish die that burns nothing (2–6 pays ×1 too), any other die 7 or more (skillTier). */
   private sayPotion(roll: PendingRoll) {
-    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : skillTier(v) >= 2);
+    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : roll.kind === "dish" ? v !== 1 : skillTier(v) >= 2);
     const [low, high] = [Math.min(...roll.values!), Math.max(...roll.values!)];
     const kind = !good(high) ? "bust" : good(low) ? null : "saved";
     if (kind) this.appendLine(this.eventSeq, `🧪 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);
@@ -5337,7 +5367,8 @@ export class DungeonRoom {
     const undoable = (verdict: { upheld: boolean }) => ({ prev, after: this.game!, teamId: c.teamId, questionId: c.questionId, verdict });
     if (upheld) {
       try {
-        this.judge(c.teamId, c.questionId, false, "flee", undefined, undefined, undefined, { by: c.by });
+        // The one 逃跑 value (#413); `caught` judges through upholdCatch, which keeps the accused's monster.
+        this.judge(c.teamId, c.questionId, false, "switch", undefined, undefined, undefined, { by: c.by });
       } catch (err) {
         return this.sendInvalid(conn, err);
       }
@@ -5378,7 +5409,7 @@ export class DungeonRoom {
     // A clip the host played over the caught answer stops: the open catch holds the question again.
     if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
     console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
-    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE);
+    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE, MAX_EDIT_LINE, true); // takes back the ruling just said (#405)
     this.broadcastState();
   }
 

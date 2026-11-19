@@ -4,7 +4,7 @@
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
-import { skillTier, type ClassId, type EventOutcome, type FortuneCondition, type FortuneEffect } from "../game-state";
+import { dishTier as tierOfDish, skillTier, type ClassId, type EventOutcome, type FortuneCondition, type FortuneEffect } from "../game-state";
 import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "../event-text";
 import type { Reaction } from "../protocol";
 
@@ -401,20 +401,18 @@ export const CAUGHT_VARIANTS = [
   "🚨 抓包成立！{team}換題，{caught}領賞！",
   "🚨 {caught}眼尖！{team}這題作廢，換題！",
 ];
-/** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
+/** 逃跑: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
-  "{team}逃進隔壁房，迎面是{to}！",
+  "{team}轉身就跑，迎面是{to}！",
   "{team}甩開{monster}，撞上了{to}。",
   "{team}換條路跑，前面站著{to}。",
   "{monster}還在原地，{team}已經遇上{to}。",
   "腳底抹油！{team}溜到{to}的地盤。",
-  "{team}逃出房門，{to}正在等著。",
-  "門一開，{team}和{to}大眼瞪小眼。",
-  "{team}換了個戰場，這回對上{to}。",
+  "{team}逃開{monster}，{to}正在等著。",
+  "一轉身，{team}和{to}大眼瞪小眼。",
+  "{team}換個對手，這回對上{to}。",
 ];
 
-/** A cleric's prayer on a miss: the team answers again now, keeping the turn, so never "next round". */
-export const PRAYER_VARIANTS = ["聖光降臨，{team}再答一次！", "{team}的祈禱得到回應，馬上再答一次！", "一道聖光落下，{team}重整旗鼓，現在再答！"];
 
 // The dice lines the owner approved (2026-11-19), one pool per skill tier: [1, 2–6, 7–19, 20] (skillTier). A class die's
 // line plays as the die lands (dieLine); the warrior's and the dish die's replace the answer's line (line / plainLine).
@@ -449,7 +447,7 @@ export const WARRIOR_TIER_VARIANTS: Tiers = [
   ["各位觀眾，二十點！{team}獎勵翻倍。", "{team}說要打十個，結果真的打贏了，翻倍！", "一劍定江山！{team}擲出二十，翻倍入袋。"],
 ];
 
-/** A correct answer's dish die (every team). 7–19 joins the answer's usual pool; 1 and 20 join the burnt and legend lines. */
+/** A correct answer's dish die (every team; 2–6 is a chef's only, anyone else's reads as 7–19). 7–19 joins the answer's usual pool; 1 and 20 join the burnt and legend lines. */
 export const DISH_TIER_VARIANTS: Tiers = [
   ["完了，芭比Q了。{team}的料理變成焦炭。", "黑暗料理界發來賀電，{team}這盤只剩一成。", "食神吃了一口，只說兩個字：失敗。"],
   ["食神一樣一樣挑：太鹹、太硬、沒入味。勉強過關。", "主廚大喊：還是生的！{team}這盤勉強過關。", "{team}的料理有點鹹，配三碗飯剛好。"],
@@ -650,7 +648,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "flee" && event.caught) return fill(pick(CAUGHT_VARIANTS, "caught"), event);
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
-      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
+      // The prayer die's line already said the team answers again (owner, #416): only a beat of atmosphere, never 「下一輪」.
+      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(ATMOSPHERE_VARIANTS.retry, "atm-retry"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "retry" && event.buzzSecond) return fill(pick(BUZZ_SECOND_VARIANTS, "buzz-second"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);
@@ -669,9 +668,10 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // A phase under way means a team is already inside, so the phase lines are join lines too (none says 推開).
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
-      // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, 2–6 and 20.
-      const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? skillTier(event.dish) : undefined;
+      // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, a chef's 2–6 and 20.
       const chef = "classId" in event && event.classId === "chef";
+      // A 2–6 is a plain serve for anyone but a chef (dishTier).
+      const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? tierOfDish(event.dish, chef) : undefined;
       if (event.type === "correct" && dishTier !== undefined && dishTier !== 2) {
         const pool =
           dishTier === 0

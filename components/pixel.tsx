@@ -10,7 +10,7 @@ import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/spri
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
 import { loadYoutubeApi } from "@/components/youtube-player";
-import { boxLine, firstChange, resumeFrom, sequenceStart } from "@/lib/narration/client";
+import { boxLine, firstChange, jumpLine, resumeFrom, sequenceStart } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -396,17 +396,27 @@ const subscribeVisibility = (cb: () => void) => {
   return () => document.removeEventListener("visibilitychange", cb);
 };
 
-function Sequence({ lines, onRead, voiceLine, readTo = 0 }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number; readTo?: number }) {
+function Sequence({ lines, onRead, voiceLine, readTo = 0, jump }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number; readTo?: number; jump?: number }) {
   const [start] = useState(() => sequenceStart(readTo, lines.length));
   const [i, setI] = useState(start.line);
   const [typed, setTyped] = useState(start.typed);
   const [seen, setSeen] = useState(lines);
   const hidden = useSyncExternalStore(subscribeVisibility, () => document.hidden, () => false);
+  const [jumped, setJumped] = useState(jump);
   if (firstChange(seen, lines) !== -1) {
     const from = resumeFrom(seen, lines, i);
     setSeen(lines);
     if (from !== null) {
       setI(Math.min(from, lines.length - 1));
+      setTyped(false);
+    }
+  }
+  // A line that overrides one already said goes up at once, without the reading pause (#405).
+  if (jump !== jumped) {
+    setJumped(jump);
+    const to = jumpLine(i, jump, lines.length);
+    if (to !== null) {
+      setI(to);
       setTyped(false);
     }
   }
@@ -448,6 +458,7 @@ export function DialogueBox({
   onRead,
   voiceLine,
   read,
+  jump,
 }: {
   /** Played in order with a ▼ between them. Ignored while `loading`. */
   lines: string[];
@@ -469,6 +480,8 @@ export function DialogueBox({
   /** Lines of `id` already read when the box starts on it: it starts after them (#351). Read once: the box remounts
    * for each new `id`. */
   read?: number;
+  /** A line of `id` that overrides one already said (NARRATION `jump`): the box moves to it now (#405). */
+  jump?: number;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
   const shown = lines.length > 0 ? lines : [""];
@@ -495,7 +508,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} readTo={read} />
+        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} readTo={read} jump={jump} />
       )}
     </Panel>
   );

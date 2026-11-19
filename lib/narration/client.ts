@@ -22,9 +22,9 @@ export function isPending(stateEventId: number, narration: NarrationState): bool
   return stateEventId > (narration?.eventId ?? 0);
 }
 
-/** A reveal owns the screen until the host advances, and a clip owns its sound while playing. */
-export function narrationCanSpeak(sceneEventId: number, narrationEventId: number, revealing: boolean, videoPlaying: boolean): boolean {
-  return sceneEventId === narrationEventId && !revealing && !videoPlaying;
+/** A clip owns its sound while playing. A reveal no longer holds the narration: it is read with the phones (#405). */
+export function narrationCanSpeak(sceneEventId: number, narrationEventId: number, videoPlaying: boolean): boolean {
+  return sceneEventId === narrationEventId && !videoPlaying;
 }
 
 /** A NARRATION for the narration this screen already tracks, after the reveal closed: a line the room added then (the
@@ -54,6 +54,18 @@ export function boxLine(i: number, count: number, voiceLine: number | undefined,
 }
 
 export const revealDialogue = (scored: boolean): string => scored ? "答對！" : "……";
+
+/** Where the dialogue box goes for a NARRATION `jump` (#405): to line `jump`, the line that overrides one already
+ * said, when it is ahead of line `i`; null to stay. */
+export function jumpLine(i: number, jump: number | undefined, count: number): number | null {
+  return jump !== undefined && jump > i && jump < count ? jump : null;
+}
+
+/** What the big screen's box says over an answer reveal (#405): this turn's narration once it has come in (the room
+ * holds the handoff back until 下一題), else 「答對！」 or 「……」 while it is on its way. */
+export function revealLines(narration: NarrationState, eventId: number, scored: boolean): { lines: string[]; narrated: boolean } {
+  return narration && narration.eventId === eventId ? { lines: narration.lines, narrated: true } : { lines: [revealDialogue(scored)], narrated: false };
+}
 
 /** The first index where two sets of lines differ (a length change counts), or -1 when they are the same. */
 export function firstChange(prev: readonly string[], next: readonly string[]): number {

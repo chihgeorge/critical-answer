@@ -17,7 +17,7 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealDialogue, voiceNarration, type NarrationState } from "@/lib/narration/client";
+import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceNarration, type NarrationState } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
@@ -315,7 +315,7 @@ const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4p
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster, stageMonster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -588,7 +588,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // Every phone offline: the game waits for one to reconnect, so the screen says so rather than a stale line. Not over an
   // answer, a card or a held line on show: the host's 下一題 or ruling still moves those on.
   const paused = pausedOffline(view) && !reveal && !card && !held;
-  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : reveal ? [revealDialogue(!!reveal.scored)] : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
+  // Over a reveal the box reads this turn's narration with the phones; the room holds its handoff until 下一題 (#405).
+  const said = reveal ? revealLines(narration, eventId, !!reveal.scored) : null;
+  const narrating = !served && !paused && !held && !!narration && (!reveal || !!said?.narrated);
+  const sayLines = dishUp(cook) ? [line] : served ? ["上菜！"] : said ? said.lines : paused ? [PAUSED_OFFLINE] : held ? [held] : narration ? narration.lines : [turn ? `輪到${turn.name}了，${monster.name}擋在前面……` : "……"];
   const nameplate = (style: CSSProperties) => (
     <Nameplate className="absolute" style={{ ...style, color: bossScene ? "var(--boss)" : undefined }}>
       {/* A very long custom name ends in … at 360 px (16 characters at 22 px), so the plate stays on the stage and clear of
@@ -863,7 +866,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
         <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
-          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} />
+          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} paused={clockPaused} />
         </div>
       )}
       {/* Centred under the monster; a wide boss plate (16-20 hearts, the phase card) starts right of the 地城主 tag (frame
@@ -884,7 +887,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(!reveal && !served && !paused && !held && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? 1 : 0 } : {})}
+        {...(narrating && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? Math.max(1, typedTo) : 0, jump: jump?.eventId === narration.eventId ? jump.line : undefined } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>
@@ -1252,6 +1255,8 @@ export default function ScreenPage() {
   /** A network drop (not a rest): shown so a frozen screen doesn't look like a quiet game. */
   const [disconnected, setDisconnected] = useState(false);
   const [narration, setNarration] = useState<NarrationState>(null);
+  /** The last NARRATION `jump` (#405): the line of that narration the box moves to at once. */
+  const [narrationJump, setNarrationJump] = useState<{ eventId: number; line: number } | null>(null);
   const [epilogue, setEpilogue] = useState<string | null>(null);
   const [floats, setFloats] = useState<Float[]>([]);
   /** The boss kill came in live, so the end screen cooks the boss before the podium (cooking R8). */
@@ -1458,7 +1463,7 @@ export default function ScreenPage() {
   /** A NARRATION arrived: a new one starts the count over; the same eventId with changed lines is a host edit
    * from line `d`, read again from there — the line being spoken finishes first unless it is the edited one.
    * `voice`: read it aloud (see shouldSpeakNarration). */
-  function trackNarration(msg: { eventId: number; lines: string[]; rev?: number }, voice: boolean) {
+  function trackNarration(msg: { eventId: number; lines: string[]; rev?: number }, voice: boolean, jump = false) {
     const p = progress.current;
     const rev = msg.rev ?? 0;
     if (p && p.eventId > msg.eventId) return;
@@ -1486,7 +1491,8 @@ export default function ScreenPage() {
     }
     if (d === -1 || !voice) return;
     const q = speech.current;
-    if (q && q.eventId === msg.eventId && d > q.at) q.lines = msg.lines;
+    // A jump's line overrides the one being read (#405): read it now.
+    if (q && q.eventId === msg.eventId && d > q.at && !jump) q.lines = msg.lines;
     else speak(msg.lines, msg.eventId, d);
   }
 
@@ -1605,10 +1611,10 @@ export default function ScreenPage() {
       pendingLines.current = null;
       speech.current = null;
       setVoiceAt(null);
-    } else if (!playing && !(revealUp.current && lastPhase.current === "playing") && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
+    } else if (!playing && !(game?.phase === "playing" && game.view.buzz?.teamId)) {
       // Not on a buzz's pause: an earlier line must not be read over the team answering.
       const waiting = deferredNarration.current;
-      if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, revealUp.current, false)) {
+      if (waiting && narrationCanSpeak(latestSceneId.current, waiting.eventId, false)) {
         deferredNarration.current = null;
         speak(waiting.lines, waiting.eventId);
       }
@@ -1997,7 +2003,7 @@ export default function ScreenPage() {
           if (!msg.reveal && revealUp.current && !videoPlaying.current) {
             const waiting = deferredNarration.current;
             deferredNarration.current = null;
-            if (waiting && narrationCanSpeak(msg.eventId, waiting.eventId, false, false) && !msg.phaseCard) speak(waiting.lines, waiting.eventId);
+            if (waiting && narrationCanSpeak(msg.eventId, waiting.eventId, false) && !msg.phaseCard) speak(waiting.lines, waiting.eventId);
           }
           applyScreenAudio(screenAudioOf(msg));
           if (msg.question?.id !== clipEnded.current) clipEnded.current = null;
@@ -2098,10 +2104,10 @@ export default function ScreenPage() {
             // Lines added to the narration already on show, after its reveal closed: the handoff, read over its scene.
             const added = handoffAdded(revealUp.current, progress.current?.eventId, msg.eventId);
             const voice = voiceNarration(speakIt, msg.eventId, servedEvent.current, added);
-            // A finished game keeps its last reveal for good: the kill shot's line is read then, not held for a 下一題.
-            const holding = revealUp.current && lastPhase.current === "playing";
-            if (voice && (holding || videoPlaying.current)) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
-            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, holding, videoPlaying.current));
+            // Over a reveal it is read with the phones (#405); only a playing clip holds it.
+            if (voice && videoPlaying.current) deferredNarration.current = { eventId: msg.eventId, lines: msg.lines };
+            trackNarration(msg, voice && narrationCanSpeak(latestSceneId.current, msg.eventId, videoPlaying.current), !!msg.jump);
+            if (msg.jump) setNarrationJump({ eventId: msg.eventId, line: msg.lines.length - 1 });
           }
           break;
         case "EPILOGUE":
@@ -2194,7 +2200,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} votes={game.forkVotes} doors={game.forkDoors} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

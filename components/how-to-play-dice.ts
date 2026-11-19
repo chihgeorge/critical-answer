@@ -1,58 +1,63 @@
-// All dice text of the how-to-play pages 2–3 (persuasion check, dish die, class dice table), computed from the rules'
-// constants (docs/designs/class-dice-rework.md).
+// All dice text of the how-to-play pages (persuasion check, dish die, lucky potion, class dice), computed from the
+// rules' constants (docs/designs/class-dice-rework.md).
 import {
-  ABILITY_USES,
-  CHECK_BONUS,
-  CHECK_DC,
+  CLASS_IDS,
+  CLASS_SKILLS,
   CHEF_DISH_LEGEND_MULTIPLIER,
   CHEF_DISH_SUCCESS_MULTIPLIER,
   DISH_BURNT_MULTIPLIER,
   DISH_LEGEND_MULTIPLIER,
   SKILL_SUCCESS,
-  SNEAK_CRIT_MULTIPLIER,
-  SNEAK_REWARD_MULTIPLIER,
-  WARRIOR_HIT_SHARE,
   type ClassId,
 } from "@/lib/game-state";
 
 const OK = SKILL_SUCCESS;
-const tenths = (share: number) => `${"零一二三四五六七八九"[Math.round(share * 10)]}成`;
-// 0.8 → 八成, as the lobby says (play page CLASS_HINTS).
-const WAR = tenths(WARRIOR_HIT_SHARE);
-const BURNT = tenths(DISH_BURNT_MULTIPLIER);
+// 0.1 → 一成, as the lobby says it.
+const BURNT = `${"零一二三四五六七八九"[Math.round(DISH_BURNT_MULTIPLIER * 10)]}成`;
 
-/** Page 2 (說服檢定與料理骰) and page 3 (各職業什麼時候擲骰): topic, big text, owl line and host script. */
-export const DICE_PAGES = [
-  {
-    topic: "說服檢定與料理骰",
-    big: "填空題先擲說服檢定，每次答對都擲料理骰",
-    owl: "說服擲到 20 免答！料理骰擲到 20 是傳說級料理，擲到 1 就燒焦了！",
-    script:
-      "一般房填空題先按手機上的「🎲 擲骰說服」：擲 d20 加職業加值，達到怪物頭上的檢定就送第一個字；20 免答算答對，1 答對只拿一半。首領房不用擲說服骰。" +
-      `每一隊輪到自己答對後都擲料理骰：1 燒焦只拿${BURNT}，20 傳說級料理拿 ${DISH_LEGEND_MULTIPLIER} 倍，其他照常拿分；搶答和最後一擊不擲。` +
-      "幸運藥水可以用在自己的任何一顆骰，擲兩顆取高。",
-  },
-  {
-    topic: "各職業什麼時候擲骰",
-    big: `用技能擲 d20：${OK} 以上成功，20 大成功`,
-    owl: "法師施法、牧師祈禱、戰士代答、盜賊偷襲時擲骰；廚師的料理骰加成最多。",
-    script:
-      `職業技能都擲 d20：${OK} 以上成功，20 大成功，1 大失敗。法師施法時擲、牧師答錯祈禱時擲、戰士擲骰代替答題（${OK} 以上拿${WAR}，1 扣整題）；` +
-      `盜賊按「偷襲」馬上擲（${OK} 以上這題答對 ×${SNEAK_REWARD_MULTIPLIER}，20 ×${SNEAK_CRIT_MULTIPLIER}，1 扣這題獎勵的一成）。` +
-      `廚師不用按，料理骰 ${OK} 以上 ×${CHEF_DISH_SUCCESS_MULTIPLIER}、20 ×${CHEF_DISH_LEGEND_MULTIPLIER}。技能一場 ${ABILITY_USES} 次，廚師沒有次數。`,
-  },
-] as const;
+type PageText = { topic: string; big: string; owl: string; script: string };
 
-/** Page 2's picture: an example persuasion roll (die + bonus vs DC) and the dish die's three outcomes. */
-export const CHECK_EXAMPLE = { die: 10, bonus: CHECK_BONUS.thief, dc: CHECK_DC[2] };
+/** Page 3 (填空題): typing, the host's judging, and the persuasion check before it. */
+export const FILL_IN_PAGE: PageText = {
+  topic: "填空題",
+  big: "先說服，再回答；說服成功有提示",
+  owl: "說服成功有提示！擲到 20 免答，擲到 1 只拿一半！",
+  script: "先說服，再回答。說服擲 d20 加職業加值，過了怪物的檢定就有提示：答案第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
+};
+
+/** Page 5 (答對後的料理骰). */
+export const DISH_PAGE: PageText = {
+  topic: "答對後的料理骰",
+  big: "每次答對都擲料理骰，整題分數乘上去",
+  owl: "料理骰擲到 20 是傳說級料理，擲到 1 就燒焦了！",
+  script:
+    `每一隊答對後都擲料理骰：1 燒焦只拿${BURNT}，2 到 19 照常，20 傳說級料理拿 ${DISH_LEGEND_MULTIPLIER} 倍。` +
+    `廚師更好：2 到 ${OK - 1} 照常，${OK} 到 19 拿 ${CHEF_DISH_SUCCESS_MULTIPLIER} 倍，20 拿 ${CHEF_DISH_LEGEND_MULTIPLIER} 倍。搶答和打倒首領的最後一擊不擲。`,
+};
+
+/** Page 6 (幸運藥水): how a team gets one is lib/game-state.ts giveItem (the host), the fortune teller and 冤枉. */
+export const POTION_PAGE: PageText = {
+  topic: "幸運藥水",
+  big: "喝下藥水，這題下一顆骰擲兩次取高",
+  owl: "喝下幸運藥水，下一顆骰子擲兩次，取大的那個！",
+  script:
+    "我會送幸運藥水給表現好的隊伍，占卜師和被冤枉的抓包也會送；一隊一次只能有一瓶。輪到自己時按「🧪 喝下幸運藥水」，" +
+    "這題擲的下一顆骰擲兩次取高：說服、法師、牧師、戰士、偷襲、料理骰都可以。一瓶只管一顆骰，沒擲到骰藥水會還給你。",
+};
+
+/** Page 7 (職業骰): when each class rolls and the one scale they share; never each class's effect (owner 2026-11-18). */
+export const CLASS_DICE_PAGE: PageText = {
+  topic: "職業骰",
+  big: `職業技能都擲 d20，${OK} 以上就成功`,
+  owl: "每個職業都有職業技能，擲到 20 大成功，擲到 1 大失敗！",
+  script:
+    `法師${CLASS_SKILLS.mage}、牧師${CLASS_SKILLS.cleric}、戰士${CLASS_SKILLS.warrior}、盜賊${CLASS_SKILLS.thief}、廚師${CLASS_SKILLS.chef}（答對的料理骰）都擲 d20。結果分四段：1 大失敗，2 到 ${OK - 1} 失敗，` +
+    `${OK} 到 19 成功，20 大成功。每個職業做什麼，大廳選職業時有寫。`,
+};
+
+/** Page 5's picture: the dish die's three outcomes, and the chef's better ones. */
 export const DISH_FACES: [string, string][] = [["1", `燒焦・只拿${BURNT}`], ["2–19", "照常上菜"], ["20", `傳說級・×${DISH_LEGEND_MULTIPLIER}`]];
-
-/** Page 3's table: one row per class, when it rolls and what a SKILL_SUCCESS+ roll does. */
-export const DICE_TABLE_HEAD = ["職業", "什麼時候擲", `擲到 ${OK} 以上`];
-export const DICE_ROWS: [ClassId, string, string][] = [
-  ["mage", "按「施法」時", "給提示（20 直接給答案）"],
-  ["cleric", "答錯後按「祈禱」", "這回合再答一次"],
-  ["warrior", "輪到時「擲骰代替答題」", `算答對拿${WAR}（20 雙倍・1 扣整題）`],
-  ["thief", "按「偷襲」馬上擲", `答對 ×${SNEAK_REWARD_MULTIPLIER}（20 ×${SNEAK_CRIT_MULTIPLIER}・1 扣一成）`],
-  ["chef", "不用按，答對擲料理骰", `料理骰 ×${CHEF_DISH_SUCCESS_MULTIPLIER}（20 ×${CHEF_DISH_LEGEND_MULTIPLIER}）`],
-];
+export const CHEF_DISH_LINE = `${OK}–19 ×${CHEF_DISH_SUCCESS_MULTIPLIER}・20 ×${CHEF_DISH_LEGEND_MULTIPLIER}`;
+/** Page 7's picture: each class with its skill name only; players read the effects on their phones (owner 2026-11-19). */
+export const CLASS_SKILLS_ROW: [ClassId, string][] = CLASS_IDS.map((c) => [c, CLASS_SKILLS[c]]);
+export const DICE_SCALE: [string, string][] = [["1", "大失敗"], [`2–${OK - 1}`, "失敗"], [`${OK}–19`, "成功"], ["20", "大成功"]];

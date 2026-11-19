@@ -95,10 +95,10 @@ describe("parseSnapshot", () => {
     }
   });
 
-  // Value: protects=a room saved mid-intro when the intro had 7 pages still restores; fails_when=the old upper bound comes back;
+  // Value: protects=a room saved mid-intro past the last page (a longer intro) still restores; fails_when=the old upper bound comes back;
   // seam=parseSnapshot; no_claim=the screen's drawing of the page
   it("shows the last intro page for a save from a longer intro", () => {
-    expect(parseSnapshot({ ...valid(), intro: 7 })?.intro).toBe(INTRO_PAGES); // pregate-literal: INTRO_PAGES=7 a save from the old 7-page intro
+    expect(parseSnapshot({ ...valid(), intro: INTRO_PAGES + 4 })?.intro).toBe(INTRO_PAGES);
     expect(parseSnapshot({ ...valid(), intro: 2 })?.intro).toBe(2);
   });
 

@@ -7,15 +7,22 @@ import { useEffect, useState } from "react";
 import { ANSWER_WARN_SECONDS, secondsLeft } from "@/lib/answer-clock";
 
 /** `big`: the big screen's round clock beside the monster. `chip`: the phone's and the host page's ⏱ chip.
- * `onSecond` hears every whole second shown (the big screen ticks on it), possibly twice when a STATE remounts it. */
-export function AnswerClock({ ms, variant, onSecond }: { ms: number; variant: "big" | "wall" | "chip"; onSecond?: (s: number) => void }) {
-  const [end] = useState(() => Date.now() + ms);
-  const [now, setNow] = useState(() => Date.now());
+ * `onSecond` hears every whole second shown (the big screen ticks on it), possibly twice when a STATE remounts it.
+ * `paused`: the page lost the room (#406), so the count stands still; the reconnect's STATE remounts it on the room's figure. */
+export function AnswerClock({ ms, variant, onSecond, paused }: { ms: number; variant: "big" | "wall" | "chip"; onSecond?: (s: number) => void; paused?: boolean }) {
+  const [left, setLeft] = useState(ms);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 250);
+    if (paused) return;
+    // performance.now: a wall-clock step on the device must not add time.
+    let last = performance.now();
+    const t = setInterval(() => {
+      const now = performance.now();
+      setLeft((l) => l - (now - last));
+      last = now;
+    }, 250);
     return () => clearInterval(t);
-  }, []);
-  const s = secondsLeft(end - now);
+  }, [paused]);
+  const s = secondsLeft(left);
   useEffect(() => onSecond?.(s), [s, onSecond]);
   const warn = s <= ANSWER_WARN_SECONDS;
   if (variant === "chip") {

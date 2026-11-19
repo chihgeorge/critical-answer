@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxLine, editedLine, firstChange, handoffAdded, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, sequenceStart, voiceNarration } from "./client";
+import { boxLine, editedLine, firstChange, handoffAdded, jumpLine, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, revealLines, sequenceStart, voiceNarration } from "./client";
 
 // Value: protects=the next-team line added after 下一題 is spoken, a late line over a reveal is not (#350, #352);
 // fails_when=handoffAdded ignores the reveal or the tracked narration, or voiceNarration voices the served dish's own lines.
@@ -31,16 +31,32 @@ describe("sequenceStart (where the dialogue box starts)", () => {
   it("never starts below 0 on an empty box", () => expect(sequenceStart(0, 0)).toEqual({ line: 0, typed: false }));
 });
 
-describe("narration on a reveal", () => {
-  it("shows only the result before the host advances, not the ingredient narration", () => {
+describe("narration on a reveal (#405)", () => {
+  // Value: protects=the big screen reads this turn's narration with the phones over a reveal; fails_when=it goes back to 「答對！」 only
+  it("reads this turn's narration once it is in, and says 答對！ or …… only while it is on its way", () => {
     expect(revealDialogue(true)).toBe("答對！");
     expect(revealDialogue(false)).toBe("……");
+    const n = { eventId: 4, lines: ["甲隊打倒史萊姆", "史萊姆滾走了"], rev: 0 };
+    expect(revealLines(n, 4, true)).toEqual({ lines: n.lines, narrated: true });
+    expect(revealLines(n, 5, true)).toEqual({ lines: ["答對！"], narrated: false });
+    expect(revealLines(null, 4, false)).toEqual({ lines: ["……"], narrated: false });
   });
-  it("waits for the reveal and video to close and drops a line from an older room event", () => {
-    expect(narrationCanSpeak(4, 4, true, false)).toBe(false);
-    expect(narrationCanSpeak(4, 4, false, true)).toBe(false);
-    expect(narrationCanSpeak(5, 4, false, false)).toBe(false);
-    expect(narrationCanSpeak(4, 4, false, false)).toBe(true);
+  it("speaks over a reveal; waits only for a playing video, and drops a line from an older room event", () => {
+    expect(narrationCanSpeak(4, 4, true)).toBe(false);
+    expect(narrationCanSpeak(5, 4, false)).toBe(false);
+    expect(narrationCanSpeak(4, 4, false)).toBe(true);
+  });
+});
+
+describe("jumpLine (#405)", () => {
+  // Value: protects=a line that overrides one already said (送王房) goes up at once; fails_when=the box waits LINE_PAUSE_MS or jumps back
+  it("moves to the overriding line when it is ahead, and stays otherwise", () => {
+    expect(jumpLine(1, 2, 3)).toBe(2);
+    expect(jumpLine(0, 2, 3)).toBe(2);
+    expect(jumpLine(2, 2, 3)).toBeNull();
+    expect(jumpLine(2, 1, 3)).toBeNull();
+    expect(jumpLine(1, undefined, 3)).toBeNull();
+    expect(jumpLine(1, 3, 3)).toBeNull();
   });
 });
 
