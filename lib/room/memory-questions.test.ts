@@ -2,6 +2,7 @@
 // answers; when it ends (clip end, image seconds, or the host's ⏭) the media is gone and the question appears, once
 // per question, across restarts.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -22,7 +23,7 @@ const bank = (first: object, second: object = text("r2")) =>
   });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 const screenKeyOf = (room: DungeonRoom) => (room as unknown as { screenKey: string }).screenKey;
 

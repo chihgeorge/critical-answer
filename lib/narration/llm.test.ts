@@ -94,13 +94,13 @@ describe("prompt", () => {
     expect(system).toContain("不要說題目變簡單");
     expect(system).toContain("下輪再答");
   });
-  // Value: protects=the AI line names a 20 or a 1 (dnd design E3); fails_when=describeRoll is dropped from the prompt
-  it("tells the model about a natural 20 (大成功) or 1 (手滑 but still a hit), and says nothing on other rolls", () => {
+  // Value: protects=the AI line names a class die's 20 or the dish die's 20 or 1 (dnd design E3, class-dice-rework.md);
+  // fails_when=describeRoll is dropped from the prompt
+  it("tells the model about a class die's 20, the dish die's 20 (傳說級) or 1 (燒焦), and says nothing on other rolls", () => {
     expect(buildPrompt({ ...event, roll: { kind: "crit", value: 20 } } as NarrationEvent, []).user).toContain("大成功");
-    const fumble = buildPrompt({ ...event, roll: { kind: "crit", value: 1 } } as NarrationEvent, []).user;
-    expect(fumble).toContain("大失敗");
-    expect(fumble).toContain("還是打中");
-    expect(buildPrompt(event, []).user).not.toMatch(/大成功|大失敗/);
+    expect(buildPrompt({ ...event, roll: { kind: "dish", value: 20 } } as NarrationEvent, []).user).toContain("傳說級料理");
+    expect(buildPrompt({ ...event, roll: { kind: "dish", value: 1 } } as NarrationEvent, []).user).toContain("燒焦");
+    expect(buildPrompt(event, []).user).not.toMatch(/大成功|燒焦|傳說級/);
   });
 
   // Value: protects=the AI line says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); fails_when=describeRoll ignores warriorRoll

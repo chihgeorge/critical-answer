@@ -7,9 +7,8 @@ const ID = "00000000-0000-0000-0000-000000000001";
 const KEY = "team-key-0123456789abcdef";
 
 describe("parseClientMessage", () => {
-  it("accepts the host's hide-crit setting only as a boolean", () => {
-    expect(parseClientMessage({ type: "HOST_START", hideCritRoll: true })).toMatchObject({ type: "HOST_START", hideCritRoll: true });
-    expect(parseClientMessage({ type: "HOST_START", hideCritRoll: "true" })).toBeNull();
+  it("drops the old hide-crit setting: there is no crit die to hide (class-dice-rework.md)", () => {
+    expect(parseClientMessage({ type: "HOST_START", hideCritRoll: true })).not.toHaveProperty("hideCritRoll");
   });
   it("HOST_UNDO_WRONG needs a team, a question and the eventId it was pressed under", () => {
     expect(parseClientMessage({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 })).toEqual({ type: "HOST_UNDO_WRONG", teamId: ID, questionId: "q1", eventId: 3 });
@@ -186,10 +185,10 @@ describe("parseClientMessage", () => {
   });
 
   it("HOST_INTRO: a whole page from 1 to INTRO_PAGES + 1 (that one ends the intro)", () => {
-    expect(INTRO_PAGES).toBe(7);
+    expect(INTRO_PAGES).toBe(4);
     expect(parseClientMessage({ type: "HOST_INTRO", page: 1 })).toEqual({ type: "HOST_INTRO", page: 1 });
-    expect(parseClientMessage({ type: "HOST_INTRO", page: 8 })).toEqual({ type: "HOST_INTRO", page: 8 });
-    for (const page of [0, 9, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
+    expect(parseClientMessage({ type: "HOST_INTRO", page: 5 })).toEqual({ type: "HOST_INTRO", page: 5 });
+    for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
   });
 
   it("HOST_EPILOGUE_PAGE: a whole page from 0", () => {
