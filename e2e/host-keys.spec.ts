@@ -6,7 +6,7 @@ closeLeftoverContexts();
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
 
-/** The host can judge from a laptop keyboard (lib/host-keys.ts): 1 = 答對 / 下一題, 2 = 下輪再答, 3 = 逃跑・同房, 4 = 逃跑・換房. */
+/** The host can judge from a laptop keyboard (lib/host-keys.ts): 1 = 答對 / 下一題, 2 = 下輪再答, 3 = 逃跑. */
 test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one, 1 again closes the reveal", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
