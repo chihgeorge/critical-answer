@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 
 closeLeftoverContexts();
 
@@ -27,7 +27,7 @@ test("undo ruling: 冤枉 then 撤回裁決 brings the ruling card back and the 
   await startGame(host);
 
   // ⚙ 更多 → 🚨 開啟抓包與神諭.
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByTestId("anti-cheat-switch").click();
   await expect(host.getByTestId("anti-cheat-switch")).toHaveAttribute("aria-checked", "true");
   await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();

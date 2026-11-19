@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
-import { screenUrl, startGame, openMore, closeLeftoverContexts } from "./answer";
+import { screenUrl, startGame, openTeamTools, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -111,7 +111,7 @@ test("a phone that joins after the game started waits, sees no game, and takes o
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
   await expect(host.getByRole("button", { name: /這隊暫離中/ })).toBeVisible();
   // 交給新手機 is in ⚙ 更多's 隊伍; the drawer closes so the code shows on the page.
-  await openMore(host);
+  await openTeamTools(host, "甲隊");
   await host.getByRole("button", { name: "交給新手機" }).click();
   const handoffCode = (await host.getByTestId("handoff-code").locator(".px-num").textContent())!.trim();
   await late.getByLabel("換了手機？輸入主持人給的配對碼：").fill(handoffCode);
