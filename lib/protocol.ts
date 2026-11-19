@@ -644,7 +644,9 @@ export type ServerMessage =
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
    * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
    * text never locks the new one (host-narration-edit.md D14). */
-  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
+  /** `jump`: the last line overrides one already said (送王房, 撤回裁決): the big screen shows it at once, without its
+   * reading pause (#405). */
+  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number; jump?: true }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
   | { type: "EPILOGUE"; text: string; replay?: true }
@@ -710,7 +712,8 @@ export type ServerMessage =
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
    * STATE also carries the submitted text for the big screen; structured fields stay host-only.
-   * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
+   * `question`: the whole question while STATE holds it back (the persuasion check's `checkFirst`, a memory question,
+   * the #370 pick, or blank text under a reveal, #362); absent after. */
   /** `tap`: a timing question's round as only the host sees it: teams tapped of those that may (timing-tap.md). */
   | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion; tap?: { count: number; eligible: number } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.

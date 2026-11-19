@@ -2366,9 +2366,12 @@ describe("narration (T5-T7)", () => {
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: onTurn });
     const boss = states().at(-1)!.question;
     expect(boss.boss).toBe(true);
-    const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines as string[];
+    const told = all(room).filter((m) => m.type === "NARRATION").at(-1);
+    const lines = told.lines as string[];
     expect(lines.at(-1)).toContain(boss.monster.name);
     expect(lines.at(-1)).not.toContain(roomMonster);
+    // #405: it overrides the handoff already said, so the big screen shows it at once.
+    expect(told.jump).toBe(true);
     // The first boss entry, so the sprint fires: still no owl line on 送王房 (last-sprint.md).
     expect(room.game!.sprint).toBeDefined();
     expect(lines.some((l) => l.startsWith("🦉"))).toBe(false);
@@ -2539,8 +2542,9 @@ describe("narration (T5-T7)", () => {
       (room as any).servedAt = -Infinity;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].inBossPhase).toBe(true);
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.join(" ")).toContain("Team 0吃飽後走進首領房");
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.at(-1)).toBe("🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！");
+      const told: string[] = all(room).filter((m) => m.type === "NARRATION").at(-1).lines;
+      // #394: the entrance and its 最後衝刺 line come before the handoff to the next team.
+      expect(told.slice(1)).toEqual(["Team 0吃飽後走進首領房，首領戰開始！", "🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！", "Team 1，換你們了！害羞幽靈正等著你們。"]);
     });
 
     it("is appended with rev + 1 to a narration already on screen, and dropped once the game is over", async () => {

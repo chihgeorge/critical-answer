@@ -1259,8 +1259,9 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     try {
       this.restoreBeats(s);
-    } catch {
+    } catch (err) {
       // a damaged save (a null team) restores without its beats
+      console.error(JSON.stringify({ event: "restore_beats_failed", error: err instanceof Error ? err.stack ?? err.message : String(err) }));
     }
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
@@ -1327,7 +1328,9 @@ export class DungeonRoom {
     if (!e || n?.eventId !== e.eventId) return;
     // appendLine's cut and line cap, but not appendLine itself: its broadcast would save a half-restored room.
     const lines = this.bossEntryLines(e.teamId, !!e.sprint).map((line) => sanitizeText(line, MAX_EDIT_LINE)).filter(Boolean).slice(0, NARRATION_MAX_LINES - n.lines.length);
-    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
+    // Before the handoff restore() just added back, as closeReveal orders them (#394).
+    const at = s.heldHandoff?.eventId === n.eventId && n.lines.at(-1) === s.heldHandoff.line ? n.lines.length - 1 : n.lines.length;
+    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines.slice(0, at), ...lines, ...n.lines.slice(at)], rev: n.rev + 1 };
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
@@ -1590,6 +1593,8 @@ export class DungeonRoom {
         ? { question: q.full }
       : q.pub.memorize
         ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
+      : this.reveal
+        ? { question: q.full } // STATE blanks the next question's text under a reveal (#362)
         : {};
     this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question, ...this.tapCount(q.pub.id) });
   }
@@ -1643,6 +1648,11 @@ export class DungeonRoom {
   /** STATE's question: the turn's, without its text, media, prompt and field labels while its check is not done. */
   private shownQuestion(): PublicQuestion | null {
     const pub = this.currentQuestion()?.pub ?? null;
+    if (pub && this.reveal && !this.awaitingCheck()) {
+      // #362: under a reveal the turn has moved on, but the next question's text waits for 下一題. Its shape (kind,
+      // media, option count) still goes out, so no screen changes course; the host pages get it with HOST_ANSWER.
+      return { ...pub, prompt: undefined, ...(pub.content.kind === "text" ? { content: { kind: "text", value: "" } } : {}), ...(pub.options ? { options: pub.options.map(() => "") } : {}), ...(pub.items ? { items: pub.items.map(() => "") } : {}) };
+    }
     if (!pub || !this.awaitingCheck()) return pub;
     const { id, difficulty, boss, monster } = pub;
     return { id, content: { kind: "text", value: "" }, difficulty, boss, monster, checkFirst: true };
@@ -3087,8 +3097,11 @@ export class DungeonRoom {
     this.broadcastState();
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
+    // The entrance before the handoff to the next team (#394), leaving the handoff a slot under the line cap.
+    const shown = this.lastNarration?.eventId === this.eventSeq ? this.lastNarration.lines.length : 0;
+    const room = NARRATION_MAX_LINES - shown - (held && line ? 1 : 0);
+    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint).slice(0, Math.max(0, room))) this.appendLine(this.eventSeq, entry);
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
-    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint)) this.appendLine(this.eventSeq, entry);
   }
 
   /** What the narrator says once a boss-entry dish is eaten (#364): the entrance, then the 最後衝刺 line it held back. */
@@ -3244,7 +3257,7 @@ export class DungeonRoom {
   /** Adds a scripted line after narration `eventId` (last-sprint.md E5, shared with lucky-potion.md E5): at once with
    * `rev + 1`, as a host edit goes out, or held until that narration lands. Cut to MAX_EDIT_LINE (team names are user
    * text); dropped once the game is over. */
-  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE) {
+  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE, jump = false) {
     const line = sanitizeText(raw, max);
     if (!line || this.game?.phase !== "playing") return;
     const n = this.lastNarration;
@@ -3252,7 +3265,7 @@ export class DungeonRoom {
       // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
       if (n.lines.length >= NARRATION_MAX_LINES) return void console.log(JSON.stringify({ event: "narration_line_dropped", eventId, lines: n.lines.length }));
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
-      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
+      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1, ...(jump ? { jump: true as const } : {}) });
     } else if (!n || n.eventId < eventId) {
       this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
     }
@@ -3922,7 +3935,8 @@ export class DungeonRoom {
       if (next && this.reveal) {
         this.heldHandoff = { eventId: this.eventSeq, line: this.scripted.nextLine(next), next };
         this.persist();
-      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
+        // It overrides the handoff already said: the big screen shows it at once (#405).
+      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next), MAX_EDIT_LINE, true);
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -5345,7 +5359,7 @@ export class DungeonRoom {
     // A clip the host played over the caught answer stops: the open catch holds the question again.
     if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
     console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
-    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE);
+    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE, MAX_EDIT_LINE, true); // takes back the ruling just said (#405)
     this.broadcastState();
   }
 
