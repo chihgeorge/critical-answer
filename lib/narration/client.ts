@@ -45,12 +45,26 @@ export function sequenceStart(read: number, count: number): { line: number; type
   return { line: Math.max(0, Math.min(read, count - 1)), typed: read > 0 && read >= count };
 }
 
-/** The line the dialogue box shows: never behind the voice reading it (subtitles follow speech), and the last line at
- * once on a hidden tab, whose throttled timers would leave the typing (and the room's progress) far behind (#365). */
-export function boxLine(i: number, count: number, voiceLine: number | undefined, hidden: boolean): number {
+/** The line the dialogue box shows, from line `i` (#365). One line at a time: line `i` stays up until it has `rested`
+ * (typed, then the reading pause: the pace with no voice) and, while the voice reads this narration, until the voice has
+ * moved past it too. So the next line waits for the line's speech, and a voice that ends or fails every line at once
+ * (some TVs) never rushes the box. A hidden tab shows the last line at once: its throttled timers would leave the typing
+ * (and the room's progress) far behind. */
+export function boxLine(i: number, count: number, voiceLine: number | undefined, hidden: boolean, rested: boolean): number {
   const last = Math.max(0, count - 1);
   if (hidden) return last;
-  return voiceLine === undefined ? i : Math.min(Math.max(i, voiceLine), last);
+  if (i >= last || !rested || (voiceLine !== undefined && voiceLine <= i)) return Math.min(i, last);
+  return i + 1;
+}
+
+/** The narration line the screen's voice is reading: `at` of narration `eventId`, or null when it reads none. */
+export type VoiceAt = { eventId: number; at: number } | null;
+
+/** The `voiceLine` for a dialogue box showing narration `eventId` from its line `from` (#365): every screen's narration
+ * box waits for the voice, not only the turn screen's. Undefined when the voice is not reading that narration (🔊 off,
+ * no voice, a replay), so the box keeps its own pace. */
+export function voiceLineOf(voiceAt: VoiceAt, eventId: number | undefined, from = 0): number | undefined {
+  return voiceAt && voiceAt.eventId === eventId ? Math.max(0, voiceAt.at - from) : undefined;
 }
 
 export const revealDialogue = (scored: boolean): string => scored ? "答對！" : "……";

@@ -2,10 +2,20 @@ import { expect, type Page } from "@playwright/test";
 
 /** Stubs window.speechSynthesis before the page loads, recording every speak() call's text
  * and every cancel(). getVoices() returns two usable zh-TW voices so pickVoice() finds one
- * immediately (no need to wait for a real voiceschanged event in the test environment). */
+ * immediately (no need to wait for a real voiceschanged event in the test environment).
+ * After holdSpeech(page), a line no longer ends by itself (a voice that hangs) until endSpeech(page). */
 export async function stubSpeechSynthesis(page: Page) {
   await page.addInitScript(() => {
     const calls: string[] = [];
+    const w = window as unknown as { __ttsHold: boolean; __ttsFail: boolean; __ttsEnd: () => void };
+    w.__ttsHold = false;
+    w.__ttsFail = false;
+    let current: SpeechSynthesisUtterance | null = null;
+    w.__ttsEnd = () => {
+      const u = current;
+      current = null;
+      u?.onend?.(new Event("end") as SpeechSynthesisEvent);
+    };
     let cancelCount = 0;
     const voice = { lang: "zh-TW", name: "Test zh-TW Voice", voiceURI: "test-zh-tw", default: true } as SpeechSynthesisVoice;
     // A second one for the lobby's 🗣 旁白聲音 picker to choose.
@@ -21,10 +31,13 @@ export async function stubSpeechSynthesis(page: Page) {
         // Ends each line a moment later, like a real voice: the screen reads one line at a time and waits for onend.
         speak: (utter: SpeechSynthesisUtterance) => {
           calls.push(utter.text);
-          setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 50);
+          if (w.__ttsFail) setTimeout(() => utter.onerror?.(new Event("error") as SpeechSynthesisErrorEvent), 0);
+          else if (w.__ttsHold) current = utter;
+          else setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 50);
         },
         cancel: () => {
           cancelCount++;
+          current = null;
         },
       },
     });
@@ -40,6 +53,13 @@ export async function stubSpeechSynthesis(page: Page) {
     };
   });
 }
+
+/** From now on the stubbed voice never ends a line by itself, like a voice that hangs. */
+export const holdSpeech = (page: Page) => page.evaluate(() => void ((window as unknown as { __ttsHold: boolean }).__ttsHold = true));
+/** From now on the stubbed voice fails every line at once (onerror), like a TV whose speech engine is broken. */
+export const failSpeech = (page: Page) => page.evaluate(() => void ((window as unknown as { __ttsFail: boolean }).__ttsFail = true));
+/** Ends the line the held voice is speaking (see holdSpeech). */
+export const endSpeech = (page: Page) => page.evaluate(() => (window as unknown as { __ttsEnd: () => void }).__ttsEnd());
 
 export const ttsCalls = (page: Page) => page.evaluate(() => (window as unknown as { __ttsCalls: string[] }).__ttsCalls);
 
