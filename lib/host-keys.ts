@@ -51,7 +51,7 @@ function ignoredKey(e: KeyLike): boolean {
 /** Which button a key presses (HOST_KEYS), or null to leave the key to the browser (ignoredKey). `revealing`: the answer is
  * on show, so the only button is 下一題.
  * `mc`: a multipleChoice turn, judged by the team's lock (docs/designs/phone-answering.md D13), so 1
- * does nothing (unless `lockWaiting`) and 2 / 3 / 4 only work once the host's stuck row is showing. `cleric` (clericStage):
+ * does nothing (unless `lockWaiting`) and 2 / 3 (2 / 3 / 4 in a cleric's wait) only work once the host's stuck row is showing. `cleric` (clericStage):
  * "before" makes 2 the one 答錯 and 3 nothing; "wait" makes 2 / 3 / 4 祈禱 / 重答 / 逃跑 and 1 nothing.
  * `lockWaiting`: a team's lock waits for 公布答案 (host-reveal.md), so 1 reveals it.
  * `ruling`: a catch waits for the host's ruling, so only 7 / 8 work (anti-ai-cheating.md); 0–5 are inert. */
