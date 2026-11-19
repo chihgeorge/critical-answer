@@ -126,7 +126,7 @@ test("the host queues the next line, the big screen says it, and the queue empti
   await closeMore(host);
 
   await answerCorrectly(host);
-  await nextQuestion(host); // the big screen shows the narration once the reveal closes (#365)
+  await nextQuestion(host); // closes the reveal and adds the handoff line (#405)
   await expect(screen.locator(".px-say")).toContainText(queued, { timeout: 8000 });
 
   // The panel lives in ⚙ 更多 now, so it reopens collapsed (D12's close-on-new-narration is checked by narration-tts editLastLine).
