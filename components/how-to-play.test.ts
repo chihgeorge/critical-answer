@@ -3,7 +3,7 @@ import { INTRO_PAGE_TEXT, introPauseKey } from "./how-to-play";
 import { INTRO_PAGES } from "@/lib/protocol";
 
 it("has the owner's 8 pages, boss fill-ins skip persuasion, and the flee is the single flee", () => {
-  expect(INTRO_PAGE_TEXT.map((p) => p.topic)).toEqual(["輪流上陣・用手機作答", "選擇題", "填空題", "排序題", "答對後的料理骰", "幸運藥水", "職業骰", "答錯與怎麼贏"]);
+  expect(INTRO_PAGE_TEXT.map((p) => p.topic)).toEqual(["輪流上陣・用手機作答", "選擇題", "填空題", "排序題", "答對後的料理骰", "幸運骰", "職業骰", "答錯與怎麼贏"]);
   expect(INTRO_PAGE_TEXT).toHaveLength(INTRO_PAGES);
   expect(INTRO_PAGE_TEXT[2].script).toContain("首領房不擲說服");
   // The class page names the owner's skill names (2026-11-19), and no on-screen text uses the 🎲 emoji.

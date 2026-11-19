@@ -53,7 +53,7 @@ export function MoreDrawer({
   send: (msg: ClientMessage) => void;
   /** The AI key and limit settings. */
   ai: ReactNode;
-  /** A team's rarer tools (指定下一題 / 🧪 給藥水 / 交給新手機), under its ⋯ in 隊伍, while a game plays. */
+  /** A team's rarer tools (指定下一題 / 🍀 給幸運骰 / 交給新手機), under its ⋯ in 隊伍, while a game plays. */
   teamTools?: (teamId: string) => ReactNode;
   /** A team's character, at the start of its row in 隊伍. */
   teamSprite?: (teamId: string) => ReactNode;
@@ -237,7 +237,7 @@ export function MoreDrawer({
                             </>
                           )}
                           {t.item && (
-                            <PixelButton aria-label={`收回${t.name}的藥水`} onClick={() => fix("potion-")} className={small}>收回🧪</PixelButton>
+                            <PixelButton aria-label={`收回${t.name}的幸運骰`} onClick={() => fix("potion-")} className={small}>收回🍀</PixelButton>
                           )}
                         </div>
                       )}
@@ -245,7 +245,7 @@ export function MoreDrawer({
                   );
                 })}
                 {bossPick}
-                <div className="text-[13px]">−5／+5、設定分數（⋯ 裡）是判錯時用的修正：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。⋯ 裡還有指定下一題、給藥水、交給新手機、技能次數。</div>
+                <div className="text-[13px]">−5／+5、設定分數（⋯ 裡）是判錯時用的修正：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。⋯ 裡還有指定下一題、給幸運骰、交給新手機、技能次數。</div>
               </div>,
             )}
           {fixable.length > 0 &&

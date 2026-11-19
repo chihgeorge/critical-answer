@@ -2,7 +2,7 @@
 // question hides its picture until the answer, and phones never embed the video. youtube.com is blocked and a fake
 // window.YT records every player call, so nothing here needs the network or a real video.
 import { test, expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame, nextQuestion, screenUrl, rollCheck, closeLeftoverContexts } from "./answer";
+import { startGame, nextQuestion, screenUrl, checkLanded, closeLeftoverContexts } from "./answer";
 import { stubSpeechSynthesis, tapScreen } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
@@ -100,7 +100,7 @@ test("music question: the lobby asks for a tap, the card hides the video, and th
   await expect(screen.getByTestId("youtube-player")).toHaveCount(0);
   await expect(host.getByTestId("host-question")).toHaveText("這首歌是什麼的主題曲？");
   await expect(host.getByRole("button", { name: "播放", exact: true })).toBeDisabled();
-  await rollCheck(team);
+  await checkLanded(team);
 
   // The screen: the prompt, the music card over the player, cued at the clip's start (D3, D15).
   await expect(screen.getByText("這首歌是什麼的主題曲？")).toBeVisible();
@@ -161,7 +161,7 @@ test("a reconnecting big screen picks a playing video up from the clip's start",
   const { host, screen, team } = await start(browser, request, music);
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
   await host.getByRole("button", { name: "播放", exact: true }).click();
   await expect(screen.getByTestId("youtube-player")).toHaveAttribute("data-status", "playing");
 
@@ -181,7 +181,7 @@ test("a video question shows its picture, a video the API cannot load says so, a
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
   await expect(screen.getByTestId("youtube-player")).toBeVisible();
   await expect(screen.getByTestId("music-card")).toHaveCount(0);
   await expect(team.getByTestId("play-media-hint")).toHaveText("▶ 看大螢幕");
@@ -220,7 +220,7 @@ test("a playing video silences the music and stops the narration on the big scre
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
   const before = await cancels();
   await host.getByRole("button", { name: "播放", exact: true }).click();
   await expect(screen.getByTestId("youtube-player")).toHaveAttribute("data-status", "playing");

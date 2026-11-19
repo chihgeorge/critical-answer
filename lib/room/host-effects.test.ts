@@ -46,7 +46,6 @@ function room(questions: object[] = [text("q1")], answerSeconds?: number) {
   /** Starts the game and shows its first question (a fill-in passes its persuasion check first). */
   function start() {
     send(r, host, { type: "HOST_START", aiNarration: false, ...(answerSeconds ? { answerSeconds } : {}) });
-    send(r, phone, { type: "TEAM_ROLL_CHECK", questionId: state().question.id, eventId: state().eventId });
     (r as unknown as { resolveRoll(): void }).resolveRoll();
     const g = r.game!;
     r.game = { ...g, checks: { ...g.checks, [checkKey(state().question.id, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };

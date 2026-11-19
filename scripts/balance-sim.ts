@@ -20,8 +20,9 @@
 //   order with SORTFIX; the mage's first item cracks SORTHINT of the unknown ones.
 // - Timing tap (卡點題): TAP of the buzzer questions. Every team that may tap taps at target + N(0, TAPSD ms); lib's
 //   tap-clock ranks them, the closest hits, the others get its small bonus.
-// - Fill-ins outside the boss room roll a persuasion check first; the boss room rolls none (#382).
-// - A potion a team holds (a fortune's, or PGIVE's) goes on its next die: a check, a class die, or the dish die of an answer it knows.
+// - Fill-ins outside the boss room roll a persuasion check first, by themselves; the boss room rolls none (#382).
+// - A lucky die a team holds (a fortune's, or PGIVE's) goes on its next skill die; a team with no skill uses left (a chef,
+//   no class, or all used) puts it on the dish die of an answer it knows instead. Never on the check (甲2, 2026-11-19).
 // - A turn-based boss question's knowledge and hit pay follow its difficulty in lib (unset = 3); a song's pay does, its
 //   knowledge stays KB. BOSSD rates every phase-1 question,
 //   BUZZD the songs ("2:17,3:38": 17 songs of difficulty 2, then 38 of 3); BOSSTEXT is phase 1's fill-in share (else TEXT/SORT).
@@ -163,13 +164,19 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       g = r.game;
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
-    // A held potion (a fortune's) goes on the next check, mage or prayer die, or the crit die of an answer the team knows.
-    const potionRoll = () => { if (!team().item) return d20(); g = G.spendPotion(G.drinkPotion(g, id), id); return Math.max(d20(), d20()); };
-    // A correct turn-based answer's dish die, rolled first: potionRoll spends the potion on g, and the call must see that g.
-    const rightText = () => { const v = potionRoll(); settle(G.answerQuestion(g, id, q, true, "retry", R, v), true); };
-    // The boss room rolls no persuasion check (#382; the room refuses one there, lib does not).
+    // 🍀 A held lucky die doubles a skill die (the team has a use, it is spending it), or a dish die when the team has no
+    // skill uses left at all (lib's luckyDieFits); never once its skill die already rolled on this question (skillRolledOn).
+    // It spends the die on g: call it on its own line, before any call that reads g.
+    const potionRoll = (die: "class" | "dish") => {
+      const v = d20();
+      if (!team().item || G.skillRolledOn(team(), { questionId: q, mageCasts: g.mageCasts }) || (die === "dish" && G.hasSkillUses(team()))) return v;
+      g = G.spendPotion(G.drinkPotion(g, id), id);
+      return Math.max(v, d20());
+    };
+    const rightText = () => { const v = potionRoll("dish"); settle(G.answerQuestion(g, id, q, true, "retry", R, v), true); };
+    // The check rolls itself, with no lucky die; the boss room rolls none (#382; the room skips it there, lib does not).
     if (text && !inBoss && !g.checks?.[G.checkKey(q, id)]) {
-      const v = potionRoll();
+      const v = d20();
       g = G.recordCheck(g, id, q, v, "ab");
       if (v === 20) { rightText(); continue; }
     }
@@ -200,16 +207,17 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     if (t.abilityUses > 0) {
       if (t.classId === "mage" && abilityOk(MAGE_MIN) && !knows() && !g.mageCasts?.[G.checkKey(q, id)]) {
         const target: GT.MageTarget | null = text && !hinted() ? { kind: "text", answer: "ab" } : sort && !hinted() ? { kind: "sort", items: ["first", "b", "c", "d"] } : kind === "mc" && gone().length === 0 ? { kind: "multipleChoice", correctIndex: 0, optionCount: 4 } : null;
-        if (target) { g = G.spendAbility(g, id, "mage"); g = G.mageCast(g, id, q, target, potionRoll(), R); }
+        if (target) { g = G.spendAbility(g, id, "mage"); const v = potionRoll("class"); g = G.mageCast(g, id, q, target, v, R); }
       }
       // One 偷襲 per question, whatever its sneak die shows (lib refuses a second).
       if (t.classId === "thief" && !t.sneakArmed && t.sneakTry?.questionId !== q && abilityOk(THIEF_MIN) && knows()) {
         g = G.startSneak(g, id);
-        g = G.sneakRoll(g, id, potionRoll()).game;
+        const v = potionRoll("class");
+        g = G.sneakRoll(g, id, v).game;
       }
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
       if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - G.WARRIOR_TARGET) / 20 > 1 / (opts - gone().length))) {
-        const v = potionRoll(), dish = v >= G.WARRIOR_TARGET ? potionRoll() : undefined;
+        const v = potionRoll("class"), dish = v >= G.WARRIOR_TARGET ? potionRoll("dish") : undefined;
         settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R, dish), v >= G.WARRIOR_TARGET);
         continue;
       }
@@ -217,8 +225,8 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // Option 0 is the right one; a wrong pick is the first wrong option still shown.
     if (knows() || (!text && R() < 1 / (opts - gone().length))) {
       if (text) { rightText(); continue; }
-      // A guess keeps the potion for a die the team trusts.
-      const dish = knows() ? potionRoll() : d20();
+      // A guess keeps the lucky die for a die the team trusts.
+      const dish = knows() ? potionRoll("dish") : d20();
       settle(G.answerQuestion(g, id, q, true, "retry", R, dish), true);
       continue;
     }
@@ -227,7 +235,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     else if (cleric && G.canPrayBeforeJudge(g, id)) g = G.recordTextWrong(g, id, q);
     if (sort && R() < SORTFIX) L.known = true;
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
-    if (cleric && G.canPray(g, id)) g = G.prayerRoll(G.pray(g, id), id, potionRoll());
+    if (cleric && G.canPray(g, id)) { const v = potionRoll("class"); g = G.prayerRoll(G.pray(g, id), id, v); }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
     g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < FLEESAME ? "flee" : "switch") : "retry", R).game;
   }

@@ -550,8 +550,7 @@ describe("#364: beats that hold the turn", () => {
 
   it("a passed check holds its beat in manual until 下一步, then the question shows", () => {
     const s = setup({ teams: 1, fixedDie: 18 });
-    send(s.room, s.phones[0], { type: "TEAM_ROLL_CHECK", questionId: s.room.game!.teams[0].currentQuestionId, eventId: state(s.room).eventId });
-    step(s); // the check die's beat
+    // The check rolled itself at the start, and its die landed (sendSettled).
     expect(state(s.room)).toMatchObject({ stageBeat: "check-success", hold: { kind: "check-success" }, question: null });
     step(s);
     expect(state(s.room).stageBeat).toBeUndefined();

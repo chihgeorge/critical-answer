@@ -127,7 +127,7 @@ describe("叉路 in the room", () => {
     expect(narrations(room).at(-1).lines.join("")).toMatch(/兩扇門|叉路|兩條/);
   });
 
-  it("a team at a fork cannot answer, lock, roll, drink or use an ability; the host cannot judge it", () => {
+  it("a team at a fork cannot answer, lock, drink or use an ability, and rolls no check; the host cannot judge it", () => {
     vi.useFakeTimers();
     const s = setup();
     const { room, host, phones } = s;
@@ -135,8 +135,8 @@ describe("叉路 in the room", () => {
     const q = room.game!.teams[0].currentQuestionId;
     send(room, phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: q, text: "x", eventId: state(room).eventId });
     expect(lastSent(phones[0])).toMatchObject({ type: "ERROR" });
-    send(room, phones[0], { type: "TEAM_ROLL_CHECK", questionId: q, eventId: state(room).eventId });
-    expect(lastSent(phones[0])).toMatchObject({ type: "ERROR", detail: "fork" });
+    // No persuasion check rolls itself on a question the fork holds.
+    expect(room.game!.checks?.[`${q}:${T1}`]).toBeUndefined();
     send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: q, correct: true, eventId: state(room).eventId });
     expect(lastSent(host)).toMatchObject({ type: "ERROR", detail: "fork" });
     expect(room.game!.teams[0].fork?.phase).toBe("choosing");
@@ -608,7 +608,7 @@ describe("叉路 in the room", () => {
     expect(after.lines[1]).toMatch(/⚔️/);
   });
 
-  it("a line held for the last turn's narration (a 🧪 give) comes along into the fork's, before the opening line", async () => {
+  it("a line held for the last turn's narration (a 🍀 give) comes along into the fork's, before the opening line", async () => {
     vi.useFakeTimers();
     const provider: NarrationProvider = { name: "test", narrate: () => new Promise<string>(() => {}) };
     const s = setup({ provider });
@@ -622,7 +622,7 @@ describe("叉路 in the room", () => {
     expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
     const lines = narrations(s.room).at(-1).lines;
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toMatch(/🧪 Plain/);
+    expect(lines[0]).toMatch(/🍀 Plain/);
     expect(FORK_OPEN_VARIANTS.map((v) => v.replace("{team}", "EventTeam"))).toContain(lines[1]);
   });
 

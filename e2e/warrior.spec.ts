@@ -75,6 +75,6 @@ test("dish die: a right lock shows the die on the big screen after 公布答案,
   await expect(screen.getByTestId("roll-result")).toHaveText(/^\d+ (大失敗|失敗|成功|大成功)：/); // the tier and its effect once it lands (#364)
 
   // The die's 2 s: then the room judges the answer and the overlay goes.
-  await expect(overlay).toHaveCount(0, { timeout: 5000 });
+  await expect(overlay).toHaveCount(0, { timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await expect(team.getByText(/^答對了！/)).toBeVisible();
 });

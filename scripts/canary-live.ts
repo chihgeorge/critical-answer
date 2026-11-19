@@ -92,9 +92,8 @@ export type Seen = {
   /** The canary already answered this question (so a 下一題 means its answer is on the way, not a card). */
   acted: boolean;
   reveal: boolean;
-  roll: boolean;
+  /** A fill-in's persuasion check is still rolling itself (the host's 「大螢幕才出題」 line). */
   checkFirst: boolean;
-  hostRoll: boolean;
   fork: boolean;
   fortune: boolean;
   memory: boolean;
@@ -113,7 +112,7 @@ export type Seen = {
 };
 
 export type Action =
-  | "over" | "done" | "wrong" | "next" | "card" | "reveal" | "roll" | "host-roll" | "fork" | "fortune" | "memory"
+  | "over" | "done" | "wrong" | "next" | "card" | "reveal" | "fork" | "fortune" | "memory"
   | "fields" | "sort" | "choice" | "judge" | "buzz" | "play" | "live" | "skip" | "wait";
 
 /** The next move on a question of any kind. It answers right when a phone or the host can (choice, sort, fill-in,
@@ -126,12 +125,11 @@ export function decide(s: Seen, waitMs: number | null): Action {
   if (s.wrong) return "wrong";
   if (s.phaseCard) return "next";
   if (s.reveal) return "reveal";
-  if (s.roll) return "roll";
   if (s.fork) return "fork";
   if (s.fortune) return "fortune";
-  // The host's 答對！ is live before the check and during a memory clip: answer neither early. The check comes first:
-  // the room refuses ⏭ 直接出題 until it is done.
-  if (s.checkFirst) return s.hostRoll ? "host-roll" : "wait";
+  // The host's 答對！ is live during the check's die and a memory clip: answer neither early. The check comes first (it
+  // rolls itself): the room refuses ⏭ 直接出題 until it is done.
+  if (s.checkFirst) return "wait";
   if (s.memory) return "memory";
   if (s.fields) return "fields";
   if (s.sort) return "sort";
@@ -195,10 +193,9 @@ async function playQuestion(host: Page, screen: Page, phones: Page[], setTeam: (
   let waitingSince: number | null = null;
   let wentLive = false;
   let last: Action = "wait";
-  const team = { roll: -1, fork: -1, fortune: -1, sort: -1, choice: -1, buzz: -1 };
+  const team = { fork: -1, fortune: -1, sort: -1, choice: -1, buzz: -1 };
   for (;;) {
     if (Date.now() > deadline) throw new Error(`question not answered in ${ANSWER_MS / 1000} s (last move: ${last})`);
-    team.roll = await onPhone((p) => p.getByTestId("roll-check"), live);
     team.fork = await onPhone((p) => p.getByTestId("phone-fork-left"), live);
     team.fortune = await onPhone((p) => p.getByTestId("phone-fortune").getByRole("button").first(), live);
     // Visible, not live: disabled until an option is picked. Once locked it stays up, so it is not picked again.
@@ -214,9 +211,7 @@ async function playQuestion(host: Page, screen: Page, phones: Page[], setTeam: (
       next: (await visible(host.getByRole("button", { name: "🍲 上菜", exact: true }))) || (await live(host.getByRole("button", { name: "下一題", exact: true }))),
       acted,
       reveal: await live(host.getByRole("button", { name: /公布答案/ })),
-      roll: team.roll >= 0,
       checkFirst: await visible(host.getByTestId("host-check-first")),
-      hostRoll: await live(host.getByTestId("host-roll-check")),
       fork: team.fork >= 0,
       fortune: team.fortune >= 0,
       memory: await live(host.getByRole("button", { name: "⏭ 直接出題" })),
@@ -263,15 +258,6 @@ async function playQuestion(host: Page, screen: Page, phones: Page[], setTeam: (
       case "reveal":
         acted = true;
         await press(host.getByRole("button", { name: /公布答案/ }));
-        break;
-      case "roll":
-        acted = true;
-        setTeam(team.roll);
-        await press(phones[team.roll].getByTestId("roll-check"));
-        break;
-      case "host-roll":
-        acted = true;
-        await press(host.getByTestId("host-roll-check"));
         break;
       case "fork":
         await press(phones[team.fork].getByTestId("phone-fork-left"));

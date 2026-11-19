@@ -9,7 +9,7 @@ import { ROW_NAMES } from "@/lib/podium";
 import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
 /** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. A natural 20 turns gold with a
- * glow and four blinking pixel sparkles (static under reduced motion), wherever a d20 lands on 20. `tone`: a 🧪 potion's
+ * glow and four blinking pixel sparkles (static under reduced motion), wherever a d20 lands on 20. `tone`: a 🍀 lucky die's
  * two dice (lucky-potion.md D10): the kept one keeps its colours and gets a green outline and a ✓ badge, the other dims. */
 export function D20({ value, size, tone }: { value: number | string; size: number; tone?: "kept" | "dim" }) {
   const dim = tone === "dim";
@@ -59,7 +59,7 @@ const TUMBLE_MS = 1200;
  * `chef`: read with the chef's multipliers), a persuasion check, or a class die: a mage's skill die on `castOn`, a
  * cleric's prayer die, or the thief's sneak die (`penalty`: what its 1 takes). `rejudge`: the dish die is the host's
  * 改成答對. Every die but the check lands red on 1–6 (a warrior's too), plain on 7–19 and gold on 20. Keyed by the caller
- * per roll, so every roll tumbles again. `values`: a 🧪 potion's two dice (lucky-potion.md D10), tumbling and landing
+ * per roll, so every roll tumbles again. `values`: a 🍀 lucky die's two dice (lucky-potion.md D10), tumbling and landing
  * together; `value` is the higher, and a tie shows both as kept. */
 export function RollOverlay({ teamName, value, values, kind = "warrior", bonus = 0, dc = 0, castOn = "multipleChoice", chef = false, penalty = 0, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "dish" | "check" | "mage" | "cleric" | "thief"; bonus?: number; dc?: number; castOn?: CastOn; chef?: boolean; penalty?: number; rejudge?: boolean }) {
   // Start covered: the winning face and tier must not flash before the tumble effect mounts.
@@ -123,7 +123,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">
         <LabelChip>
-          {potion ? `🧪 ${teamName} 幸運藥水！擲兩次取高` : chip}
+          {potion ? `🍀 ${teamName} 幸運骰！擲兩次取高` : chip}
         </LabelChip>
       </div>
       {potion ? (

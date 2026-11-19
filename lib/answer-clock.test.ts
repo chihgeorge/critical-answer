@@ -15,16 +15,15 @@ describe("stuckDelayMs", () => {
 // Value: protects=no 「好像卡住了」 row while a memory question's media plays (the teams cannot see the question yet), and
 // the row's timer starting once it is shown; fails_when=the 15 s run from before the host presses ▶; seam=pure; no_claim=the timer itself
 describe("stuckKey", () => {
-  const mc = { teamId: "t1", questionId: "q1", mc: true, check: false, lock: false, roll: false, wrong: false, eventId: 7 };
+  const mc = { teamId: "t1", questionId: "q1", mc: true, lock: false, roll: false, wrong: false, eventId: 7 };
   it("has no key while a memory question waits for its media, and a fresh one once the question shows", () => {
     expect(stuckKey({ ...mc, memorize: true, clock: { left: null } })).toBeNull();
-    expect(stuckKey({ ...mc, check: true, mc: false, memorize: true })).toBeNull();
     expect(stuckKey({ ...mc, eventId: 8, clock: { left: 60_000 } })).toBe("t1|q1|pick|8|count");
   });
-  it("keeps the other turns' rows: a pick (also during a plain question's clip), a wrong pick, a waiting check", () => {
+  it("keeps the other turns' rows: a pick (also during a plain question's clip), a wrong pick; none on a fill-in (its check rolls itself)", () => {
     expect(stuckKey({ ...mc, clock: { left: null } })).toBe("t1|q1|pick|7|clip");
     expect(stuckKey({ ...mc, wrong: true })).toBe("t1|q1|wrong|7|count");
-    expect(stuckKey({ ...mc, mc: false, check: true })).toBe("t1|q1|check|7");
+    expect(stuckKey({ ...mc, mc: false })).toBeNull();
     expect(stuckKey({ ...mc, lock: true })).toBeNull();
     expect(stuckKey({ ...mc, teamId: undefined })).toBeNull();
   });

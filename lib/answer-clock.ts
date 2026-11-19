@@ -39,10 +39,10 @@ export function stuckDelayMs(clock: { left: number | null } | undefined): number
 }
 
 /** The host's stuck row's key, or null for no row; a new key re-arms its timer. A multiple-choice turn with no lock and no
- * roll, or a fill-in whose persuasion check waits. Not while a memory question's media plays (memory-questions.md): the
+ * roll (a fill-in's persuasion check rolls itself, so it never waits on the team). Not while a memory question's media plays (memory-questions.md): the
  * teams cannot see the question yet, so the timer starts once the question is shown. */
-export function stuckKey(s: { teamId?: string; questionId?: string; mc: boolean; check: boolean; lock: boolean; roll: boolean; wrong: boolean; eventId?: number; clock?: { left: number | null }; memorize?: boolean }): string | null {
+export function stuckKey(s: { teamId?: string; questionId?: string; mc: boolean; lock: boolean; roll: boolean; wrong: boolean; eventId?: number; clock?: { left: number | null }; memorize?: boolean }): string | null {
   if (!s.teamId || s.memorize) return null;
   if (s.mc && !s.lock && !s.roll) return `${s.teamId}|${s.questionId}|${s.wrong ? "wrong" : "pick"}|${s.eventId}|${s.clock?.left === null ? "clip" : "count"}`;
-  return s.check ? `${s.teamId}|${s.questionId}|check|${s.eventId}` : null;
+  return null;
 }
