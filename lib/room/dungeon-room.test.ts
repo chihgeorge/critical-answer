@@ -941,6 +941,18 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     }
   });
 
+  // Value: protects=a correct answer under its reveal is not lost to 送王房 before its dish die; fails_when=the send goes
+  // through and the die then finds the turn moved and drops the answer unscored; seam=none; no_claim=the host page's button
+  it("refuses 送王房 for the team whose correct answer waits for its dish die, which then scores it", () => {
+    const { explanationRoom: room, hostConn2: host, teamIds } = explanationGame();
+    room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: teamIds[0], questionId: "r0-q1", correct: true }), host);
+    room.onMessage(JSON.stringify({ type: "HOST_SEND_TO_BOSS", teamId: teamIds[0] }), host);
+    expect(lastSentTo(host as never)?.detail).toBe("lock_pending");
+    expect(room.game!.teams[0].inBoss).toBeFalsy();
+    send(room, host, { type: "HOST_NEXT", eventId: seqOf(room) });
+    expect(revealOf(room).scored).toMatchObject({ teamId: teamIds[0] });
+  });
+
   it("reveals the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
     const { room, hostConn, ids } = startedGame(1);
     for (let i = 0; i < 100 && room.game!.teams[0].score < room.game!.config.bossThreshold; i++) {

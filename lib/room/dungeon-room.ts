@@ -3967,7 +3967,9 @@ export class DungeonRoom {
     // A lock in its beat would then be judged against a room question the team no longer faces; a door opening would
     // then show a room the team has left.
     // A dish that leads into the boss room shows the game from before it (#364): a send now would not show.
-    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId || this.bossEntryBefore) {
+    // So would a correct answer whose reveal waits for its dish die: the die would then find the turn moved and drop it.
+    const dishNext = !!this.reveal?.dishNext && this.game.phase === "playing" && currentTurnTeamId(this.game) === teamId;
+    if (this.pendingLock?.teamId === teamId || this.pendingRoll?.teamId === teamId || this.forkBeat?.teamId === teamId || dishNext || this.bossEntryBefore) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
       return;
     }
@@ -4022,13 +4024,12 @@ export class DungeonRoom {
   }
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
-   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line.
-   */
+   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
   private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
     const prev = this.game;
     if (!prev) return;
-    // A correct turn-based answer rolls the dish die first (class-dice-rework.md): scored when its beat ends (resolveRoll
-    // judges again with it). A warrior's hit rolls it after its own die. Not in a buzzer phase, and not on the finishing
+    // A correct turn-based answer rolls the dish die first (class-dice-rework.md), once the host has seen its answer and
+    // explanation: scored when its beat ends (resolveRoll judges again with it). A warrior's hit rolls it after its own die. Not in a buzzer phase, and not on the finishing
     // blow, whose 4d20 is all it rolls.
     const hit = roll?.kind === "warrior" ? roll.value >= WARRIOR_TARGET && roll.dish === undefined : correct && !roll;
     if (hit && !caught && !killDice && !isBuzzPhase(prev)) {
@@ -4624,8 +4625,8 @@ export class DungeonRoom {
       if (currentTurnTeamId(game) !== lock.teamId || currentQuestionIdOf(game, lock.teamId) !== lock.questionId) {
         this.broadcastState();
       } else if ((q?.kind === "multipleChoice" && q.correctIndex === lock.optionIndex) || (q?.kind === "sort" && this.sortSlotsOf(lock.questionId, lock.optionIndex).every(Boolean))) {
-        // Right: the dish die gets its beat, then resolveRoll judges with it (R9). Nothing is scored before. A finishing
-        // blow skips it for the kill's 4d20.
+        // Right: the answer's reveal comes first, the host's 🎲 擲料理骰 rolls the dish die, then resolveRoll judges with it
+        // (R9). Nothing is scored before. A finishing blow skips it for the kill's 4d20.
         this.judge(lock.teamId, lock.questionId, true, "retry");
       } else {
         // No eventSeq bump: nothing is narrated until the team chooses (E7).
@@ -4844,6 +4845,8 @@ export class DungeonRoom {
     } catch (err) {
       console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
       if (roll.kind === "check" && roll.value === 20) this.dropCrit(roll.teamId, roll.questionId);
+      // The answer's reveal stays up, so 🎲 擲料理骰 may roll again: keep the warrior's die and the field marks for it.
+      if (roll.kind === "dish" && this.reveal?.dishNext) this.pendingAnswer = answer;
       this.broadcastState();
     }
     if (roll.values && roll.kind !== "kill") this.sayPotion(roll);

@@ -1,6 +1,6 @@
 // Test-only helper for the room tests: send one message, then roll a correct answer's dish die (the host's 🎲 擲料理骰
-// under its reveal) and let it land at once, as if its 2 s beat had passed (class-dice-rework.md). Most room tests judge an answer right and look at the scored state; the
-// tests about the dish die's own beat call room.onMessage directly.
+// under its reveal) and let it land at once, as if its 2 s beat had passed (class-dice-rework.md). Most room tests judge
+// an answer right and look at the scored state; the tests about the dish die's own beat call room.onMessage directly.
 import type { DungeonRoom } from "./dungeon-room";
 import type { AnswerReveal, PendingRoll } from "../protocol";
 

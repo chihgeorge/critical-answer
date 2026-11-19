@@ -586,8 +586,9 @@ export default function HostPage() {
   const stuck = !!stuckKey && stuckShownFor === stuckKey;
   // 叉路 (branch-fork.md D3): the host only watches; in auto the room's own 15 s clock sends a team that never picks into ⚔️, in manual the host's ▶ 下一步 does.
   // An answer or a card on show keeps its 下一題: the hold's ▶ 下一步 takes over once it is gone. A finished game has
-  // no 下一題 (the kill's answer stays up), so the podium's hold always shows.
-  const holdUp = !!hold && (!revealUp || game?.phase === "finished");
+  // no 下一題 (the kill's answer stays up), so the podium's hold always shows. Nor does a dish die rolling under its answer:
+  // a manual room's ▶ 下一步 lands it.
+  const holdUp = !!hold && (!revealUp || rolling || game?.phase === "finished");
   const fortune = game?.fortune;
   const atFortune = !!fortune && !revealUp;
   // 立即隨機 (fortune-teller.md): the host's way out once the pick is 2 s overdue; the room refuses it any earlier.
