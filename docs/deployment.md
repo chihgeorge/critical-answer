@@ -12,7 +12,7 @@
 
 ## 自動部署
 
-合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
+合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Vercel 不部署其他分支：[vercel.json](../vercel.json) 的 `git.deploymentEnabled` 關掉了 PR 的預覽部署，免得用完免費方案每天的部署次數（要重新打開，刪掉 `"**": false` 那一行）。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
 
 ## 第一次部署到自己的帳號
 
