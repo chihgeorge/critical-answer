@@ -2,6 +2,16 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.108.1.0] - 2026-11-20
+
+### Fixed
+- The big screen's narration no longer shows its next line before the voice has finished the one before it on the 叉路, 神秘房 and 占卜 screens and on the end screen: like the turn screen, each line waits for the voice, or for its safety timeout when a voice hangs. A line also stays up at least as long as it does with no voice (typed, then the reading pause), so a voice that ends or fails every line at once (some TVs) never flashes the lines past. With 🔊 off or no voice, the lines keep their usual pace.
+
+## [0.108.0.0] - 2026-11-20
+
+### Added
+- Lobby option 「首領題隨機順序（同難度內）」 (off by default): every boss phase's questions come in a random order within each difficulty, still easiest difficulty first and with last game's revealed answers last within their difficulty. Off keeps the bank order.
+
 ## [0.107.2.1] - 2026-11-20
 
 ### Fixed

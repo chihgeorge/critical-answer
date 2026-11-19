@@ -401,6 +401,8 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
+  /** 首領題隨機順序 (lobby): each boss phase's questions shuffled within one difficulty. Absent keeps the bank order. */
+  bossShuffle?: true;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -804,7 +806,16 @@ export function createGame(
   const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
   // Easiest first; within one difficulty, an answer the last game showed goes last (a stable sort keeps freshFirst's order).
   const difficulty = (id: string) => (Object.hasOwn(bossDifficulties, id) ? bossDifficulties[id] : DEFAULT_BOSS_DIFFICULTY);
-  const bossOrder = (ids: string[]) => freshFirst(ids).sort((a, b) => difficulty(a) - difficulty(b));
+  // Shuffled before the stable sort, so 首領題隨機順序 moves questions only within their difficulty. Off draws no rng.
+  const shuffled = (ids: string[]) => {
+    const a = [...ids];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = pickIndex(rng, i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const bossOrder = (ids: string[]) => freshFirst(config.bossShuffle ? shuffled(ids) : ids).sort((a, b) => difficulty(a) - difficulty(b));
   bossQuestionIds = bossOrder(bossQuestionIds);
   laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];
@@ -1124,8 +1135,8 @@ function pickDue(game: GameState, open: boolean): boolean {
   return !open && !buzz.open && !buzz.teamId;
 }
 
-/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
- * order. `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
+/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in phase
+ * order (random each game under 首領題隨機順序). `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
 export function pickableCategories(game: GameState, categoryOf: Record<string, string | undefined>, open: boolean): string[] {
   const buzz = currentBuzz(game);
   if (!pickDue(game, open) || !buzz.picker || buzz.hostPicked) return [];
@@ -1133,7 +1144,7 @@ export function pickableCategories(game: GameState, categoryOf: Record<string, s
   return [...new Set(found.filter((c): c is string => !!c))];
 }
 
-/** The question types of the phase, in bank order, `left` false once all of that type are revealed (#321: shown greyed).
+/** The question types of the phase, in phase order, `left` false once all of that type are revealed (#321: shown greyed).
  * `typeOf` maps a question id to its questionType. Empty when no pick is due or no type has a question left. Offered
  * to the host even without a winner. */
 export function pickableTypes(game: GameState, typeOf: Record<string, string | undefined>, open: boolean): { type: string; left: boolean }[] {
