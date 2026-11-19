@@ -185,10 +185,10 @@ describe("parseClientMessage", () => {
   });
 
   it("HOST_INTRO: a whole page from 1 to INTRO_PAGES + 1 (that one ends the intro)", () => {
-    expect(INTRO_PAGES).toBe(4);
+    expect(INTRO_PAGES).toBe(8);
     expect(parseClientMessage({ type: "HOST_INTRO", page: 1 })).toEqual({ type: "HOST_INTRO", page: 1 });
-    expect(parseClientMessage({ type: "HOST_INTRO", page: 5 })).toEqual({ type: "HOST_INTRO", page: 5 });
-    for (const page of [0, 6, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
+    expect(parseClientMessage({ type: "HOST_INTRO", page: 9 })).toEqual({ type: "HOST_INTRO", page: 9 });
+    for (const page of [0, 10, 2.5, "2", undefined]) expect(parseClientMessage({ type: "HOST_INTRO", page }), String(page)).toBeNull();
   });
 
   it("HOST_EPILOGUE_PAGE: a whole page from 0", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TIER_LABELS, WARRIOR_TARGET, skillTier } from "@/lib/game-state";
+import { TIER_LABELS, WARRIOR_TARGET, dishTier, skillTier } from "@/lib/game-state";
 import { clericEffect, dishEffect, mageEffect, sneakEffect, warriorEffect, type CastOn } from "@/lib/class-dice";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
@@ -61,8 +61,11 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
   const landed = face === null;
   const check = kind === "check";
   // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 halves.
-  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : kind === "warrior" ? value >= WARRIOR_TARGET : skillTier(value) >= 2;
-  const tier = `${value} ${TIER_LABELS[skillTier(value)]}`;
+  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : kind === "warrior" ? value >= WARRIOR_TARGET : kind === "dish" ? value !== 1 : skillTier(value) >= 2;
+  // The dish die is red only on a 1: a 2–6 pays as usual, so it reads 成功, or 沒加成 in plain cream for a chef.
+  const dish = kind === "dish" ? dishTier(value, chef) : undefined;
+  const plain = dish === 1;
+  const tier = `${value} ${plain ? "沒加成" : TIER_LABELS[dish ?? skillTier(value)]}`;
   const result =
     kind === "mage"
       ? `${tier}：${mageEffect(castOn, value)}`
@@ -116,7 +119,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
       )}
       <div
         data-testid="roll-result"
-        className={`px-bar px-5 text-[26px] ${landed && hit ? "ok" : ""}`}
+        className={`px-bar px-5 text-[26px] ${landed && hit && !plain ? "ok" : ""}`}
         style={{
           visibility: landed ? "visible" : "hidden",
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),

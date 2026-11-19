@@ -4,7 +4,7 @@
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
-import { skillTier, type ClassId, type EventOutcome, type FortuneCondition, type FortuneEffect } from "../game-state";
+import { dishTier as tierOfDish, skillTier, type ClassId, type EventOutcome, type FortuneCondition, type FortuneEffect } from "../game-state";
 import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "../event-text";
 import type { Reaction } from "../protocol";
 
@@ -449,7 +449,7 @@ export const WARRIOR_TIER_VARIANTS: Tiers = [
   ["各位觀眾，二十點！{team}獎勵翻倍。", "{team}說要打十個，結果真的打贏了，翻倍！", "一劍定江山！{team}擲出二十，翻倍入袋。"],
 ];
 
-/** A correct answer's dish die (every team). 7–19 joins the answer's usual pool; 1 and 20 join the burnt and legend lines. */
+/** A correct answer's dish die (every team; 2–6 is a chef's only, anyone else's reads as 7–19). 7–19 joins the answer's usual pool; 1 and 20 join the burnt and legend lines. */
 export const DISH_TIER_VARIANTS: Tiers = [
   ["完了，芭比Q了。{team}的料理變成焦炭。", "黑暗料理界發來賀電，{team}這盤只剩一成。", "食神吃了一口，只說兩個字：失敗。"],
   ["食神一樣一樣挑：太鹹、太硬、沒入味。勉強過關。", "主廚大喊：還是生的！{team}這盤勉強過關。", "{team}的料理有點鹹，配三碗飯剛好。"],
@@ -667,8 +667,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
       // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, 2–6 and 20.
-      const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? skillTier(event.dish) : undefined;
       const chef = "classId" in event && event.classId === "chef";
+      // A 2–6 is a plain serve for anyone but a chef (dishTier).
+      const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? tierOfDish(event.dish, chef) : undefined;
       if (event.type === "correct" && dishTier !== undefined && dishTier !== 2) {
         const pool =
           dishTier === 0

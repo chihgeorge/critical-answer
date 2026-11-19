@@ -98,6 +98,13 @@ export const CHEF_DISH_LEGEND_MULTIPLIER = 2;
 export const DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, 1, DISH_LEGEND_MULTIPLIER] as const;
 export const CHEF_DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, CHEF_DISH_SUCCESS_MULTIPLIER, CHEF_DISH_LEGEND_MULTIPLIER] as const;
 
+/** The dish die's tier as players see it: for a team that is not a chef 2–6 pays the same as 7–19, so it reads as the
+ * same plain result (owner 2026-11-18), never as a failure; a chef's 2–6 stays tier 1 (no bonus). */
+export function dishTier(value: number, chef: boolean): SkillTier {
+  const t = skillTier(value);
+  return t === 1 && !chef ? 2 : t;
+}
+
 /** The dish die `value`'s multiplier for a chef or anyone else. */
 export function dishMultiplier(chef: boolean, value: number): number {
   return (chef ? CHEF_DISH_MULTIPLIERS : DISH_MULTIPLIERS)[skillTier(value)];

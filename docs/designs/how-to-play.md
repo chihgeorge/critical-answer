@@ -3,7 +3,7 @@
 Status: design-reviewed 2026-11-04 (/plan-design-review). Next: /plan-eng-review.
 Source: TODOS.md「正式遊戲開始前加玩法說明（文字＋圖片）」(P2).
 
-Update 2026-11-18: the slideshow is now 4 pages (輪流上陣・用手機作答, 說服檢定與暴擊骰, 各職業什麼時候擲骰 as a class table, 答錯與怎麼贏). The dice text of pages 2–3 lives in `components/how-to-play-dice.ts`.
+Update 2026-11-18 (owner's page list): the slideshow is now 8 pages: 輪流上陣・用手機作答, 選擇題, 填空題 (with the persuasion check), 排序題, 答對後的料理骰, 幸運藥水, 職業骰 (when each class rolls and the shared 1 大失敗／2–6 失敗／7–19 成功／20 大成功 scale, no per-class effects), 答錯與怎麼贏 (one 逃跑: 換一隻怪，換簡單題). The text lives in `components/how-to-play.tsx` `INTRO_PAGE_TEXT`, the dice pages' text in `components/how-to-play-dice.ts`, computed from `lib/game-state.ts` constants. The decisions below still say 4 pages; the structure per page (D4) is unchanged.
 
 ## Problem
 

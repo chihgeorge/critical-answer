@@ -38,6 +38,7 @@ import {
   prayerRoll,
   rejudgeNeedsDie,
   skillTier,
+  dishTier,
   SKILL_SUCCESS,
   WARRIOR_TARGET,
   startSneak,
@@ -4078,7 +4079,7 @@ export class DungeonRoom {
     // The dish die behind this answer renames a cooked dish on a 1, 2–6 or 20 (a gift stays as the monster gave it).
     const dishDie = roll?.kind === "dish" ? roll.value : roll?.dish;
     const cooked = ateFrom && !persuaded ? catalogMonster(ateFrom).dish : undefined;
-    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random) : undefined;
+    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random, before?.classId === "chef") : undefined;
     const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : rolled ? { ...cooked!, name: rolled.name, comment: rolled.comment, ...(rolled.look === "burnt" || rolled.look === "legend" ? { look: rolled.look } : {}) } : cooked;
     // A phase card, not the next team, follows this answer. In a buzzer phase there is no team on turn.
     const narrated = toNarrationEvent(prev, outcome, monster, game.boss.phasePending ? undefined : this.nextTurn() ?? undefined, phaseName);
@@ -4795,7 +4796,8 @@ export class DungeonRoom {
   /** 🧪 A potion's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
    * good. Good: a check that passes, any other die 7 or more (skillTier). */
   private sayPotion(roll: PendingRoll) {
-    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : skillTier(v) >= 2);
+    const chef = this.game?.teams.find((t) => t.id === roll.teamId)?.classId === "chef";
+    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : roll.kind === "dish" ? dishTier(v, chef) >= 2 : skillTier(v) >= 2);
     const [low, high] = [Math.min(...roll.values!), Math.max(...roll.values!)];
     const kind = !good(high) ? "bust" : good(low) ? null : "saved";
     if (kind) this.appendLine(this.eventSeq, `🧪 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);

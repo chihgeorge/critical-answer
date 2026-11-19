@@ -5,11 +5,14 @@ import { clericEffect, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakE
 // boundary (1, 2–6, 7–19, 20) shows another tier's effect, or a chef's dish die reads like everyone's; seam=none
 describe("class dice words", () => {
   it("names every dish die tier with its multiplier, a chef's own on 7–19 and 20", () => {
-    expect([1, 2, 7, 20].map((v) => dishEffect(v, false))).toEqual(["燒焦了！獎勵 ×0.1", "失手了，獎勵不變", "上菜，獎勵不變", "傳說級料理！獎勵 ×1.5"]);
-    expect([1, 6, 19, 20].map((v) => dishEffect(v, true))).toEqual(["燒焦了！獎勵 ×0.1", "失手了，獎勵不變", "上菜！廚師 ×1.2", "傳說級料理！獎勵 ×2"]);
+    expect([1, 2, 7, 20].map((v) => dishEffect(v, false))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜，獎勵不變", "傳說級料理！獎勵 ×1.5"]);
+    expect([1, 6, 19, 20].map((v) => dishEffect(v, true))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜！廚師 ×1.2", "傳說級料理！獎勵 ×2"]);
     expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！ 20 → 2 飽足感");
     expect(dishPhoneLine(12, 4, 24, "飽足感")).toBe("🍳 廚師加成 20 → 24 飽足感");
     expect(dishPhoneLine(12, 0, 20, "飽足感")).toBe("🍳 料理骰 12：上菜");
+    // A 2–6 pays as usual: served for anyone, only a chef hears it got no bonus (owner 2026-11-18).
+    expect(dishPhoneLine(4, 0, 20, "飽足感")).toBe("🍳 料理骰 4：上菜");
+    expect(dishPhoneLine(4, 0, 20, "飽足感", true)).toBe("🍳 料理骰 4：上菜（沒加成）");
     expect(dishPhoneLine(20, 20, 40, "飽足感")).toBe("🍳 傳說級！ 20 → 40 飽足感");
   });
 

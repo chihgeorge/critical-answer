@@ -1,7 +1,7 @@
-// 料理骰's dish names and comments (docs/designs/class-dice-rework.md): a 1 burns the dish, 2–6 botches it, 7–19 serves it
-// as the catalog has it, a 20 makes it legendary. Pure and bank-free, so a client may import it.
+// 料理骰's dish names and comments (docs/designs/class-dice-rework.md): a 1 burns the dish, a chef's 2–6 botches it, any
+// other 2–19 serves it as the catalog has it, a 20 makes it legendary. Pure and bank-free, so a client may import it.
 
-import { skillTier } from "./game-state";
+import { dishTier } from "./game-state";
 
 /** What the dish die made of the dish: its tier's look on stage (`burnt`: dish-burnt, `legend`: <dish>-legend). */
 export type DishLook = "burnt" | "botched" | "plain" | "legend";
@@ -16,14 +16,14 @@ export const BURNT_COMMENTS = ["這盤……先拍照留念就好。", "聞起�
 export const BOTCHED_COMMENTS = ["能吃，但大家都安靜地吃完了。", "味道有點迷路，還好肚子不挑。", "火候再抓準一點就完美了。"] as const;
 export const LEGEND_COMMENTS = ["一入口，整個地城都安靜了。", "好吃到怪物都想排隊。", "這道菜會被吟遊詩人寫進歌裡。"] as const;
 
-/** The dish die `value`'s look. */
-export function dishLook(value: number): DishLook {
-  return (["burnt", "botched", "plain", "legend"] as const)[skillTier(value)];
+/** The dish die `value`'s look for a chef or anyone else: only a chef's 2–6 is botched (dishTier). */
+export function dishLook(value: number, chef = false): DishLook {
+  return (["burnt", "botched", "plain", "legend"] as const)[dishTier(value, chef)];
 }
 
 /** The dish as the dish die `value` serves it: a name and comment drawn from its tier's lists with `rng`, or the dish as it is on 7–19. */
-export function rolledDish(dish: { name: string; comment: string }, value: number, rng: () => number): { name: string; comment: string; look: DishLook } {
-  const look = dishLook(value);
+export function rolledDish(dish: { name: string; comment: string }, value: number, rng: () => number, chef = false): { name: string; comment: string; look: DishLook } {
+  const look = dishLook(value, chef);
   if (look === "plain") return { ...dish, look };
   const pick = <T>(list: readonly T[]) => list[Math.min(list.length - 1, Math.floor(rng() * list.length))];
   const names = look === "burnt" ? BURNT_NAMES : look === "botched" ? BOTCHED_NAMES : LEGEND_NAMES;
