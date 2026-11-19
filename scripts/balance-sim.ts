@@ -83,7 +83,12 @@ if (BOSSD) for (const b of boss) bossDifficulties[b] = BOSSD as GT.Difficulty;
 let songAt = 0;
 for (const [d, n] of (process.env.BUZZD ?? "").split(",").filter(Boolean).map((x) => x.split(":").map(Number)))
   for (let j = 0; j < n && songAt < songs.length; j++) bossDifficulties[songs[songAt++]] = d as GT.Difficulty;
-const HIDECRIT = process.env.HIDECRIT === "1", HIDEDIE = process.env.HIDEDIE === "1", CHEFFIX = env("CHEFFIX", 0);
+const HIDECRIT = process.env.HIDECRIT === "1", HIDEDIE = process.env.HIDEDIE === "1", CHEFFIX = env("CHEFFIX", 0), NODIE = process.env.NODIE === "1";
+// REWORK=1 (class-dice rework what-if, implies no crit die): the thief rolls its sneak die when it arms (1 spent, 2–6 not armed
+// and kept, 7–19 / 20 armed and read at the judgment); the chef rolls a dish die on every correct answer; a potion may go on
+// the warrior's roll, the sneak die or a dish die too. CHEFPOTN: dish rolls one potion covers (best of 2 each).
+// PGIVE: chance per own turn that the host hands a team with no potion one.
+const REWORK = process.env.REWORK === "1", CHEFPOTN = env("CHEFPOTN", 1), PGIVE = env("PGIVE", 0);
 const AC = process.env.AC === "1", ORACLEP = env("ORACLEP", 1), ORACLE_MIN = env("ORACLE_MIN", 3), AIOK = env("AIOK", 0.9);
 const CHEATBOSS = process.env.CHEATBOSS !== "0", CHEATERS = env("CHEATERS", 0), CHEAT = env("CHEAT", 0.5), SPOT = env("SPOT", 0.3), FALSE = env("FALSE", 0);
 // CATCH_PAY is a const in lib; the sim overrides it in place for a sweep.
@@ -95,6 +100,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
   const later = HP2 > 0 ? [{ maxHp: HP2, questionIds: songs, buzzer: true as const }] : [];
   let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, undefined, {}, later, undefined, [], bossDifficulties);
   if (AC) g = G.setAntiCheat(g, true);
+  const sneakDie = new Map<string, number>(), sneakTried = new Set<string>(), chefBoost = new Map<string, number>();
   const latent = new Map<string, { known: boolean; hintable: boolean; weak: boolean }>();
   // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
   const songKnown = new Map<string, boolean>();
@@ -132,6 +138,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       continue;
     }
     const id = G.currentTurnTeamId(g)!;
+    if (PGIVE && !g.teams.find((x) => x.id === id)!.item && R() < PGIVE) g = G.giveItem(g, id);
     const team = () => g.teams.find((x) => x.id === id)!;
     // A fork: a blind pick of a door. The fortune teller's effect is picked at random (its strategies: analysis/s3a-fortune-sim).
     if (G.atFork(team())) {
@@ -155,7 +162,15 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // A held potion (a fortune's) goes on the next check, mage or prayer die, or the crit die of an answer the team knows.
     const potionRoll = () => { if (!team().item) return d20(); g = G.spendPotion(G.drinkPotion(g, id), id); return Math.max(d20(), d20()); };
     // A fill-in's answer die: rolled for a chef or an armed thief (never with a potion).
-    const answerDie = () => (team().classId === "chef" || team().sneakArmed ? d20() : undefined);
+    // NODIE=1 (what-if, local): no answer die at all; the chef reads CHEFFIX, an armed thief gets the plain sneak.
+    // The chef's dish die: a potion covers CHEFPOTN rolls (best of 2 each).
+    const dishRoll = () => {
+      const left = chefBoost.get(id) ?? 0;
+      if (left > 0) { chefBoost.set(id, left - 1); return Math.max(d20(), d20()); }
+      if (team().item) { chefBoost.set(id, CHEFPOTN - 1); return potionRoll(); }
+      return d20();
+    };
+    const answerDie = () => REWORK ? (team().classId === "chef" ? dishRoll() : team().sneakArmed ? sneakDie.get(id) : undefined) : (NODIE ? (team().classId === "chef" && CHEFFIX ? CHEFFIX : undefined) : team().classId === "chef" || team().sneakArmed ? d20() : undefined);
     const rightText = () => settle(G.answerQuestion(g, id, q, true, "retry", R, undefined, undefined, undefined, false, answerDie()), true);
     // The boss room rolls no persuasion check (#382; the room refuses one there, lib does not).
     if (text && !inBoss && !g.checks?.[G.checkKey(q, id)]) {
@@ -192,10 +207,18 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
         const target: GT.MageTarget | null = text && !hinted() ? { kind: "text", answer: "ab" } : sort && !hinted() ? { kind: "sort", items: ["first", "b", "c", "d"] } : kind === "mc" && gone().length === 0 ? { kind: "multipleChoice", correctIndex: 0, optionCount: 4 } : null;
         if (target) { g = G.spendAbility(g, id, "mage"); g = G.mageCast(g, id, q, target, potionRoll(), R); }
       }
-      if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) g = G.armSneak(g, id);
+      if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) {
+        if (!REWORK) g = G.armSneak(g, id);
+        else if (!sneakTried.has(key)) {
+          sneakTried.add(key);
+          const v = potionRoll();
+          if (v <= 1) g = G.spendAbility(g, id, "thief");
+          else if (G.skillTier(v) >= 2) { g = G.armSneak(g, id); sneakDie.set(id, v); }
+        }
+      }
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
       if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - G.WARRIOR_TARGET) / 20 > 1 / (opts - gone().length))) {
-        const v = d20();
+        const v = REWORK ? potionRoll() : d20();
         settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R, !text), v >= G.WARRIOR_TARGET);
         continue;
       }
@@ -207,7 +230,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       // 隱藏暴擊骰 (HIDECRIT=1, #382): the room judges a right choice with no crit die; a fill-in's answer die still rolls.
       const crit = HIDECRIT ? undefined : knows() ? potionRoll() : d20();
       // What-if under HIDECRIT: HIDEDIE=1 rolls the chef's / armed thief's answer die anyway; CHEFFIX=v gives the chef a fixed die v.
-      const die = !HIDECRIT ? undefined : HIDEDIE ? answerDie() : CHEFFIX && t.classId === "chef" ? CHEFFIX : undefined;
+      const die = REWORK ? answerDie() : !HIDECRIT ? undefined : HIDEDIE ? answerDie() : CHEFFIX && t.classId === "chef" ? CHEFFIX : undefined;
       settle(G.answerQuestion(g, id, q, true, "retry", R, crit, undefined, undefined, false, die), true);
       continue;
     }
