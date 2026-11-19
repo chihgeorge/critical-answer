@@ -1491,7 +1491,8 @@ export default function HostPage() {
                   {cleric === "wait" ? (
                     <>
                       <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">{prayedWrong ? `${turn.team.name}祈禱了！` : "答錯了！"}等{turn.team.name}選，或替他們選：</div>
-                      <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
+                      {/* Columns follow the buttons shown (祈禱 only while a prayer is left): 3 in a row, else 2 a row. */}
+                      <div className={(game.view.awaitingPrayer === turn.team.id ? 1 : 0) + (turn.inBoss ? 2 : 3) === 3 ? "grid grid-cols-3" : "grid grid-cols-2"}>
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
                             祈禱

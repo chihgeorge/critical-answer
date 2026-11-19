@@ -3991,6 +3991,9 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     caught.use(1);
     expect(caught.room.game!.teams[0]).toMatchObject({ reward: 29, abilityUses: 2, sneakTry: { questionId: "r0-mc1", value: 1, penalty: 1 } });
     expect(caught.room.game!.teams[0].sneakArmed).toBeUndefined();
+    // The loss is in the transcript's score trail too (#416): no judgment carries it.
+    const trail = (caught.room as unknown as { transcript: { kind?: string; text?: string }[] }).transcript.filter((e) => e.kind === "fix");
+    expect(trail.at(-1)?.text).toMatch(/ sneak d20=1 30→29$/);
     caught.use();
     expect(err(caught.conns[0])).toBe("sneak_used");
   });
