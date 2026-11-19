@@ -117,7 +117,7 @@ function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
 
 /** How each class fights, so a mage never swings a sword (TODOS: 旁白的武器和招式要配合職業). */
 const CLASS_ATTACKS: Record<ClassId, string> = {
-  mage: "用法杖和法術攻擊（火球、冰箭、閃電），不用刀劍；不要寫「占星」，那是另一個技能",
+  mage: "用法杖和法術攻擊（火球、冰箭、閃電），不用刀劍；不要寫「洞悉」，那是另一個技能",
   cleric: "用聖光、神術和權杖攻擊，不用刀劍；不要寫「祈禱」，那是另一個技能",
   warrior: "用劍、戰斧和盾牌攻擊，不用法術；不要寫「衝鋒」，那是另一個技能",
   thief: "用匕首、飛刀和暗處一刺攻擊，不用法術；不要寫「偷襲」，那是另一個技能",

@@ -68,7 +68,7 @@ export function rollStatus(kind: string | undefined): string {
   if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
   if (kind === "dish") return "答對！擲料理骰中，看大螢幕 ▶";
   if (kind === "check") return "說服檢定擲骰中，看大螢幕 ▶";
-  if (kind === "mage") return "🔮 占星擲骰中，看大螢幕 ▶";
+  if (kind === "mage") return "🔮 洞悉擲骰中，看大螢幕 ▶";
   if (kind === "warrior") return "⚔️ 衝鋒擲骰中，看大螢幕 ▶";
   if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
   if (kind === "thief") return "🗡️ 偷襲擲骰中，看大螢幕 ▶";

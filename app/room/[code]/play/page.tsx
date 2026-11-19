@@ -36,7 +36,7 @@ import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABE
 /** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
  * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  mage: "占星：刪掉錯的選項／看第一個字",
+  mage: "洞悉：刪掉錯的選項／看第一個字",
   cleric: "祈禱：答錯可以當場再答一次",
   warrior: "衝鋒：不會的題，擲骰代替作答",
   thief: "偷襲：先擲偷襲骰，成功的話答對加碼",
@@ -200,17 +200,17 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     return null;
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The skill die decides how many go (class dice); the bar after counts what went.
-    body = button("🔮", "占星：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+    body = button("🔮", "洞悉：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
   } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
-    body = button("🔮", "占星：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && !q.checkFirst && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // Not before the check (the question is not up yet); after it, only when it gave no first character.
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
-    body = button("🔮", "占星：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else return null;
   return body;
 }

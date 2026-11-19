@@ -106,7 +106,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
               : warriorEffect(value);
   const chip =
     kind === "mage"
-      ? `🔮 ${teamName} 占星！擲技能骰`
+      ? `🔮 ${teamName} 洞悉！擲技能骰`
       : kind === "cleric"
         ? `✝️ ${teamName} 祈禱！擲技能骰`
         : kind === "thief"
