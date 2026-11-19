@@ -1930,7 +1930,7 @@ export function giveItem(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: "luckyPotion", potionsGiven: (t.potionsGiven ?? 0) + 1 })) };
 }
 
-/** Whether `teamId`'s potion doubles its next crit or check die: drunk on the question it faces now, this turn (E1). */
+/** Whether `teamId`'s potion doubles its next die (check, class die or dish die; class-dice-rework.md): drunk on the question it faces now, this turn (E1). */
 export function potionArmed(game: GameState, teamId: string): boolean {
   const t = getTeam(game, teamId);
   return !!t.item && t.itemArmedFor === currentQuestionIdOf(game, teamId) && t.itemArmedTurn === (t.turns ?? 0);
@@ -2075,7 +2075,7 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   const to = correct ? from + moved : from - moved;
   const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.dish ? { dish: j.dish } : {}) };
   if (!j.flipped) entry.flipped = true;
-  // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
+  // What this flip moved, for the next flip to move back exactly (a dish die is rolled once per entry).
   if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
   return { ...game, judgments, teams: patchTeam(game.teams, teamId, (x) => ({ reward: to, fixes: [...(x.fixes ?? []), { fix: "rejudge" as const, from, to, judgment: index + 1 }], ...withNaturals(x, needsDie ? [die!] : []) })) };

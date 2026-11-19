@@ -516,7 +516,7 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
 
 // Value: protects=a 20 or a 1 swaps the result line, not adds one (dnd design E3, R1); fails_when=the roll is ignored,
 // or a fumble line forgets the hit still landed
-describe("scripted: the crit die", () => {
+describe("scripted: a roll's 20 or 1", () => {
   // Value: protects=a persuasion check's 20 or 1 (dnd design R7, R8) gets its own line, not the attack's 大成功 / 手滑
   it("a check's 20 gets a 說服 win line and its 1 a line that says only half was paid, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);

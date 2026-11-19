@@ -1567,7 +1567,7 @@ describe("TEAM_SELECT_OPTION", () => {
     reveal(room);
     vi.advanceTimersByTime(2000);
     vi.advanceTimersByTime(2000); // the crit introduction
-    vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+    vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
     vi.useRealTimers();
     const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
     send(room, conns[0], { type: "TEAM_SELECT_OPTION", questionId: next, optionIndex: 0 });
@@ -1598,11 +1598,11 @@ describe("TEAM_SELECT_OPTION", () => {
     reveal(room);
     vi.advanceTimersByTime(2000);
     vi.advanceTimersByTime(2000); // the crit introduction
-    vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+    vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
     vi.useRealTimers();
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
-    expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the crit die to 20: 10 plus half
+    expect(room.game!.teams[0].reward).toBe(15); // rng 0.99 rolls the dish die to 20: 10 × 1.5
     expect(lastBroadcast(room).reveal.choice).toMatchObject({ options: shown, correctIndex: right });
   });
 
@@ -1722,7 +1722,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.teams[0].score).toBe(0);
       vi.advanceTimersByTime(1);
       vi.advanceTimersByTime(2000); // the crit introduction
-      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       const out = lastBroadcast(room);
       expect(out.pendingLock).toBeNull();
       expect(out.reveal).toMatchObject({ questionId: "r0-mc1", answer: "B" });
@@ -1880,7 +1880,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastSentTo(hostConn as never)?.detail).not.toBe("reveal_pending");
       vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // the crit introduction
-      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).pendingLock).toBeNull();
       expect(states().at(-1).reveal).not.toBeNull();
     });
@@ -1907,7 +1907,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // the crit introduction
-      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).reveal).toMatchObject({ questionId: "r0-mc1" });
       expect(room.game!.teams.find((t) => t.id === ids[0])!.online).toBe(false);
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
@@ -1929,7 +1929,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // the crit introduction
-      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).reveal).not.toBeNull();
     });
 
@@ -2106,7 +2106,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // the crit introduction
-      vi.advanceTimersByTime(2000); // then the crit die's beat (dnd design R9)
+      vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       vi.advanceTimersByTime(6000); // defeat card, then the kill's 4d20 (kill-roll.md)
       const reward = room.game!.teams.find((t) => t.id === ids[0])!.reward;
       expect(reward).toBeGreaterThan(10); // the hit reward plus the kill bonus

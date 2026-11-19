@@ -150,7 +150,7 @@ describe("boss phases in the room", () => {
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-a", optionIndex: 0 });
     send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "p1-a" });
     g.reveal();
-    await vi.advanceTimersByTimeAsync(6500); // the reveal, crit introduction, then the crit die
+    await vi.advanceTimersByTimeAsync(6500); // the reveal, dish introduction, then the dish die
     expect(g.state().reveal).not.toBeNull();
     await vi.advanceTimersByTimeAsync(16_000);
     expect(g.state().reveal).not.toBeNull();

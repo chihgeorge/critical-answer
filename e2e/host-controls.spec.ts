@@ -108,7 +108,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   // key waits for 下一頁 to come back.
   const next = host.getByRole("button", { name: "下一頁 ▶" });
   await next.click();
-  await expect(team.getByTestId("phone-intro")).toContainText("第 2／4 頁：說服檢定與暴擊骰");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 2／4 頁：說服檢定與料理骰");
   // A key acts on the host's own page, so wait for the host to show it too.
   const hostIntro = host.getByTestId("host-intro");
   await expect(hostIntro).toContainText("2/4");
@@ -148,7 +148,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
 // Value: protects=a room monster met again shows its title on the host's turn card, and its first appearance is plain (rooms 1 and 4 both get slime-soft for this test); fails_when=STATE stops carrying the variant name or defeats stop counting; why_new=monster-catalog.md acceptance 7 (e2e); seam=none; no_claim=which title (seeded per game), the hat's pixels
 test("a monster met again wears a title on its nameplate", async ({ browser, request }) => {
-  test.setTimeout(60_000); // three rooms of reveal, crit and cooking beats: 25-29 s on CI, so 30 s timed out once
+  test.setTimeout(60_000); // three rooms of reveal, dish and cooking beats: 25-29 s on CI, so 30 s timed out once
   await withRoom0MonsterAgainAt3(request, async () => {
     const { host, code } = await hostRoom(browser);
     await phone(browser, code, "甲隊");

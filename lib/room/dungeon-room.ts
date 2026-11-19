@@ -397,8 +397,6 @@ export const VERDICT_UNDO_LINE = "↩ 主持人收回了剛才的裁決，重新
 /** The owl's line when the host switches 抓包與神諭 on. */
 export const ANTI_CHEAT_ON_LINE = "🚨 有人在問 AI！每隊可以公開問一次神諭，答對獎勵減半；偷用被抓，這題沒分還要換題，分數給檢舉的隊伍！";
 
-/** A chef's share of a reveal's points, left out for every other team. */
-
 /** A skill die's sound as it lands: the crit's on a 20, the fumble's on a 1, none between. */
 const skillCue = (value: number): SoundCue | null => (value === 20 ? "crit" : value === 1 ? "fumble" : null);
 
@@ -597,7 +595,7 @@ export class DungeonRoom {
   private initiativeEndsAt = 0;
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
-  /** Dice in their beat: a warrior's roll, a correct lock's crit die, a persuasion check, or the kill's 4d20 (value is
+  /** Dice in their beat: a warrior's roll, a correct answer's dish die, a class die, a persuasion check, or the kill's 4d20 (value is
    * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a crit team
    * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
    * through lostCrit with fresh dice). Shares the "lock" step. */
@@ -632,9 +630,9 @@ export class DungeonRoom {
   private memoryTimer: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The judgment a kill's 4d20 holds back (kill-roll.md): resolveRoll makes it with the shown dice. */
   private pendingKill: { correct: boolean; fleeChoice: FleeChoice; roll?: JudgeRoll; fields?: boolean[] } | null = null;
-  /** A fill-in's answer die in its beat (class dice): the correct answer's per-field verdicts wait with it. */
+  /** A correct answer's dish die in its beat (class-dice-rework.md): the correct answer's per-field verdicts wait with it. */
   private pendingAnswer: { fields?: boolean[]; warrior?: number } | null = null;
-  /** A 改成答對 whose answer die is in its beat (owner, 2026-11-17): the ledger entry it pays. */
+  /** A 改成答對 whose dish die is in its beat (owner, 2026-11-17): the ledger entry it pays. */
   private pendingRejudge: { index: number } | null = null;
   /** A natural 20 whose beat a restart cut off (R7), applied by applyLostCrit. In memory only: restore() sets it. */
   private lostCrit: { teamId: string; questionId: string } | null = null;
@@ -2228,7 +2226,7 @@ export class DungeonRoom {
     // A team whose lock waits for 公布答案 keeps the turn, like a sent fill-in: it put the phone down after locking
     // (/review D9 = A). syncLockTeam marks it offline once the lock is gone.
     if (this.pendingLock?.teamId === teamId) return;
-    // So does a correct lock's crit die: the answer is already right, a dropped phone must not lose it. And a persuasion
+    // So does a correct answer's dish die: the answer is already right, a dropped phone must not lose it. And a persuasion
     // check: a team that closes its phone on a bad roll must not get a fresh one when it comes back.
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     try {
@@ -3138,7 +3136,7 @@ export class DungeonRoom {
     this.fortuneBeat = null;
     if (this.fortuneIntroTimer) clearTimeout(this.fortuneIntroTimer);
     this.fortuneIntroTimer = null;
-    // A crit die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
+    // A dish die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now.
     const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : undefined);
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
@@ -4737,7 +4735,7 @@ export class DungeonRoom {
     if (!roll || !game) return;
     this.markActivity();
     try {
-      // A 改成答對's answer die is nobody's turn: it pays the ledger entry, like the 修正 it is.
+      // A 改成答對's dish die is nobody's turn: it pays the ledger entry, like the 修正 it is.
       if (roll.rejudge) {
         if (rejudge) this.applyRejudge(roll.teamId, rejudge.index, roll.questionId, roll.value);
         else this.broadcastState();

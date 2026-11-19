@@ -2209,7 +2209,7 @@ describe("the dish die (class-dice-rework.md)", () => {
   });
 });
 
-// Value: protects=every natural 20 a team rolls is counted for the crit king: crit die, warrior die, persuasion check,
+// Value: protects=every natural 20 a team rolls is counted for the crit king: dish die, class dice, persuasion check,
 // each of the kill's 4d20, and a critable warrior die only once (podium-reveal.md D5); fails_when=a source is missed,
 // counted twice, or a wrong answer's ignored die counts; why_new=new counter; seam=none; no_claim=tie-break dice (rankTeams)
 describe("natural 20s (podium-reveal.md D5)", () => {
