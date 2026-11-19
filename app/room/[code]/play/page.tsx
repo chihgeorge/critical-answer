@@ -17,8 +17,7 @@ import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { memoryPhoneHint } from "@/lib/memory-copy";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
@@ -34,42 +33,43 @@ import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
-/** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
+/** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
+ * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  warrior: `擲 d20 代替答題：${WARRIOR_TARGET} 以上算答對拿八成，20 雙倍，1 扣整題`,
-  mage: "擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效",
-  cleric: "答錯後祈禱擲骰：7 以上這回合再答一次，20 不扣次數",
-  thief: `偷襲：答對後看答對骰，7 以上獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2，20 再翻倍`,
-  chef: "被動：答對時看答對骰，1 ×0.1、2–6 ×0.8、7–19 ×1.3、20 ×2（魔王搶答階段不算），不用按",
+  mage: "刪掉錯的選項／看第一個字",
+  cleric: "答錯可以當場再答一次",
+  warrior: "不會的題，擲骰代替作答",
+  thief: "答對時加碼，分數更多",
+  chef: "答對自動加分，不用按",
 };
 
-/** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
+/** The lobby's class picker (D10=A): one row per class, then 不選. */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（技能一場 {ABILITY_USES} 次，都要擲 d20：1 大失敗、2–6 小失敗、7–19 成功、20 大成功；魔王搶答階段都不能用）</div>
-      <div className="grid grid-cols-2 gap-2">
-        {CLASS_IDS.map((id) => {
-          const picked = current === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={picked}
-              onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
-              className={`px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2${picked ? " picked" : ""}`}
-              style={{ minHeight: id === "chef" ? 64 : 96, ...(id === "chef" ? { gridColumn: "span 2" } : {}) }}
-            >
-              <span className="text-[22px]">
-                {CLASS_ICONS[id]} {CLASS_LABELS[id]}
-              </span>
-              <span className="text-[13px] leading-[1.3]">{CLASS_HINTS[id]}</span>
-              {picked ? <span className="text-[13px]" style={{ color: "#a8470f" }}>◀ 已選</span> : null}
-            </button>
-          );
-        })}
+      <div className="text-[18px]">
+        選一個職業<span className="ml-2 text-[14px]">一場 {ABILITY_USES} 次・擲骰看玩法說明</span>
       </div>
-      <PixelButton aria-pressed={!current} className="!m-0 !min-h-[48px] !text-[18px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
+      {CLASS_IDS.map((id) => {
+        const picked = current === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={picked}
+            onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
+            className={`px-opt !gap-2 !px-[10px] !py-[6px]${picked ? " picked" : ""}`}
+            style={{ minHeight: 48 }}
+          >
+            <span className="!flex-none text-[20px]">
+              {CLASS_ICONS[id]} {CLASS_LABELS[id]}
+            </span>
+            <span className="text-[14px] leading-[1.3]">{CLASS_HINTS[id]}</span>
+            {picked ? <i style={{ color: "#a8470f" }}>◀ 已選</i> : null}
+          </button>
+        );
+      })}
+      <PixelButton aria-pressed={!current} className="!m-0 !min-h-[44px] !text-[17px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
         不選（普通冒險者）
       </PixelButton>
       {!current && <div data-testid="no-class-nudge" className="text-[14px]">還沒選職業：不選就沒有技能，比較吃虧</div>}
@@ -695,16 +695,11 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
 
 /** The phone's end card. It waits out the big screen's cooking (cooking I5) and the place calls, on the room's clock and
  * PHONE_LAG_MS behind it, so no phone names the winner before the podium does (podium-reveal.md D16, eng D23). */
-function FinishedPanel({ place, reward, cuisine, finale, podium, onPodium }: { place: number | null; reward: number; cuisine?: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: (up: boolean) => void }) {
+function FinishedPanel({ place, reward, cuisine, finale, podium }: { place: number | null; reward: number; cuisine?: boolean; finale: boolean; podium?: StateMessage["podium"] }) {
   const step = useFinaleStep(finale);
   // Reduced motion does not end a phone's wait: it has nothing to animate, and showing the end would spoil first place.
   const t = useRevealTime(podium, PHONE_LAG_MS, false);
   const up = step === 4 && revealNow(podium, t).result;
-  // The story (it names the winner) shows exactly while `up` holds; before paint, so it never flashes.
-  useLayoutEffect(() => {
-    onPodium(up);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
       <div className={!up || place === null ? "text-[26px]" : "text-[18px]"}>遊戲結束！</div>
@@ -885,11 +880,9 @@ export default function PlayPage() {
   /** LOBBY's 🎯 校正喇叭 test, while it runs (docs/designs/tap-calibrate.md). */
   const [calibrate, setCalibrate] = useState<CalibrateRun | null>(null);
   const [game, setGame] = useState<StateMessage | null>(null);
-  const [narration, setNarration] = useState<NarrationState>(null);
-  const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** A boss kill seen live (cooking I5): the end card and the epilogue wait for the big screen's podium. */
+  /** A boss kill seen live (cooking I5): the end card waits for the big screen's podium. The phone shows no narration:
+   * the story is the big screen's (ui-simplify, owner 2026-11-19). */
   const [finale, setFinale] = useState(false);
-  const [podium, setPodium] = useState(true);
   /** ⚔️ 最後衝刺 seen on this connection (lib/transitions.ts sprintSeen), and its 3-second card for a blessed team. */
   const sprintSeenRef = useRef<boolean | null>(null);
   const [sprintCard, setSprintCard] = useState(false);
@@ -991,11 +984,8 @@ export default function PlayPage() {
           if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
           // Back from a finished game (回到大廳): its story is over.
-          setNarration(null);
-          setEpilogue(null);
           setRevealedText(undefined);
           setFinale(false);
-          setPodium(true);
           seen.current.clear();
           lastGame.current = null;
           livePhase.current = null;
@@ -1009,7 +999,6 @@ export default function PlayPage() {
           // A boss kill seen live: the winner waits for the big screen's cooking (cooking I5).
           if (msg.phase === "finished" && livePhase.current === "playing" && msg.reveal?.dish) {
             setFinale(true);
-            setPodium(false);
           }
           setGame(msg);
           {
@@ -1037,12 +1026,6 @@ export default function PlayPage() {
           setLobby(null);
           break;
         }
-        case "NARRATION":
-          setNarration((n) => keepLatest(n, msg));
-          break;
-        case "EPILOGUE":
-          setEpilogue(msg.text);
-          break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
@@ -1066,6 +1049,7 @@ export default function PlayPage() {
   const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myLook = lookOf(roster[myIndex], myIndex);
+  const lobbyMe = lobby?.find((t) => t.id === teamId);
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
@@ -1079,50 +1063,36 @@ export default function PlayPage() {
   /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
   const initiative = !finished ? (game?.initiative ?? null) : null;
   const myRoll = initiative && teamId ? visibleInitiativeRoll(initiative, teamId) : undefined;
-  const cards = (
-    <>
-      {/* While waiting, the roster above already highlights our own team. */}
-      {game && (
-        <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myLook} cls={myTeam?.classId} scale={3} className="flex-none" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-            {myTeam?.classId && (
-              <div className="text-[15px]">
-                {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
-              </div>
+  /** Our team in one line (ui-simplify P5): the sprite, name, class and score; a boon or potion adds a second line. */
+  const cards = game && (
+    <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-2 px-2 py-[6px]">
+      <Sprite kind="hero" variant={myLook} cls={myTeam?.classId} scale={2} className="flex-none" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 text-[16px]">
+          <span className="min-w-0 truncate">{myTeam?.name ?? teamName}</span>
+          {myTeam?.classId && (
+            <span className="flex-none text-[14px]">
+              {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
+            </span>
+          )}
+          <span className="ml-auto flex-none text-[16px]" style={{ color: "#a8470f" }}>
+            {myTeam ? (
+              <>
+                <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
+              </>
+            ) : (
+              `隊伍 ${TEAM_LOOKS[myLook % TEAM_LOOKS.length].name}`
             )}
-            {myTeam?.boon && <div data-testid="phone-boon" className="text-[15px]">{BOON_TEXT[myTeam.boon]}</div>}
-            {potion && (
-              <div data-testid="phone-potion" className="text-[15px]" style={potion.drunk ? { background: "var(--lav)" } : undefined}>
-                {potion.text}
-              </div>
-            )}
-            <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
-              {myTeam ? (
-                <>
-                  <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
-                </>
-              ) : (
-                `隊伍 ${TEAM_LOOKS[myLook % TEAM_LOOKS.length].name}`
-              )}
-            </div>
+          </span>
+        </div>
+        {myTeam?.boon && <div data-testid="phone-boon" className="text-[14px]">{BOON_TEXT[myTeam.boon]}</div>}
+        {potion && (
+          <div data-testid="phone-potion" className="text-[14px]" style={potion.drunk ? { background: "var(--lav)" } : undefined}>
+            {potion.text}
           </div>
-          {/* 每題作答倒數 (answer-countdown.md D5): only the turn's own phone, and silent. */}
-          {isMyTurn && typeof game.answerClock?.left === "number" && <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />}
-        </Panel>
-      )}
-
-      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.fork && !game.forkBeat && (
-        <Panel className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
-          <div className="text-[15px]">
-            <div>{turn.team.name} 正在面對</div>
-            <div className="text-[18px]">{turn.monster.name}</div>
-          </div>
-        </Panel>
-      )}
-    </>
+        )}
+      </div>
+    </Panel>
   );
 
   // Turned away: the room still broadcasts LOBBY and STATE to this connection, but none of it is ours to show.
@@ -1236,21 +1206,19 @@ export default function PlayPage() {
           )
         )}
 
-        {/* Who has joined so far, updating live while everyone waits for the host. */}
-        {!game && lobby && (
-          <ul data-testid="roster" className="flex flex-col gap-2">
-            {lobby.map((t, i) => (
-              <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
-                <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
-                <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
-                {t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
-                {t.id === teamId && <span className="text-[14px]">你們</span>}
-              </Panel>
-            ))}
-          </ul>
+        {/* Our own team only, with its character (owner 2026-11-19): the big screen lists every team by the campfire. */}
+        {!game && lobbyMe && (
+          <div data-testid="roster">
+            <Panel tone="turn" className="flex items-center gap-3 px-3 py-2">
+              <Sprite kind="hero" variant={myLook} cls={lobbyMe.classId} scale={2} className="flex-none" />
+              <span className="min-w-0 flex-1 truncate text-[18px]">{lobbyMe.name}</span>
+              {lobbyMe.classId && <span className="text-[14px]">{CLASS_ICONS[lobbyMe.classId]} {CLASS_LABELS[lobbyMe.classId]}</span>}
+              <span className="text-[14px]">你們</span>
+            </Panel>
+          </div>
         )}
-        {!game && lobby?.some((t) => t.id === teamId) && <LookPicker me={teamId} teams={lobby} send={send} />}
-        {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
+        {!game && lobby && lobbyMe && <ClassPicker current={lobbyMe.classId} send={send} />}
+        {!game && lobby && lobbyMe && <LookPicker me={teamId} teams={lobby} send={send} />}
 
         {intro !== null && (
           <div data-testid="phone-intro" className="flex flex-col gap-2">
@@ -1292,7 +1260,10 @@ export default function PlayPage() {
         )}
 
         {game && !finished && !intro && !initiative && turn && (
-          <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
+          <TurnRibbon
+            color={isMyTurn ? undefined : "#6ab4ff"}
+            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" /> : undefined}
+          >
             {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
@@ -1360,13 +1331,10 @@ export default function PlayPage() {
         {/* 🔮 under 送出 on our own turn; the open catch for everyone (anti-ai-cheating.md). */}
         {game && !finished && !buzz && !held && isMyTurn && <AntiCheatPanel game={game} teamId={teamId} isMyTurn send={send} />}
 
-        {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
+        {/* D14: our own lock was right — the question and the points; the answer itself is the 正解 line below (one place, ui-simplify P3). */}
         {game && !finished && revealed?.choice && revealed.choice.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
             {revealedText && <QuestionStrip text={revealedText} />}
-            {revealed.choice.options.map((opt, i) => (
-              <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
-            ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{(!revealed.dish || revealed.served) && revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
               {(!revealed.dish || revealed.served) && revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.choice.chefBonus)}）</span> : null}
@@ -1374,13 +1342,10 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {/* A sort question we got right: the correct order, every place ✓. */}
+        {/* A sort question we got right: the question and the points; the order is the 正解 line below. */}
         {game && !finished && revealed?.sorted && revealed.sorted.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
             {revealedText && <QuestionStrip text={revealedText} />}
-            {revealed.sorted.items.map((item, i) => (
-              <McOption key={i} index={i} badge={i + 1} text={item} disabled look="ok" label="✓" className="min-h-[56px] text-[21px]" />
-            ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{(!revealed.dish || revealed.served) && revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
               {(!revealed.dish || revealed.served) && revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.sorted.chefBonus)}）</span> : null}
@@ -1388,10 +1353,7 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {/* Eng review R1, R3: one fixed media slot. On our own turn it comes right after the turn panel
-            (or the ribbon) and the cards go below it; while waiting the cards stay above it. */}
-        {!isMyTurn && cards}
-
+        {/* Eng review R1, R3: one fixed media slot, right after the turn panel (or the ribbon); the one-line team card goes below it. */}
         {/* The video plays on the big screen only (D7): the phone says where to look, and keeps its space for answering (D21). */}
         {game && !finished && !held && game.question?.content.kind === "youtube" && !game.question.memorize && (
           <div data-testid="play-media-hint" className="self-start border-[3px] border-[var(--k)] bg-[var(--lav)] px-3 py-1 text-[18px]">
@@ -1438,35 +1400,16 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {finished && game && <FinishedPanel place={teamPlace(game.view.teams, game.podium?.ranking, teamId)} reward={myTeam?.reward ?? 0} cuisine={game.cuisine} finale={finale} podium={game.podium} onPodium={setPodium} />}
+        {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
+            while connected, since a tap sent offline reaches the room before the phone has rejoined its team. Right under
+            the 正解 line, so the reactions sit on the first screen (ui-simplify P3). */}
+        {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
+        {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
+        {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
+        {!isMyTurn && cards}
 
-        <div className="mt-auto">
-          {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
-              while connected, since a tap sent offline reaches the room before the phone has rejoined its team. */}
-          {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
-          {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
-          {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
-          <DialogueBox
-            compact
-            // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.
-            loading={!!game && !finished && intro === null && !initiative && isPending(game.eventId, narration)}
-            lines={
-              finished
-                ? epilogue && podium
-                  ? [epilogue]
-                  : narration
-                    ? narration.lines
-                    : ["冒險結束了，大螢幕正在頒獎。"]
-                : intro !== null || initiative
-                  ? [initiative ? "擲完先攻，輪到你們時這裡會出現題目" : "說明結束後，輪到你們時這裡會出現題目"]
-                  : narration
-                  ? narration.lines
-                  : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
-            }
-            // A host edit of this narration reads on from the edited line instead of starting over (D13).
-            id={narration && intro === null && !initiative && !(finished && epilogue && podium) ? narration.eventId : undefined}
-          />
-        </div>
+        {finished && game && <FinishedPanel place={teamPlace(game.view.teams, game.podium?.ranking, teamId)} reward={myTeam?.reward ?? 0} cuisine={game.cuisine} finale={finale} podium={game.podium} />}
+
       </div>
     </main>
   );

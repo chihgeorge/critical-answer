@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 
 closeLeftoverContexts();
 
@@ -14,7 +14,7 @@ async function mageRoom(browser: Browser) {
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("法師隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await expect(team.getByText("擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效")).toBeVisible();
+  await expect(team.getByText("刪掉錯的選項／看第一個字")).toBeVisible();
   await team.getByRole("button", { name: /法師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
@@ -45,7 +45,7 @@ test.describe("a fill-in answer with a first character", () => {
   // the boss room, or a screen lacks the hint; no_claim=hint_shown refusals (unit tests).
   test("mage: in the boss room, a fill-in cast needs no check and shows the first character on the phone, the host page and the TV", async ({ browser }) => {
     const { host, screen, team } = await mageRoom(browser);
-    await host.getByRole("button", { name: "⚙ 更多" }).click();
+    await openMore(host, "other");
     await host.getByRole("button", { name: "送王房" }).click();
     await host.getByRole("button", { name: "確定送？" }).click();
     await host.getByRole("button", { name: "關閉" }).click();

@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { advanceAwards, answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
+import { advanceAwards, answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 closeLeftoverContexts();
@@ -52,7 +52,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
 
   await startGame(host);
   await answerCorrectly(host);
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定結束？" }).click();
 
@@ -71,7 +71,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
 
   await startGame(host);
   await answerCorrectly(host);
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
   await advanceAwards(host);
@@ -138,7 +138,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await answerCorrectly(host);
   // Wait for the reveal: a phone lock is judged after a beat, and only a shown answer makes the next game a replay.
   await expect(host.getByTestId("host-reveal")).toBeVisible();
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
   await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();
