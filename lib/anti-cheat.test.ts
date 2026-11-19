@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addLateTeam,
   answerQuestion,
-  armSneak,
+  sneakRoll,
+  startSneak,
   askOracle,
   cancelCatch,
   CATCH_PAY,
@@ -212,7 +213,7 @@ describe("🚨 成立 (upholdCatch)", () => {
 
   it("never takes the accused below 0, uses up an armed sneak, and is not re-dealt while unrevealed questions remain", () => {
     let g = on(["thief"]);
-    g = armSneak(g, "a");
+    g = sneakRoll(startSneak(g, "a"), "a", 12).game; // a 7+: armed
     const id = q(g);
     const after = upholdCatch(fileCatch(g, "b", id), first).game;
     expect(team(after, "a")).toMatchObject({ reward: 0, sneakArmed: undefined, abilityUses: 2 });
@@ -332,13 +333,13 @@ describe("🔮🚨 in the boss room", () => {
     expect(fileCatch(g, "b", bq(g)).antiCheat?.openCatch?.teamId).toBe("a");
   });
 
-  it("a kill the oracle could not see coming (a crit from two hearts) halves its 4d20 too", () => {
+  it("a kill the oracle could not see coming (a warrior's 20 from two hearts) halves its 4d20 too", () => {
     let g = { ...bossGame(), boss: { ...bossGame().boss, hp: 2 } };
     g = askOracle(g, "a", bq(g));
-    const { outcome } = answerQuestion(g, "a", bq(g), true, "retry", first, 20, [10, 10, 10, 10]);
+    const { outcome } = answerQuestion(g, "a", bq(g), true, "retry", first, undefined, [10, 10, 10, 10], undefined, false, 20);
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 20 });
     // An odd sum rounds: 41 → 21.
-    expect(answerQuestion(g, "a", bq(g), true, "retry", first, 20, [10, 10, 10, 11]).outcome).toMatchObject({ killBonus: 21 });
+    expect(answerQuestion(g, "a", bq(g), true, "retry", first, undefined, [10, 10, 10, 11], undefined, false, 20).outcome).toMatchObject({ killBonus: 21 });
   });
 
   it("refused while a boss phase waits for its card, and in a buzzer phase", () => {

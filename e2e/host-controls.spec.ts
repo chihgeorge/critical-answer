@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { advanceAwards, answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
+import { advanceAwards, answerCorrectly, nextQuestion, skipInitiative, startGame, withRoom0MonsterAgainAt3, screenUrl, clickStart, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { TITLE } from "../lib/monster-catalog";
 
 closeLeftoverContexts();
@@ -52,7 +52,7 @@ test("the host ends the game early from the drawer", async ({ browser }) => {
 
   await startGame(host);
   await answerCorrectly(host);
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定結束？" }).click();
 
@@ -71,7 +71,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
 
   await startGame(host);
   await answerCorrectly(host);
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
   await advanceAwards(host);
@@ -87,7 +87,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await expect(team.getByText("0 飽足感")).toBeVisible();
 });
 
-/** The how-to-play intro (docs/designs/how-to-play.md): on by default in a new room, seven pages the host turns
+/** The how-to-play intro (docs/designs/how-to-play.md): on by default in a new room, four pages the host turns
  * with buttons or keys, the phone's status line following along, and off by default after 再玩一場. */
 test("the host plays the how-to-play intro, and it starts unchecked after 再玩一場", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
@@ -100,34 +100,33 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await expect(intro).toBeChecked();
   await clickStart(host);
 
-  await expect(screen.getByTestId("how-to-play")).toContainText("1/7");
-  await expect(team.getByTestId("phone-intro")).toContainText("第 1／7 頁：輪流上陣");
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 1／4 頁：輪流上陣・用手機作答");
   await expect(host.getByRole("button", { name: "◀ 上一頁" })).toHaveCount(0);
 
   // Each page turn holds the buttons and keys for a beat (a double-tap must not skip a page), so a
   // key waits for 下一頁 to come back.
   const next = host.getByRole("button", { name: "下一頁 ▶" });
   await next.click();
-  await expect(team.getByTestId("phone-intro")).toContainText("第 2／7 頁：用手機作答");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 2／4 頁：說服檢定與料理骰");
   // A key acts on the host's own page, so wait for the host to show it too.
   const hostIntro = host.getByTestId("host-intro");
-  await expect(hostIntro).toContainText("2/7");
+  await expect(hostIntro).toContainText("2/4");
   await expect(next).toBeEnabled();
   await host.keyboard.press("ArrowLeft");
-  await expect(screen.getByTestId("how-to-play")).toContainText("1/7");
-  await expect(hostIntro).toContainText("1/7");
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
+  await expect(hostIntro).toContainText("1/4");
   await expect(next).toBeEnabled();
   await host.keyboard.press("ArrowRight");
-  await expect(screen.getByTestId("how-to-play")).toContainText("2/7");
-  await expect(hostIntro).toContainText("2/7");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
+  await expect(hostIntro).toContainText("2/4");
   await expect(next).toBeEnabled();
   await host.keyboard.press("Enter");
-  await expect(screen.getByTestId("how-to-play")).toContainText("3/7");
-  // Pages 3–5 teach the classes, the persuasion check and the crit die (#367).
-  for (const page of [4, 5, 6, 7]) {
-    await next.click();
-    await expect(screen.getByTestId("how-to-play")).toContainText(`${page}/7`);
-  }
+  await expect(screen.getByTestId("how-to-play")).toContainText("3/4");
+  // Page 3 is the class dice table.
+  await expect(hostIntro).toContainText("各職業什麼時候擲骰");
+  await next.click();
+  await expect(screen.getByTestId("how-to-play")).toContainText("4/4");
   await host.screenshot({ path: ".gstack/tmp/host-intro.png" });
   await screen.screenshot({ path: ".gstack/tmp/screen-intro.png" });
 
@@ -139,7 +138,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await answerCorrectly(host);
   // Wait for the reveal: a phone lock is judged after a beat, and only a shown answer makes the next game a replay.
   await expect(host.getByTestId("host-reveal")).toBeVisible();
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "結束冒險" }).click();
   await host.getByRole("button", { name: "確定結束？" }).click();
   await host.getByRole("button", { name: "回到大廳，再玩一場" }).click();
@@ -149,7 +148,7 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
 
 // Value: protects=a room monster met again shows its title on the host's turn card, and its first appearance is plain (rooms 1 and 4 both get slime-soft for this test); fails_when=STATE stops carrying the variant name or defeats stop counting; why_new=monster-catalog.md acceptance 7 (e2e); seam=none; no_claim=which title (seeded per game), the hat's pixels
 test("a monster met again wears a title on its nameplate", async ({ browser, request }) => {
-  test.setTimeout(60_000); // three rooms of reveal, crit and cooking beats: 25-29 s on CI, so 30 s timed out once
+  test.setTimeout(60_000); // three rooms of reveal, dish and cooking beats: 25-29 s on CI, so 30 s timed out once
   await withRoom0MonsterAgainAt3(request, async () => {
     const { host, code } = await hostRoom(browser);
     await phone(browser, code, "甲隊");

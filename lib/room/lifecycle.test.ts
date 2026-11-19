@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { CLOSE_WARN_MS, DungeonRoom, EXTEND_MS, MAX_LIFE_MS, roomMaxLifeMs } from "./dungeon-room";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
 import { BANK_KEY, SNAPSHOT_KEY } from "./snapshot";
@@ -56,7 +57,7 @@ function setup(start = 1_000_000_000_000) {
 }
 
 const conn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+const send = (room: DungeonRoom, c: Conn, msg: object) => sendSettled(room, c, msg);
 const lastOf = (c: { send: ReturnType<typeof vi.fn> }, type: string) =>
   c.send.mock.calls.map((x) => JSON.parse(x[0] as string)).findLast((m) => m.type === type);
 

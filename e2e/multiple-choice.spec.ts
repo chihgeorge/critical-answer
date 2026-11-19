@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -127,7 +127,7 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  // Judged after the reveal beat and the crit die (2 s each); a natural 20 adds half the reward.
+  // Judged after the reveal beat, the dish intro and the dish die (2 s each).
   await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
   await expect(team.getByText(/^答對了！/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
@@ -152,6 +152,9 @@ test("phone answering: the longest default question with four options still fits
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  // The four tiles collapse into one line after a wrong lock, so the next-step buttons fit on an iPhone 13.
+  await expect(team.getByTestId("my-wrong-pick")).toContainText(/^你們選的：[A-D] 〈Fantastic Baby〉✕ 答錯$/);
+  await expect(team.getByRole("button", { name: "〈Power〉" })).toHaveCount(0);
   expect(await bottom(/下輪再答/)).toBeLessThanOrEqual(844);
   expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
@@ -346,7 +349,7 @@ test("phone answering: a phone that reloads during the reveal shows no question 
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the dish die
   await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toBeVisible();
   await team.reload();
   await expect(team.getByText(/^答對了！/)).toBeVisible();
@@ -391,7 +394,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the dish die
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
   await expect(team.getByText("遊戲結束！")).toBeVisible();
@@ -423,7 +426,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
-  await host.getByRole("button", { name: /更多/ }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();

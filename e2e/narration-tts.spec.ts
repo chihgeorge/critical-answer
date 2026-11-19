@@ -127,7 +127,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 
   const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
+  await expect(team2.getByTestId("roster")).toContainText("乙隊"); // a phone lists only its own team
 
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
@@ -354,9 +354,9 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the voic
 });
 
 // Value: protects=the host panel lists every narration line with its own 改 (host-narration-edit.md D5), and an edit of
-// line N reaches the phone's dialogue box; fails_when=the panel shows only the first line, the 改 buttons are missing,
+// line N reaches the big screen's dialogue box; fails_when=the panel shows only the first line, the 改 buttons are missing,
 // or HOST_EDIT_NARRATION no longer replaces line N; no_claim=read lines locking (unit tests in dungeon-room.test.ts)
-test("host narration panel: every line has its own 改, and an edited line reaches the phone", async ({ browser }) => {
+test("host narration panel: every line has its own 改, and an edited line reaches the big screen", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -384,7 +384,11 @@ test("host narration panel: every line has its own 改, and an edited line reach
 
   const edited = "主持人改寫：全場安靜！";
   await editLastLine(host, edited);
-  await expect(team.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
+  // The phones show no narration (the story is the big screen's): a screen opened now shows the edited line.
+  await expect(team.locator(".px-say")).toHaveCount(0);
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  await expect(screen.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
 });
 
 /** Opens the host's narration panel (in ⚙ 更多) if needed, swaps its last line for `text`, and closes the drawer. */
@@ -429,11 +433,11 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await openSettings(host);
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
   await clickStart(host);
-  const page1 = "冒險者們，先聽我說規則……主持人會唸題目。";
-  const page2 = "選擇題點了要鎖定，填空題打字送出。擲骰的事，接下來三頁說給你聽。";
+  const page1 = "輪到誰，怪物就找誰。選擇題點了要鎖定，填空題打字送出。";
+  const page2 = "說服擲到 20 免答！料理骰擲到 20 是傳說級料理，擲到 1 就燒焦了！";
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);
 
   await host.getByRole("button", { name: "下一頁 ▶" }).click();
-  await expect(screen.getByTestId("how-to-play")).toContainText("2/7");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1, page2]);
 });

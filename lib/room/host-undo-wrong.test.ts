@@ -1,6 +1,7 @@
 // 改判答對 (TODOS.md 「主持人按錯「答錯」可以改回答對」): the host's last 答錯 on a fill-in becomes 答對, judged from the
 // game before it, while nothing has moved since.
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -22,7 +23,7 @@ const bank = parseBank({
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const state = (room: DungeonRoom) => JSON.parse((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]);
 const lastSent = (conn: Conn) => JSON.parse((conn.send as ReturnType<typeof vi.fn>).mock.calls.at(-1)![0]);
 
@@ -191,6 +192,7 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     vi.useFakeTimers();
     g.judge(false, "retry");
     vi.advanceTimersByTime(LOST_CRIT_GAP_MS); // it waits a beat after the 答錯's cue
+    settleDish(g.room); // the natural 20 rolls its dish die
     vi.useRealTimers();
     expect(g.room.game!.teams[1].reward).toBeGreaterThan(0);
     expect(state(g.room).undoWrong).toBeUndefined();

@@ -5,7 +5,7 @@
 
 import { ACCESSORIES, type Accessory } from "./monster-catalog";
 import type { ClassId } from "./game-state";
-import type { MonsterSprite, SpriteKind } from "./sprite-kind";
+import type { DishKind, MonsterSprite, SpriteKind } from "./sprite-kind";
 
 const K = "#2a1533"; // the outline colour
 
@@ -112,6 +112,35 @@ const ACC: Record<Accessory, { rows: string[]; pal: Record<string, string> }> = 
   bow: { rows: ["pp.....pp", "pppp.pppp", "ppppPpppp", "pppp.pppp", "pp.....pp"], pal: { p: "#ff6bb1", P: "#c2448a" } },
   "pirate-hat": { rows: ["...kkk...", ".kkkkkkk.", "kkkkwkkkk", "kkkwkwkkk", "yyyyyyyyy"], pal: { k: "#4a3a5e", w: "#fff4dc", y: "#ffcf4a" } },
 };
+/** Native pixel size of each monster's dish. */
+const DISH_SIZE: Record<DishKind, [number, number]> = {
+  "dish-jelly": [34, 24],
+  "dish-stew": [34, 26],
+  "dish-tower": [34, 32],
+  "dish-ice": [26, 32],
+  "dish-riceball": [36, 24],
+  "dish-skewer": [42, 22],
+  "dish-mushroom-skewer": [42, 22],
+  "dish-wings": [36, 24],
+  "dish-bone-soup": [34, 28],
+  "dish-bento": [36, 26],
+  "dish-cotton-candy": [26, 32],
+  "dish-escargot": [36, 24],
+  "dish-brulee": [30, 26],
+  "dish-stone-pot": [36, 26],
+  "dish-jelly-salad": [36, 22],
+  "dish-three-cup": [36, 26],
+  "dish-fondue": [34, 30],
+  "dish-root-stew": [34, 26],
+  "dish-tangyuan": [34, 26],
+  "dish-crab": [38, 24],
+  "dish-tofu": [36, 22],
+  "dish-pumpkin-soup": [34, 24],
+  "dish-smoothie": [26, 32],
+  "dish-squid": [30, 34],
+  "dish-roast-chicken": [40, 28],
+};
+
 /** Native pixel size of each sprite; the component scales it with CSS. */
 export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   slime: [32, 30],
@@ -150,34 +179,13 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   zz: [9, 9],
   pot: [40, 34],
   smoke: [40, 30],
-  "dish-jelly": [34, 24],
-  "dish-stew": [34, 26],
-  "dish-tower": [34, 32],
-  "dish-ice": [26, 32],
-  "dish-riceball": [36, 24],
-  "dish-skewer": [42, 22],
-  "dish-mushroom-skewer": [42, 22],
-  "dish-wings": [36, 24],
-  "dish-bone-soup": [34, 28],
-  "dish-bento": [36, 26],
-  "dish-cotton-candy": [26, 32],
-  "dish-escargot": [36, 24],
-  "dish-brulee": [30, 26],
-  "dish-stone-pot": [36, 26],
-  "dish-jelly-salad": [36, 22],
-  "dish-three-cup": [36, 26],
-  "dish-fondue": [34, 30],
-  "dish-root-stew": [34, 26],
-  "dish-tangyuan": [34, 26],
-  "dish-crab": [38, 24],
-  "dish-tofu": [36, 22],
-  "dish-pumpkin-soup": [34, 24],
-  "dish-smoothie": [26, 32],
-  "dish-squid": [30, 34],
-  "dish-roast-chicken": [40, 28],
+  ...DISH_SIZE,
+  // A natural 20: the same dish on the same canvas, so its plate and its scale on stage do not move.
+  ...(Object.fromEntries(Object.entries(DISH_SIZE).map(([k, size]) => [`${k}-legend`, size])) as Record<`${DishKind}-legend`, [number, number]>),
   chest: [26, 20],
   "chest-open": [26, 26],
   "dish-rotten": [34, 30],
+  "dish-burnt": [34, 28],
   spring: [36, 26],
   idol: [24, 36],
   fairy: [24, 22],
@@ -788,6 +796,13 @@ function campfire(cv: HTMLCanvasElement, frame: number) {
 const PLATE = "#fff4dc";
 const PLATE_DARK = "#d8c8a8";
 const STEAM = "#ffffff";
+// The legendary dish's gold plate and glints, and the burnt dish's smoke: colours no food uses, so a bite never takes them.
+const GOLD_PLATE = "#ffd23e";
+const GOLD_PLATE_DARK = "#d8961c";
+const GOLD_PLATE_HI = "#fff3b1";
+const GLINT = "#fffbe1";
+const GLINT_ARM = "#ffe35a";
+const SOOT = "#b8b2c4";
 
 /** The pot over the fire. `frame` 0/1 moves the bubbles, so the screen flicks between two canvases (DESIGN.md: steps(2)). */
 function pot(cv: HTMLCanvasElement, frame: number) {
@@ -830,10 +845,31 @@ function smoke(cv: HTMLCanvasElement) {
 }
 
 /** A plate under a dish, `y` its top row. */
-function plate(P: Px, y: number, w: number) {
+function plate(P: Px, y: number, w: number, gold = false) {
   const cx = P.w / 2;
-  P.ell(cx, y + 2, w / 2, 2.5, PLATE);
-  P.ellIn(cx, y + 3, w / 2, 1.2, PLATE_DARK);
+  P.ell(cx, y + 2, w / 2, 2.5, gold ? GOLD_PLATE : PLATE);
+  P.ellIn(cx, y + 3, w / 2, 1.2, gold ? GOLD_PLATE_DARK : PLATE_DARK);
+  if (gold) P.rect(cx - w / 2 + 4, y + 1, 5, 1, GOLD_PLATE_HI);
+}
+
+/** A four-point glint over a legendary dish. Drawn after the outline, like steam. */
+function glint(P: Px, x: number, y: number, big = false) {
+  const r = big ? 2 : 1;
+  for (let i = -r; i <= r; i++) {
+    P.set(x + i, y, Math.abs(i) < r ? GLINT : GLINT_ARM);
+    P.set(x, y + i, Math.abs(i) < r ? GLINT : GLINT_ARM);
+  }
+}
+
+/** Recolour the painted cells of rows `y`..`y+h-1`: a gold band round a bowl (the last row darker), or a layer in a glass. */
+function band(P: Px, y: number, h = 2, c = GOLD, dk = GOLD_DARK) {
+  for (let j = 0; j < h; j++)
+    for (let x = 0; x < P.w; x++) if (P.a[(y + j) * P.w + x] !== null) P.a[(y + j) * P.w + x] = h > 1 && j === h - 1 ? dk : c;
+}
+
+/** Recolour every cell of one colour, e.g. a wooden skewer to gold. */
+function swap(P: Px, from: string, to: string) {
+  P.a = P.a.map((c) => (c === from ? to : c));
 }
 
 /** Two wisps of steam over a hot dish. */
@@ -853,12 +889,16 @@ const PLATE_AT = {
   "dish-tofu": [16, 34],
   "dish-roast-chicken": [22, 38],
   "dish-rotten": [24, 32],
+  "dish-burnt": [22, 32],
 } as const satisfies Partial<Record<SpriteKind, readonly [number, number]>>;
+
+/** A legendary dish's ordinary kind (its plate is in the same place); any other kind as it is. */
+const plain = (kind: SpriteKind) => kind.replace(/-legend$/, "") as SpriteKind;
 
 /** The empty plate's top row and width in cells: the dish's own plate, else as wide as the canvas on its bottom rows. */
 function emptyPlateAt(kind: SpriteKind): readonly [number, number] {
   const [w, h] = SPRITE_SIZE[kind];
-  return (PLATE_AT as Partial<Record<SpriteKind, readonly [number, number]>>)[kind] ?? [h - 5, w - 2];
+  return (PLATE_AT as Partial<Record<SpriteKind, readonly [number, number]>>)[plain(kind)] ?? [h - 5, w - 2];
 }
 
 /** The narrowest empty plate on stage, in CSS px: near the narrowest plated dish's (dish-tower, 32 cells ×4 = 128). */
@@ -879,7 +919,7 @@ export function dishScale(kind: SpriteKind): number {
  */
 export function emptyPlateScale(kind: SpriteKind): number {
   const scale = dishScale(kind);
-  if (kind in PLATE_AT) return scale;
+  if (plain(kind) in PLATE_AT) return scale;
   return Math.max(scale, Math.min(MAX_DISH_SCALE, Math.ceil(MIN_EMPTY_PLATE_PX / emptyPlateAt(kind)[1])));
 }
 
@@ -892,15 +932,15 @@ export function drawEmptyPlate(cv: HTMLCanvasElement, kind: SpriteKind) {
   const [w, h] = SPRITE_SIZE[kind];
   const P = new Px(cv, w, h);
   const [y, pw] = emptyPlateAt(kind);
-  plate(P, y, pw);
+  plate(P, y, pw, kind.endsWith("-legend")); // a legendary dish leaves its gold plate
   P.outline(K);
   const cx = Math.floor(w / 2);
   for (const dx of [-5, -4, -1, 3, 5]) P.set(cx + dx, y + 1, "#c97a2a"); // crumbs on the light rim, the shade stays whole
   P.flush();
 }
 
-/** RGBA of the colours that are not food: the plate, its shade and the steam. */
-const NOT_FOOD = [PLATE, PLATE_DARK, STEAM].map(rgb);
+/** RGBA of the colours that are not food: the plate, its shade and the steam (and a legendary dish's gold plate and glints, the burnt dish's smoke). */
+const NOT_FOOD = [PLATE, PLATE_DARK, STEAM, GOLD_PLATE, GOLD_PLATE_DARK, GOLD_PLATE_HI, GLINT, GLINT_ARM, SOOT].map(rgb);
 
 /**
  * Take `n` (0–3) bites out of a dish's RGBA pixels (docs/designs/eat-dish.md, eng F2): circles at the top right, top and
@@ -976,21 +1016,37 @@ export function biteSprite(cv: HTMLCanvasElement, n: number) {
 }
 
 /** 史萊姆 → a wobbly green jelly on a plate. */
-function dishJelly(cv: HTMLCanvasElement) {
+function dishJelly(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 24);
-  plate(P, ...PLATE_AT["dish-jelly"]);
+  plate(P, ...PLATE_AT["dish-jelly"], L);
   P.ell(17, 15, 12, 9, GREEN_SLIME.body);
   P.cut((_x, y) => y > 18);
   P.shade(17, 15, 12, 9, GREEN_SLIME.dark, 2, 2);
   P.ellIn(13, 9, 5, 3, GREEN_SLIME.light);
+  if (L) {
+    // 星辰琉璃凍: cream and a cherry on top, gold stars set in the jelly.
+    P.ell(17, 6.5, 4.5, 2, "#fff8ec");
+    P.ell(17, 3, 2, 2, "#e8463c");
+  }
   P.outline(K);
   P.rect(11, 8, 2, 1, "#fff");
   P.set(11, 9, "#fff");
+  if (L) {
+    for (const [x, y] of [[21, 12], [11, 15], [16, 11]]) {
+      P.rect(x - 1, y, 3, 1, GOLD);
+      P.rect(x, y - 1, 1, 3, GOLD);
+      P.set(x, y, "#fff6b0");
+    }
+    P.set(16, 2, "#ffb0a0");
+    glint(P, 4, 5, true);
+    glint(P, 30, 4, true);
+    glint(P, 31, 12);
+  }
   P.flush();
 }
 
 /** 迷途史萊姆 → a hot bowl of blue stew. */
-function dishStew(cv: HTMLCanvasElement) {
+function dishStew(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 26);
   P.rect(3, 13, 28, 4, "#f4ecff");
   P.ell(17, 17, 14, 7, "#f4ecff");
@@ -999,17 +1055,31 @@ function dishStew(cv: HTMLCanvasElement) {
   // The soup sits in the bowl's mouth, drawn last so the bowl doesn't cover it.
   P.ell(17, 12, 14, 3.5, BLUE_SLIME.body);
   P.ellIn(15, 11, 8, 1.5, BLUE_SLIME.light);
+  if (L) {
+    // 星河濃湯: a gold band round the bowl, stars adrift in the soup.
+    band(P, 18);
+  }
   P.outline(K);
   P.set(12, 11, "#8f74e8");
   P.set(20, 12, "#ffb84d");
-  steam(P, [11, 17, 23], 3);
+  if (!L) steam(P, [11, 17, 23], 3);
+  if (L) {
+    for (const [x, y] of [[9, 12], [23, 11], [16, 13]]) {
+      P.rect(x - 1, y, 3, 1, "#fff6b0");
+      P.rect(x, y - 1, 1, 3, "#fff6b0");
+    }
+    for (const [x, y] of [[13, 10], [19, 10], [26, 13], [6, 12]]) P.set(x, y, "#ff9db8");
+    glint(P, 8, 4, true);
+    glint(P, 25, 3, true);
+    glint(P, 16, 6);
+  }
   P.flush();
 }
 
 /** 史萊姆王 → a tall purple jelly tower, crowned with a gold cherry. */
-function dishTower(cv: HTMLCanvasElement) {
+function dishTower(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 32);
-  plate(P, ...PLATE_AT["dish-tower"]);
+  plate(P, ...PLATE_AT["dish-tower"], L);
   P.rect(7, 18, 20, 9, PURPLE_SLIME.body);
   P.rect(9, 10, 16, 9, PURPLE_SLIME.body);
   P.rect(11, 4, 12, 7, PURPLE_SLIME.body);
@@ -1017,42 +1087,84 @@ function dishTower(cv: HTMLCanvasElement) {
   P.rect(22, 10, 3, 9, PURPLE_SLIME.dark);
   P.rect(20, 4, 3, 7, PURPLE_SLIME.dark);
   P.rect(12, 5, 2, 4, PURPLE_SLIME.light);
-  P.ell(17, 3, 2.5, 2.5, "#ffcf4a");
+  if (!L) P.ell(17, 3, 2.5, 2.5, "#ffcf4a");
+  if (L) {
+    // 皇冠果凍塔: the slime king's own crown on top, a gold band and gems on every tier.
+    P.rect(7, 25, 20, 1, GOLD);
+    P.rect(7, 26, 20, 1, GOLD_DARK);
+    P.rect(9, 17, 16, 1, GOLD);
+    P.rect(11, 9, 12, 1, GOLD);
+    P.grid(ACC.crown.rows, ACC.crown.pal, 13, 0);
+  }
   P.outline(K);
-  P.set(16, 2, "#fff6b0");
+  if (!L) P.set(16, 2, "#fff6b0");
+  if (L) {
+    for (const [x, y, c] of [[11, 22, "#ff6b6b"], [16, 22, "#8fd4ff"], [21, 22, "#ff6b6b"], [12, 14, "#8fd4ff"], [17, 14, "#ff6b6b"], [15, 7, "#8fd4ff"]] as const) P.set(x, y, c);
+    glint(P, 4, 7, true);
+    glint(P, 29, 11, true);
+    glint(P, 28, 3);
+    glint(P, 5, 16);
+  }
   P.flush();
 }
 
 /** 幽靈 → shaved ice in a glass, a ghost-white heap with a little syrup. */
-function dishIce(cv: HTMLCanvasElement) {
+function dishIce(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 26, 32);
   P.ell(13, 10, 10, 8, "#f4ecff");
   P.cut((_x, y) => y > 14);
   P.ellIn(10, 6, 4, 3, "#ffffff");
   P.ellIn(16, 11, 5, 3, "#ff9db8");
   P.grid(["gggggggggggggggggg", ".gggggggggggggggg.", "..gggggggggggggg..", "...gggggggggggg...", "....gggggggggg....", ".....gggggggg.....", "......gggggg......", ".......gggg.......", "........gg........", "........gg........", "........gg........", "......gggggg......", "....gggggggggg...."], { g: "#b8e4ff" }, 4, 15);
+  if (L) {
+    // 極光彩虹冰: three syrups and a cherry, in a gold-footed glass.
+    P.ellIn(7, 12, 4, 3, "#8fd4ff");
+    P.ellIn(12, 12, 2.5, 3, "#ffe066");
+    P.ell(13, 1.8, 2, 1.8, "#e8463c");
+    band(P, 23, 5);
+  }
   P.outline(K);
   P.rect(7, 16, 2, 4, "#ffffff");
+  if (L) {
+    P.set(12, 1, "#ffb0a0");
+    glint(P, 3, 21, true);
+    glint(P, 22, 20, true);
+    glint(P, 22, 3);
+    glint(P, 3, 4);
+  }
   P.flush();
 }
 
 /** 哭哭幽靈 → two grilled rice balls with a sprinkle of tear salt. */
-function dishRiceball(cv: HTMLCanvasElement) {
+function dishRiceball(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 24);
-  plate(P, ...PLATE_AT["dish-riceball"]);
+  plate(P, ...PLATE_AT["dish-riceball"], L);
   for (const cx of [11, 25]) {
     P.ell(cx, 12, 8, 7, "#fff8ec");
     P.rect(cx - 7, 12, 14, 7, "#fff8ec");
     P.rect(cx - 4, 13, 8, 6, "#3a3a4a");
     P.ellIn(cx, 8, 3, 2, "#f0d8a8");
   }
+  if (L) {
+    // 黃金飯糰: salmon roe on top, gold leaf on the seaweed.
+    for (const cx of [11, 25]) P.ellIn(cx, 7.5, 3.5, 2, "#ff8a3c");
+  }
   P.outline(K);
   for (const [x, y] of [[8, 6], [13, 9], [23, 7], [28, 9]]) P.set(x, y, "#8fd4ff");
+  if (L) {
+    for (const cx of [11, 25]) {
+      for (const [dx, y] of [[-1, 7], [1, 8], [-2, 8]]) P.set(cx + dx, y, "#ffd0a0");
+      for (const [dx, y] of [[-3, 14], [1, 15], [-1, 17], [2, 17], [-2, 16]]) P.set(cx + dx, y, GOLD);
+    }
+    glint(P, 18, 3, true);
+    glint(P, 2, 5);
+    glint(P, 33, 4);
+  }
   P.flush();
 }
 
 /** 小黑龍 → roasted dragon-tail skewer, charred purple chunks on a stick. */
-function dishSkewer(cv: HTMLCanvasElement) {
+function dishSkewer(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 42, 22);
   P.rect(1, 12, 40, 2, "#b07a4f");
   for (const x of [5, 15, 25]) {
@@ -1060,9 +1172,25 @@ function dishSkewer(cv: HTMLCanvasElement) {
     P.rect(x, 6, 9, 3, "#9a80e8");
     P.rect(x + 6, 9, 3, 10, "#5a3fb0");
   }
+  if (L) {
+    // 炎帝龍息串: a gold skewer, every chunk still on fire.
+    swap(P, "#b07a4f", GOLD);
+    for (const x of [5, 15, 25]) P.grid(["..y..", ".yoy.", "yoOoy"], TORCH_PAL, x + 2, 3);
+  }
   P.outline(K);
   for (const x of [7, 17, 27]) P.rect(x, 13, 3, 1, "#3a2a5a");
-  steam(P, [10, 20, 30], 0);
+  if (!L) steam(P, [10, 20, 30], 0);
+  if (L) {
+    for (const x of [5, 15, 25]) {
+      P.rect(x + 1, 7, 2, 1, "#e8dcff");
+      P.set(x + 2, 16, GOLD);
+      P.set(x + 4, 10, GOLD);
+    }
+    glint(P, 38, 5, true);
+    glint(P, 2, 6, true);
+    glint(P, 14, 1);
+    glint(P, 24, 2);
+  }
   P.flush();
 }
 
@@ -1592,7 +1720,7 @@ function bowl(P: Px, top: number, rx: number, c = "#f4ecff", dk = "#cdbdf0") {
 }
 
 /** 蘑菇 → three grilled mushrooms on a skewer. */
-function dishMushroomSkewer(cv: HTMLCanvasElement) {
+function dishMushroomSkewer(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 42, 22);
   P.rect(1, 13, 40, 2, "#b07a4f");
   for (const x of [9, 20, 31]) {
@@ -1602,30 +1730,67 @@ function dishMushroomSkewer(cv: HTMLCanvasElement) {
     P.ellIn(x - 2, 7, 1.4, 1, "#fff6ec");
     P.ellIn(x + 2, 8, 1, 1, "#fff6ec");
   }
+  if (L) {
+    // 仙境金斑蘑菇串: a gold skewer, melted cheese under every cap.
+    swap(P, "#b07a4f", GOLD);
+    for (const x of [9, 20, 31]) {
+      P.rect(x - 4, 11, 9, 1, "#ffd84a");
+      P.set(x - 4, 12, "#ffd84a");
+      P.set(x + 3, 12, "#ffd84a");
+    }
+  }
   P.outline(K);
   for (const x of [9, 20, 31]) P.rect(x - 2, 15, 5, 1, "#8a5226");
-  steam(P, [12, 23, 34], 0);
+  if (!L) steam(P, [12, 23, 34], 0);
+  if (L) {
+    for (const x of [9, 20, 31]) {
+      P.rect(x - 1, 7, 3, 1, GOLD);
+      P.rect(x, 6, 1, 3, GOLD);
+      P.set(x - 3, 10, "#5fd067");
+      P.set(x + 3, 9, "#5fd067");
+    }
+    glint(P, 3, 5, true);
+    glint(P, 26, 2, true);
+    glint(P, 14, 3);
+    glint(P, 38, 4);
+  }
   P.flush();
 }
 
 /** 蝙蝠 → two golden fried wings on a plate. */
-function dishWings(cv: HTMLCanvasElement) {
+function dishWings(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 24);
-  plate(P, ...PLATE_AT["dish-wings"]);
+  plate(P, ...PLATE_AT["dish-wings"], L);
   const wing = ["....ggg", "..ggggg", ".gggggg", "ggggggg", "gggggg.", "g.gg.g."];
   P.grid(wing, { g: "#e8a83a" }, 6, 11);
   P.grid(mirror(wing), { g: "#e8a83a" }, 19, 11);
   P.grid(wing, { g: "#ffcf6a" }, 7, 10);
   P.grid(mirror(wing), { g: "#ffcf6a" }, 20, 10);
+  if (L) {
+    // 蜜汁黃金翅: honey glaze and sesame, a lemon wedge, a bed of greens.
+    P.ell(31, 17, 2.5, 1.8, "#ffe066");
+    P.ell(5, 17.5, 2.5, 1.5, "#5fd067");
+  }
   P.outline(K);
   for (const [x, y] of [[10, 12], [13, 14], [24, 12], [27, 14]]) P.set(x, y, "#c97a2a");
   P.rect(15, 16, 2, 1, "#5fd067");
-  steam(P, [11, 23], 2);
+  if (!L) steam(P, [11, 23], 2);
+  if (L) {
+    for (const [x, y] of [[9, 13], [11, 11], [8, 15], [23, 11], [25, 14], [22, 14]]) P.set(x, y, "#fff8ec");
+    P.rect(9, 11, 2, 1, "#fff0a0");
+    P.rect(24, 12, 2, 1, "#fff0a0");
+    P.rect(14, 17, 5, 1, "#5fd067");
+    P.set(15, 16, "#3fa65a");
+    P.set(18, 16, "#e8463c");
+    glint(P, 3, 6, true);
+    glint(P, 32, 6, true);
+    glint(P, 17, 4);
+  }
   P.flush();
 }
 
 /** 骷髏 → a bowl of milky bone broth with a big bone sticking out. */
-function dishBoneSoup(cv: HTMLCanvasElement) {
+function dishBoneSoup(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 28);
   P.rect(20, 3, 3, 11, "#f4efe4");
   P.ell(20, 3, 2, 2, "#f4efe4");
@@ -1633,15 +1798,30 @@ function dishBoneSoup(cv: HTMLCanvasElement) {
   bowl(P, 14, 14, "#8a6aa8", "#6a4a88");
   P.ell(17, 14, 14, 3.5, "#fff4dc");
   P.ellIn(14, 13, 7, 1.5, "#ffffff");
+  if (L) {
+    // 千年龍骨湯: a second bone, half an egg, a gold band round the bowl.
+    P.rect(10, 5, 3, 9, "#f4efe4");
+    P.ell(10, 5, 2, 2, "#f4efe4");
+    P.ell(13, 5, 2, 2, "#f4efe4");
+    P.ell(26, 14, 2.5, 1.8, "#fff8ec");
+    band(P, 20);
+  }
   P.outline(K);
   P.set(10, 14, "#5fd067");
   P.set(26, 15, "#5fd067");
-  steam(P, [8, 13], 5);
+  if (!L) steam(P, [8, 13], 5);
+  if (L) {
+    P.rect(25, 14, 2, 1, "#ffb84d");
+    for (const [x, y] of [[7, 15], [15, 16], [20, 16], [17, 13]]) P.set(x, y, "#5fd067");
+    glint(P, 4, 7, true);
+    glint(P, 29, 6, true);
+    glint(P, 16, 3);
+  }
   P.flush();
 }
 
 /** 寶箱 → a treasure-chest lunch box: rice, egg, sausage and greens. */
-function dishBento(cv: HTMLCanvasElement) {
+function dishBento(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 26);
   P.rect(3, 2, 30, 8, "#b5733a");
   P.rect(3, 9, 30, 15, "#9a5a2a");
@@ -1652,16 +1832,37 @@ function dishBento(cv: HTMLCanvasElement) {
   P.rect(25, 12, 5, 9, "#5fd067");
   P.rect(5, 2, 2, 8, "#ffcf4a");
   P.rect(29, 2, 2, 8, "#ffcf4a");
+  if (L) {
+    // 黃金寶藏便當: a gold lid with a ruby, shrimp and a star carrot inside.
+    P.rect(3, 2, 30, 7, GOLD_DARK);
+    P.rect(3, 2, 30, 2, GOLD);
+    P.rect(5, 2, 2, 7, "#fff08a");
+    P.rect(29, 2, 2, 7, "#fff08a");
+    P.rect(16, 4, 4, 4, "#e8463c");
+    P.rect(3, 22, 30, 2, GOLD_DARK);
+  }
   P.outline(K);
   P.set(11, 15, "#e8463c");
   P.rect(20, 13, 2, 2, "#ff9a3c");
   P.set(19, 19, "#fff");
   P.set(27, 14, "#3fa65a");
+  if (L) {
+    P.set(17, 5, "#ffb0a0");
+    P.rect(8, 18, 3, 2, "#ff8a7a");
+    P.set(11, 18, "#ff8a7a");
+    P.rect(13, 17, 3, 1, "#ff9a3c");
+    P.rect(14, 16, 1, 3, "#ff9a3c");
+    P.set(27, 18, "#e8463c");
+    glint(P, 9, 5, true);
+    glint(P, 27, 5);
+    glint(P, 33, 13);
+    glint(P, 2, 15);
+  }
   P.flush();
 }
 
 /** 蜘蛛 → a puff of spider-silk candy floss on a stick. */
-function dishCottonCandy(cv: HTMLCanvasElement) {
+function dishCottonCandy(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 26, 32);
   P.rect(12, 18, 2, 13, "#e8d8b0");
   P.ell(13, 10, 10, 9, "#fff4fa");
@@ -1669,30 +1870,66 @@ function dishCottonCandy(cv: HTMLCanvasElement) {
   P.ell(18, 14, 5, 4, "#fff4fa");
   P.shade(13, 10, 10, 9, "#ffc8e0", 2, 2);
   P.ellIn(10, 6, 4, 2.5, "#ffffff");
+  if (L) {
+    // 彩虹雲朵糖: three pastel puffs on a gold stick.
+    P.ellIn(8, 14, 5, 4, "#c8ecff");
+    P.ellIn(18, 14, 5, 4, "#fff0a0");
+    swap(P, "#e8d8b0", GOLD);
+  }
   P.outline(K);
   for (const [x, y] of [[7, 9], [15, 7], [18, 13], [11, 15]]) P.set(x, y, "#e8c0f0");
+  if (L) {
+    for (const [x, y] of [[13, 9], [8, 6], [18, 5]]) {
+      P.rect(x - 1, y, 3, 1, GOLD);
+      P.rect(x, y - 1, 1, 3, GOLD);
+    }
+    glint(P, 3, 23, true);
+    glint(P, 22, 22, true);
+    glint(P, 24, 2);
+    glint(P, 2, 3);
+  }
   P.flush();
 }
 
 /** 蝸牛 → snail shells baked with bubbling cheese. */
-function dishEscargot(cv: HTMLCanvasElement) {
+function dishEscargot(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 24);
-  plate(P, ...PLATE_AT["dish-escargot"]);
+  plate(P, ...PLATE_AT["dish-escargot"], L);
   for (const x of [9, 18, 27]) {
     P.ell(x, 13, 5, 5, "#d88a38");
     P.ellIn(x, 13, 3, 3, "#f0a850");
     P.ellIn(x, 13, 1.2, 1.2, "#c97a2a");
     P.ell(x, 9, 4, 2, "#ffd84a");
   }
+  if (L) {
+    // 金殼松露焗蝸牛: gold shells, truffle on the cheese, parsley between.
+    for (const x of [9, 18, 27]) {
+      P.ellIn(x, 13, 3.2, 3.2, GOLD);
+      P.ellIn(x, 13, 1.2, 1.2, GOLD_DARK);
+    }
+  }
   P.outline(K);
   for (const [x, y] of [[8, 8], [19, 8], [28, 9]]) P.set(x, y, "#fff6c0");
   for (const [x, y] of [[11, 9], [16, 9], [26, 8]]) P.set(x, y, "#5fd067");
-  steam(P, [13, 22], 0);
+  if (!L) steam(P, [13, 22], 0);
+  if (L) {
+    for (const x of [9, 18, 27]) {
+      P.set(x - 1, 9, "#4a3a5e");
+      P.set(x + 2, 9, "#4a3a5e");
+      P.set(x - 1, 12, "#fff6b0");
+    }
+    P.rect(13, 17, 2, 1, "#5fd067");
+    P.rect(22, 17, 2, 1, "#5fd067");
+    glint(P, 4, 4, true);
+    glint(P, 32, 4, true);
+    glint(P, 14, 3);
+    glint(P, 23, 4);
+  }
   P.flush();
 }
 
 /** 鬼火 → crème brûlée with a little blue flame dancing on the caramel. */
-function dishBrulee(cv: HTMLCanvasElement) {
+function dishBrulee(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 30, 26);
   P.rect(3, 15, 24, 8, "#fff4dc");
   P.ell(15, 23, 12, 2, "#fff4dc");
@@ -1701,19 +1938,41 @@ function dishBrulee(cv: HTMLCanvasElement) {
   P.ell(15, 14, 12, 2.5, "#e8a83a");
   P.ellIn(13, 13, 6, 1, "#ffcf6a");
   P.grid(["..f..", ".ff..", ".fff.", "fffff", ".fff."], { f: "#5ab0f0" }, 13, 5);
+  if (L) {
+    // 永恆鬼火布蕾: a gold-ribbed cup, a second flame, a berry and mint.
+    swap(P, "#e8d8b0", GOLD);
+    P.grid([".f.", "ff.", "fff", ".f."], { f: "#5ab0f0" }, 6, 8);
+    P.ell(22, 12, 1.6, 1.6, "#e8463c");
+    P.rect(24, 11, 2, 1, "#5fd067");
+  }
   P.outline(K);
   P.rect(14, 8, 2, 2, "#c8ecff");
   P.set(9, 14, "#c97a2a");
   P.set(20, 14, "#c97a2a");
+  if (L) {
+    P.set(7, 10, "#c8ecff");
+    P.set(14, 7, "#e8f8ff");
+    P.set(21, 11, "#ffb0a0");
+    glint(P, 3, 4, true);
+    glint(P, 26, 5, true);
+    glint(P, 21, 2);
+  }
   P.flush();
 }
 
 /** 魔像 → a stone hot pot, still bubbling. */
-function dishStonePot(cv: HTMLCanvasElement) {
+function dishStonePot(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 26);
   bowl(P, 10, 15, "#8a8aa0", "#6a6a80");
   P.ell(18, 10, 15, 3.5, "#e8763c");
   P.ellIn(16, 9, 8, 1.5, "#ffa060");
+  if (L) {
+    // 熔岩之心石燒鍋: an egg in the middle, shrimp, a gold band round the stone.
+    band(P, 16);
+    P.ell(18, 9.5, 3.5, 2, "#fff8ec");
+    P.ellIn(18, 9.5, 1.6, 1, "#ffb020");
+    P.ell(26, 9.5, 2.5, 1.5, "#ff8a7a");
+  }
   P.outline(K);
   P.rect(10, 9, 3, 2, "#5fd067");
   P.rect(22, 10, 3, 1, "#fff4dc");
@@ -1723,43 +1982,81 @@ function dishStonePot(cv: HTMLCanvasElement) {
     P.set(x, y, "#fff6c0");
     P.set(x + 1, y + 1, "#fff6c0");
   }
-  steam(P, [9, 28], 1);
+  if (!L) steam(P, [9, 28], 1);
+  if (L) {
+    P.rect(7, 10, 2, 1, "#3fa65a");
+    P.set(13, 11, "#e8463c");
+    P.set(23, 12, "#e8463c");
+    P.set(26, 9, "#ffd0c0");
+    glint(P, 5, 3, true);
+    glint(P, 31, 3, true);
+    glint(P, 18, 3);
+  }
   P.flush();
 }
 
 /** 水母 → cold jellyfish strands dressed with chili and coriander. */
-function dishJellySalad(cv: HTMLCanvasElement) {
+function dishJellySalad(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 22);
-  plate(P, ...PLATE_AT["dish-jelly-salad"]);
+  plate(P, ...PLATE_AT["dish-jelly-salad"], L);
   P.ell(18, 13, 12, 5, "#e8dcf8");
   P.cut((_x, y) => y > 16);
+  if (L) {
+    // 深海螢光水母絲: a flower on top, strands that glow.
+    P.grid([".p.", "pyp", ".p."], { p: "#ff8fb1", y: GOLD }, 17, 5);
+  }
   P.outline(K);
   for (let x = 9; x < 28; x += 2) for (let y = 10; y < 16; y++) if ((x + y) % 3 === 0) P.set(x, y, "#c9a0f0");
   for (const [x, y] of [[12, 10], [20, 9], [25, 12], [15, 13]]) P.set(x, y, "#e8463c");
   for (const [x, y] of [[10, 12], [17, 10], [23, 14], [27, 11]]) P.set(x, y, "#3fa65a");
+  if (L) {
+    for (let x = 10; x < 27; x += 2) for (let y = 10; y < 16; y++) if ((x + y) % 3 === 1) P.set(x, y, "#8ff0ff");
+    for (const [x, y] of [[13, 12], [22, 11], [18, 14], [26, 14]]) P.set(x, y, GOLD);
+    glint(P, 4, 5, true);
+    glint(P, 31, 5, true);
+    glint(P, 10, 3);
+    glint(P, 26, 2);
+  }
   P.flush();
 }
 
 /** 青蛙 → three-cup frog legs in a clay pot, with basil. */
-function dishThreeCup(cv: HTMLCanvasElement) {
+function dishThreeCup(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 26);
   bowl(P, 11, 14, "#3a3a4a", "#26263a");
   P.rect(2, 13, 3, 2, "#3a3a4a");
   P.rect(31, 13, 3, 2, "#3a3a4a");
   P.ell(18, 11, 14, 3.5, "#8a4a22");
   for (const [x, y] of [[11, 9], [17, 8], [23, 9], [14, 11], [21, 11]]) P.ell(x, y, 2.5, 1.8, "#b5733a");
+  if (L) {
+    // 九層塔之王三杯: a gold band and gold handles, a sprig of basil on top.
+    band(P, 17);
+    P.rect(2, 13, 3, 2, GOLD);
+    P.rect(31, 13, 3, 2, GOLD);
+    P.ell(17, 6, 2.5, 1.5, "#5fd067");
+    P.ell(21, 5, 2, 1.3, "#3fa65a");
+  }
   P.outline(K);
   for (const [x, y] of [[13, 8], [19, 7], [25, 10], [10, 11]]) {
     P.set(x, y, "#3fa65a");
     P.set(x + 1, y, "#5fd067");
   }
   P.set(16, 10, "#fff4dc");
-  steam(P, [10, 18, 25], 1);
+  if (!L) steam(P, [10, 18, 25], 1);
+  if (L) {
+    for (const [x, y] of [[11, 8], [23, 8], [14, 10]]) P.set(x, y, "#e8a868");
+    for (const [x, y] of [[15, 9], [20, 10], [26, 11], [9, 10]]) P.set(x, y, "#e8463c");
+    for (const [x, y] of [[8, 11], [22, 12], [16, 12]]) P.set(x, y, "#5fd067");
+    glint(P, 5, 5, true);
+    glint(P, 31, 5, true);
+    glint(P, 11, 2);
+    glint(P, 27, 2);
+  }
   P.flush();
 }
 
 /** 蠟燭 → a cheese fondue pot over a candle, a bread cube on a fork. */
-function dishFondue(cv: HTMLCanvasElement) {
+function dishFondue(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 30);
   bowl(P, 9, 12, "#c94848", "#a03838");
   P.ell(17, 9, 12, 3, "#ffd84a");
@@ -1770,14 +2067,36 @@ function dishFondue(cv: HTMLCanvasElement) {
   P.rect(15, 24, 4, 4, "#fff4dc");
   P.grid([".y.", "yoy", ".O."], TORCH_PAL, 15, 20);
   P.rect(8, 28, 18, 1, "#4a3a5e");
+  if (L) {
+    // 黃金起司瀑布: cheese running over the rim, a strawberry on a second fork, a gold stand.
+    band(P, 14);
+    P.rect(8, 12, 2, 4, "#ffd84a");
+    P.rect(14, 12, 2, 6, "#ffd84a");
+    P.rect(21, 12, 2, 3, "#ffd84a");
+    P.rect(8, 2, 1, 8, "#d8d4ee");
+    P.rect(6, 1, 5, 4, "#e8463c");
+    P.set(6, 4, "#ffd84a");
+    P.set(10, 4, "#ffd84a");
+    swap(P, "#4a3a5e", GOLD);
+  }
   P.outline(K);
   P.set(25, 2, "#c99a4a");
   P.set(26, 13, "#ffd84a");
+  if (L) {
+    P.rect(7, 1, 3, 1, "#5fd067");
+    P.set(7, 3, "#ffe066");
+    P.set(9, 3, "#ffe066");
+    glint(P, 17, 3, true);
+    glint(P, 31, 9);
+    glint(P, 2, 9);
+    glint(P, 30, 22, true);
+    glint(P, 4, 21);
+  }
   P.flush();
 }
 
 /** 曼德拉草 → a root-vegetable stew with a leafy top. */
-function dishRootStew(cv: HTMLCanvasElement) {
+function dishRootStew(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 26);
   P.rect(22, 3, 2, 7, "#3fa65a");
   P.ell(20, 4, 3, 1.6, "#6fd36a");
@@ -1786,32 +2105,62 @@ function dishRootStew(cv: HTMLCanvasElement) {
   P.ell(17, 12, 14, 3.5, "#c97a3a");
   for (const [x, y] of [[10, 11], [16, 12], [24, 11]]) P.ell(x, y, 2.2, 1.5, "#e0b888");
   P.rect(13, 10, 3, 2, "#ff9a3c");
+  if (L) {
+    // 靜默之根黃金燉: the mandrake in flower, more roots in the pot, a gold band.
+    band(P, 18);
+    P.grid([".p.", "pyp", ".p."], { p: "#ff8fb1", y: "#ffe066" }, 22, 0);
+    P.ell(21, 12.5, 2.2, 1.5, "#ff9a3c");
+    P.rect(6, 12, 3, 2, "#b07ae8");
+  }
   P.outline(K);
   P.set(19, 11, "#5fd067");
-  steam(P, [8, 12], 3);
+  if (!L) steam(P, [8, 12], 3);
+  if (L) {
+    P.set(12, 13, "#5fd067");
+    P.set(26, 13, "#5fd067");
+    P.set(15, 13, "#fff6b0");
+    glint(P, 7, 4, true);
+    glint(P, 30, 8, true);
+    glint(P, 14, 2);
+  }
   P.flush();
 }
 
 /** 眼球 → sweet rice balls that look back at you, in a syrup bowl. */
-function dishTangyuan(cv: HTMLCanvasElement) {
+function dishTangyuan(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 26);
   bowl(P, 12, 14, "#4a86ff", "#2f5fd0");
   P.ell(17, 12, 14, 3.5, "#fff0d0");
   for (const [x, y] of [[11, 9], [18, 8], [24, 10]]) P.ell(x, y, 3.5, 3.2, "#fffaf0");
+  if (L) {
+    // 千里眼寶石湯圓: a gold band round the bowl; the eyes turn into gems.
+    band(P, 18);
+  }
   P.outline(K);
   for (const [x, y] of [[11, 9], [18, 8], [24, 10]]) {
     P.rect(x - 1, y - 1, 2, 2, "#4a86ff");
     P.set(x - 1, y - 1, K);
   }
   P.rect(16, 4, 1, 1, "#ff6b6b");
-  steam(P, [6, 28], 4);
+  if (!L) steam(P, [6, 28], 4);
+  if (L) {
+    P.rect(10, 8, 2, 2, "#e8463c");
+    P.rect(23, 9, 2, 2, "#3fa65a");
+    P.set(10, 8, K);
+    P.set(23, 9, K);
+    for (const [x, y] of [[11, 9], [18, 8], [24, 10]]) P.set(x, y, "#fff");
+    for (const [x, y] of [[6, 13], [14, 13], [21, 14], [28, 12]]) P.set(x, y, GOLD);
+    glint(P, 5, 4, true);
+    glint(P, 29, 4, true);
+    glint(P, 12, 2);
+  }
   P.flush();
 }
 
 /** 螃蟹 → a whole steamed crab on a plate, a lemon wedge on the side. */
-function dishCrab(cv: HTMLCanvasElement) {
+function dishCrab(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 38, 24);
-  plate(P, ...PLATE_AT["dish-crab"]);
+  plate(P, ...PLATE_AT["dish-crab"], L);
   for (let i = 0; i < 3; i++) {
     P.rect(6 + i, 14 + i * 2, 4, 1, "#d8503c");
     P.rect(28 - i, 14 + i * 2, 4, 1, "#d8503c");
@@ -1823,75 +2172,151 @@ function dishCrab(cv: HTMLCanvasElement) {
   P.ell(19, 14, 11, 6, "#ff6b4a");
   P.shade(19, 14, 11, 6, "#d8503c", 2, 2);
   P.ell(33, 18, 2.5, 1.6, "#ffe066");
+  if (L) {
+    // 黃金鉗帝王蟹: gold claws, roe on the shell, herbs across from the lemon.
+    P.ellIn(7, 5.5, 3.5, 1.6, GOLD);
+    P.ellIn(31, 5.5, 3.5, 1.6, GOLD);
+    P.ellIn(19, 11.5, 5, 2, "#ff9a3c");
+    P.ell(5, 18, 2.5, 1.6, "#5fd067");
+  }
   P.outline(K);
   P.rect(14, 11, 2, 1, "#ffb8a0");
   P.set(16, 13, K);
   P.set(22, 13, K);
-  steam(P, [14, 23], 1);
+  if (!L) steam(P, [14, 23], 1);
+  if (L) {
+    for (const [x, y] of [[17, 11], [20, 12], [22, 11], [18, 12]]) P.set(x, y, GOLD);
+    P.set(6, 5, "#fff6b0");
+    P.set(30, 5, "#fff6b0");
+    glint(P, 19, 4, true);
+    glint(P, 1, 13);
+    glint(P, 36, 12);
+    glint(P, 13, 2);
+    glint(P, 25, 2);
+  }
   P.flush();
 }
 
 /** 骰子 → cubes of tofu with sauce dots like a die's pips. */
-function dishTofu(cv: HTMLCanvasElement) {
+function dishTofu(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 36, 22);
-  plate(P, ...PLATE_AT["dish-tofu"]);
+  plate(P, ...PLATE_AT["dish-tofu"], L);
   for (const [x, y] of [[7, 9], [15, 7], [23, 9], [11, 12], [20, 12]]) {
     P.rect(x, y, 6, 6, "#fffaf0");
     P.rect(x + 4, y, 2, 6, "#e8e0d0");
   }
+  if (L) {
+    // 天選六點豆腐: one more cube on top, and it rolled a six, in gold.
+    P.rect(15, 1, 6, 6, "#fffaf0");
+    P.rect(19, 1, 2, 6, "#e8e0d0");
+  }
   P.outline(K);
   for (const [x, y] of [[9, 11], [17, 9], [18, 10], [25, 11], [13, 14], [22, 14], [23, 15]]) P.set(x, y, "#8a4a22");
   P.rect(15, 15, 2, 1, "#5fd067");
+  if (L) {
+    for (const x of [16, 18]) for (const y of [2, 4, 6]) P.set(x, y, GOLD_DARK);
+    P.set(9, 16, "#e8463c");
+    P.set(27, 16, "#e8463c");
+    P.rect(28, 17, 2, 1, "#5fd067");
+    glint(P, 6, 4, true);
+    glint(P, 30, 4, true);
+    glint(P, 25, 2);
+    glint(P, 11, 2);
+  }
   P.flush();
 }
 
 /** 南瓜 → a bowl of pumpkin soup with a swirl of cream. */
-function dishPumpkinSoup(cv: HTMLCanvasElement) {
+function dishPumpkinSoup(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 34, 24);
   bowl(P, 10, 14);
   P.ell(17, 10, 14, 3.5, "#ff9a3c");
   P.ellIn(15, 9, 8, 1.5, "#ffb860");
+  if (L) {
+    // 午夜南瓜黃金濃湯: a gold band, a wider swirl of cream, seeds and croutons.
+    band(P, 16);
+  }
   P.outline(K);
   for (const [x, y] of [[13, 10], [14, 9], [15, 9], [16, 9], [17, 10], [18, 11], [19, 11], [20, 10]]) P.set(x, y, "#fff8ec");
   P.set(24, 10, "#3fa65a");
-  steam(P, [10, 16, 22], 1);
+  if (!L) steam(P, [10, 16, 22], 1);
+  if (L) {
+    for (const [x, y] of [[11, 10], [12, 9], [21, 9], [22, 10], [22, 11], [21, 12], [20, 12], [12, 11], [13, 12], [14, 12]]) P.set(x, y, "#fff8ec");
+    for (const [x, y] of [[7, 10], [26, 11], [16, 12]]) P.rect(x, y, 2, 1, "#c8e0a0");
+    P.rect(17, 8, 2, 2, "#e8b870");
+    P.set(9, 11, "#e8b870");
+    glint(P, 5, 3, true);
+    glint(P, 28, 3, true);
+    glint(P, 17, 3);
+  }
   P.flush();
 }
 
 /** 仙人掌 → a green cactus smoothie in a glass with a straw and a pink flower. */
-function dishSmoothie(cv: HTMLCanvasElement) {
+function dishSmoothie(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 26, 32);
   P.rect(16, 1, 2, 10, "#ff8fb1");
   P.rect(16, 1, 5, 2, "#ff8fb1");
   P.ell(13, 9, 9, 3, "#a8f0a0");
   P.grid(["gggggggggggggggggg", ".gggggggggggggggg.", ".gggggggggggggggg.", "..gggggggggggggg..", "..gggggggggggggg..", "...gggggggggggg...", "...gggggggggggg...", "....gggggggggg....", "....gggggggggg....", ".....gggggggg.....", ".....gggggggg.....", "......gggggg......", ".......gggg.......", ".......gggg.......", ".....gggggggg....."], { g: "#5fd067" }, 4, 12);
   P.ell(9, 7, 2.2, 1.8, "#ff8fb1");
+  if (L) {
+    // 沙漠綠洲彩虹冰沙: three layers, a gold straw and foot, an orange slice on the rim.
+    band(P, 17, 4, "#ffe066", "#ffe066");
+    band(P, 21, 3, "#ff9db8", "#ff9db8");
+    band(P, 24, 3);
+    P.rect(16, 1, 2, 5, GOLD);
+    P.rect(16, 1, 5, 2, GOLD);
+    P.ell(21, 9, 3, 3, "#ffb84d");
+  }
   P.outline(K);
   P.set(9, 7, "#ffcf4a");
   P.rect(7, 13, 2, 5, "#c8f8c0");
   for (const [x, y] of [[12, 15], [16, 18], [11, 20]]) P.set(x, y, "#3fa65a");
+  if (L) {
+    P.rect(20, 8, 2, 2, "#fff0a0");
+    glint(P, 3, 21, true);
+    glint(P, 22, 22, true);
+    glint(P, 5, 2);
+    glint(P, 23, 15);
+  }
   P.flush();
 }
 
 /** 大王烏賊 → a whole grilled squid on a stick, glazed and charred. */
-function dishSquid(cv: HTMLCanvasElement) {
+function dishSquid(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 30, 34);
   P.rect(14, 22, 2, 11, "#b07a4f");
   for (let i = 0; i < 5; i++) P.rect(8 + i * 3, 18, 2, 7 + (i % 2) * 2, "#c9563a");
   P.ell(15, 10, 8, 10, "#e8763c");
   P.grid(["k.....k", "kk...kk"], { k: "#e8763c" }, 12, 0);
   P.shade(15, 10, 8, 10, "#b5442a", 2, 2);
+  if (L) {
+    // 深淵霸主烤魷魚: a gold stick, a lemon wedge, sesame and spring onion over the glaze.
+    swap(P, "#b07a4f", GOLD);
+    P.ellIn(11, 7, 2.5, 5, "#ffa868");
+    P.ell(24, 25, 3, 2, "#ffe066");
+  }
   P.outline(K);
   for (const y of [7, 11, 15]) for (let x = 10; x < 21; x += 2) P.set(x, y, "#8a2a1a");
   P.rect(11, 4, 2, 3, "#ffb080");
-  steam(P, [7, 22], 1);
+  if (!L) steam(P, [7, 22], 1);
+  if (L) {
+    for (const [x, y] of [[13, 9], [17, 13], [12, 13], [18, 6], [15, 17]]) P.set(x, y, "#fff8ec");
+    for (const [x, y] of [[16, 5], [13, 16], [19, 10]]) P.set(x, y, "#5fd067");
+    P.set(23, 24, "#fff6b0");
+    glint(P, 4, 4, true);
+    glint(P, 26, 5, true);
+    glint(P, 4, 26, true);
+    glint(P, 25, 14);
+  }
   P.flush();
 }
 
 /** 不死鳥 → a whole roast bird on a plate, still flickering. */
-function dishRoastChicken(cv: HTMLCanvasElement) {
+function dishRoastChicken(cv: HTMLCanvasElement, L = false) {
   const P = new Px(cv, 40, 28);
-  plate(P, ...PLATE_AT["dish-roast-chicken"]);
+  plate(P, ...PLATE_AT["dish-roast-chicken"], L);
   P.rect(6, 11, 6, 3, "#c97a2a");
   P.ell(5, 12, 2, 2, "#fff4dc");
   P.rect(28, 11, 6, 3, "#c97a2a");
@@ -1901,9 +2326,30 @@ function dishRoastChicken(cv: HTMLCanvasElement) {
   P.shade(20, 15, 12, 8, "#b5682a", 2, 2);
   P.ellIn(16, 11, 5, 2.5, "#ffc870");
   P.grid(["..y..y..", ".yoy.yoy", "yoOoyoOy"], TORCH_PAL, 16, 2);
+  if (L) {
+    // 浴火鳳凰全雞: taller fire, gold frills on the legs, tomatoes and greens round it.
+    P.ell(5, 12, 2, 2, GOLD);
+    P.ell(35, 12, 2, 2, GOLD);
+    P.ellIn(16, 11, 6, 3, "#ffd88a");
+    P.grid(["...y....", "..yy..y.", ".yoy.yy."], TORCH_PAL, 16, 0);
+    P.ell(8, 21, 2, 1.6, "#e8463c");
+    P.ell(32, 21, 2, 1.6, "#e8463c");
+    P.ell(12, 22.5, 2.2, 1.4, "#5fd067");
+    P.ell(28, 22.5, 2.2, 1.4, "#5fd067");
+  }
   P.outline(K);
   for (const [x, y] of [[9, 21], [30, 21], [12, 22]]) P.set(x, y, "#5fd067");
   P.set(26, 21, "#ff6b6b");
+  if (L) {
+    P.set(18, 4, "#8fd4ff");
+    P.set(22, 4, "#8fd4ff");
+    P.set(7, 20, "#ffb0a0");
+    P.set(31, 20, "#ffb0a0");
+    glint(P, 3, 4, true);
+    glint(P, 36, 4, true);
+    glint(P, 10, 3);
+    glint(P, 30, 2);
+  }
   P.flush();
 }
 
@@ -1955,6 +2401,25 @@ function dishRotten(cv: HTMLCanvasElement) {
   for (const [x, y] of [[11, 21], [19, 19], [22, 22], [15, 23]]) P.set(x, y, "#7ad36a");
   // Three purple wisps over it.
   for (const x of [9, 16, 23]) P.grid([".s", "s.", ".s", "s.", ".s", "s."], { s: "#b48ae0" }, x, 3 + (x % 3));
+  P.flush();
+}
+
+/** 焦黑殘渣 (the chef's natural 1): a cracked heap of charcoal with the embers still lit, under grey smoke. Not dish-rotten's purple lump. */
+function dishBurnt(cv: HTMLCanvasElement) {
+  const P = new Px(cv, 34, 28);
+  plate(P, ...PLATE_AT["dish-burnt"]);
+  P.grid(
+    ["..........c...........", ".........ccc....c.....", "....c...ccccc..ccc....", "...ccc..cccccc.cccc...", "...cccccccacccccccc...", "..cccacccccccccccdcc..", "..ccccccccccaccccddc..", ".cccccccccccccccccddd.", ".ccaccccccccccccacddd.", "ccccccccacccccccccdddd", "ccccccccccccccccccdddd", "cccccccccccccccccddddd", ".cccccccccccccccdddd.."],
+    { c: "#5e5468", a: "#9a90a0", d: "#3d3340" },
+    6,
+    10,
+  );
+  P.outline(K);
+  // The cracks still glow.
+  for (const [x, y] of [[11, 15], [12, 16], [13, 16], [13, 17], [19, 13], [20, 14], [20, 15], [9, 19], [10, 20], [11, 20], [22, 18], [23, 19], [16, 20], [17, 21]]) P.set(x, y, "#ff8a3c");
+  for (const [x, y] of [[12, 16], [20, 14], [10, 20]]) P.set(x, y, "#ffd84a");
+  for (const x of [3, 5, 29, 31]) P.set(x, 24, "#5e5468"); // crumbs on the rim
+  for (const [x, y] of [[8, 3], [19, 1], [26, 4]]) P.grid([".s", "ss", "s.", "ss", ".s", "s."], { s: SOOT }, x, y);
   P.flush();
 }
 
@@ -2048,6 +2513,35 @@ function lot(cv: HTMLCanvasElement, variant: number) {
   P.flush();
 }
 
+/** Each monster dish's painter; with `L` it paints the legendary version (the chef's natural 20). */
+const DISHES: Record<DishKind, (cv: HTMLCanvasElement, L?: boolean) => void> = {
+  "dish-jelly": dishJelly,
+  "dish-stew": dishStew,
+  "dish-tower": dishTower,
+  "dish-ice": dishIce,
+  "dish-riceball": dishRiceball,
+  "dish-skewer": dishSkewer,
+  "dish-mushroom-skewer": dishMushroomSkewer,
+  "dish-wings": dishWings,
+  "dish-bone-soup": dishBoneSoup,
+  "dish-bento": dishBento,
+  "dish-cotton-candy": dishCottonCandy,
+  "dish-escargot": dishEscargot,
+  "dish-brulee": dishBrulee,
+  "dish-stone-pot": dishStonePot,
+  "dish-jelly-salad": dishJellySalad,
+  "dish-three-cup": dishThreeCup,
+  "dish-fondue": dishFondue,
+  "dish-root-stew": dishRootStew,
+  "dish-tangyuan": dishTangyuan,
+  "dish-crab": dishCrab,
+  "dish-tofu": dishTofu,
+  "dish-pumpkin-soup": dishPumpkinSoup,
+  "dish-smoothie": dishSmoothie,
+  "dish-squid": dishSquid,
+  "dish-roast-chicken": dishRoastChicken,
+};
+
 const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: boolean, cls?: string) => void> = {
   slime: (cv, _v, b) => slime(cv, b),
   "slime-lost": (cv, _v, b) => slimeLost(cv, b),
@@ -2085,34 +2579,11 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   zz: (cv) => zz(cv),
   pot: (cv, v) => pot(cv, v),
   smoke: (cv) => smoke(cv),
-  "dish-jelly": (cv) => dishJelly(cv),
-  "dish-stew": (cv) => dishStew(cv),
-  "dish-tower": (cv) => dishTower(cv),
-  "dish-ice": (cv) => dishIce(cv),
-  "dish-riceball": (cv) => dishRiceball(cv),
-  "dish-skewer": (cv) => dishSkewer(cv),
-  "dish-mushroom-skewer": (cv) => dishMushroomSkewer(cv),
-  "dish-wings": (cv) => dishWings(cv),
-  "dish-bone-soup": (cv) => dishBoneSoup(cv),
-  "dish-bento": (cv) => dishBento(cv),
-  "dish-cotton-candy": (cv) => dishCottonCandy(cv),
-  "dish-escargot": (cv) => dishEscargot(cv),
-  "dish-brulee": (cv) => dishBrulee(cv),
-  "dish-stone-pot": (cv) => dishStonePot(cv),
-  "dish-jelly-salad": (cv) => dishJellySalad(cv),
-  "dish-three-cup": (cv) => dishThreeCup(cv),
-  "dish-fondue": (cv) => dishFondue(cv),
-  "dish-root-stew": (cv) => dishRootStew(cv),
-  "dish-tangyuan": (cv) => dishTangyuan(cv),
-  "dish-crab": (cv) => dishCrab(cv),
-  "dish-tofu": (cv) => dishTofu(cv),
-  "dish-pumpkin-soup": (cv) => dishPumpkinSoup(cv),
-  "dish-smoothie": (cv) => dishSmoothie(cv),
-  "dish-squid": (cv) => dishSquid(cv),
-  "dish-roast-chicken": (cv) => dishRoastChicken(cv),
+  ...(Object.fromEntries(Object.entries(DISHES).flatMap(([k, draw]) => [[k, (cv: HTMLCanvasElement) => draw(cv)], [`${k}-legend`, (cv: HTMLCanvasElement) => draw(cv, true)]])) as Record<DishKind | `${DishKind}-legend`, (cv: HTMLCanvasElement) => void>),
   chest: (cv) => chest(cv, false),
   "chest-open": (cv) => chest(cv, true),
   "dish-rotten": (cv) => dishRotten(cv),
+  "dish-burnt": (cv) => dishBurnt(cv),
   spring: (cv) => spring(cv),
   idol: (cv, _v, b) => idol(cv, b),
   fairy: (cv, _v, b) => fairy(cv, b),

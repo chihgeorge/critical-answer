@@ -1,6 +1,7 @@
 // The room side of a timing question (docs/designs/timing-tap.md): the big screen's clock, every team's one tap,
 // the round's close, the hit and the small bonuses, and every refusal and race the design names.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -17,7 +18,7 @@ const ANCHOR = T0 - 15_000;
 
 type Spy = Conn & { send: ReturnType<typeof vi.fn> };
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Spy;
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function tapGame(laterPhase = false) {

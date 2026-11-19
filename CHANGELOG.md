@@ -2,6 +2,86 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.105.0.0] - 2026-11-19
+
+### Changed
+- Class-dice rework (`docs/designs/class-dice-rework.md`): the crit die and the answer die are gone. Every team now rolls the 料理骰 (dish die) after a correct turn-based answer, in rooms and the boss room, and after a warrior's hit: 1 burns the dish (×0.1), 20 is a legendary dish (×1.5), anything else changes nothing. The chef's dish die pays more (2–6 ×1, 7–19 ×1.2, 20 ×2). It takes no boss heart and never touches the finishing blow's 4d20, the buzzer phase or fork and mystery rewards.
+- A dish die that changes the score shows it as before → after on the big screen's dish card and the phone, e.g. 「焦黑！ 20 → 2 飽足感」 or 「傳說級！ 20 → 30 飽足感」.
+- The thief's 偷襲 rolls its own sneak die at the press, once per question: 1 caught and loses a tenth of the question's reward, 2–6 nothing, 7–19 a correct answer pays ×1.5 and takes 2 boss hearts, 20 pays ×2 and takes 3.
+- A lucky potion now doubles the team's next die on the question, whichever it is (roll two, keep the higher), and the warrior can drink one too.
+- Persuasion check bonuses: mage +6, chef +4 (thief +3, cleric +2, no class +1, warrior +0 unchanged).
+- New narrator lines for every class die tier, the dish die, persuasion passes and fails, and the potion. The how-to-play pages, lobby class lines, phone results and docs follow the new rules.
+- The how-to-play slideshow before the first question is now 4 pages instead of 7: 輪流上陣・用手機作答, 說服檢定與料理骰, 各職業什麼時候擲骰 (a table with one row per class: when it rolls and what a 7 or higher does), and 答錯與怎麼贏. The host's speaker notes and the phone's 「第 n／4 頁」 line follow the new pages.
+- The balance simulation (`scripts/balance-sim.ts`) gains `HIDEDIE`, `CHEFFIX` and `LIB` to try rebalancing ideas for 隱藏暴擊骰 without editing lib. Tooling only; no game change.
+
+### Removed
+- The host's 「隱藏暴擊骰」 lobby option: there is no crit die to hide.
+
+## [0.104.0.0] - 2026-11-19
+
+### Changed
+- Phones are shorter: the answer countdown sits at the right end of the 「輪到我們了！」 flag, the 「正在面對」 card is gone, and the team card is one line (character, name, ability uses, score).
+- A team that is not up sees the correct answer once, in one line, and its reaction buttons sit on the first screen; the narration box is gone from phones (narration plays on the big screen only).
+- The lobby class picker is one line per class (it points to the opening 玩法說明 for each class's dice rules), and the lobby shows only the phone's own team, with its character.
+- The host's 「⚙ 更多」 folds into groups, one open at a time; the sound switches and pacing stay at the top. 「隊伍」 is one row per team with its character, score and −5/+5, and a 「⋯」 for the rarer tools (指定下一題, 🧪 給藥水, 交給新手機, 設定分數, ability uses, 收回🧪).
+
+## [0.103.4.3] - 2026-11-19
+
+### Changed
+- Vercel deploys only `main` now (`vercel.json` `git.deploymentEnabled`): pull request branches no longer create preview deployments, so they cannot use up the daily deployment limit and block a production deploy.
+
+## [0.103.4.2] - 2026-11-19
+
+### Fixed
+- Phone, after a wrong multiple-choice lock: the four grey options collapse into one line 「你們選的：A … ✕ 答錯」, so 下輪再答, 祈禱 and both 逃跑 buttons fit on the first screen (a cleric's two flee buttons were cut off on an iPhone 13).
+
+## [0.103.4.1] - 2026-11-19
+
+### Fixed
+- The podium and the phones now show the team that killed the boss with its full score, boss dish included. Before, a finished game kept hiding the unserved boss dish, so first place could show fewer points than second until a reconnect after a room restart (#400).
+
+## [0.103.4.0] - 2026-11-19
+
+### Fixed
+- Phones no longer show a die's value before the big screen's die lands: they say 「擲暴擊骰中，看大螢幕」 and show a ? die (#328).
+- A team back for 下輪再答 still faces the monster that asked the question, instead of a new one picked to avoid the previous team's (#328).
+- When every team misses in a buzzer phase, the narrator says 「同一題再搶一次」, not 「同一首」, which only fits a song (#328).
+- At the end of a boss phase, the host page's ⏭ preview says the new phase comes next, instead of showing the question just answered (#328).
+- The host's 改判 list keeps a retried question's rows together and numbers questions in the order they were last judged, so the numbers only go down (#328).
+- Quick 下一頁 presses in the how-to-play pages are no longer dropped; only 開始冒險 on the last page keeps the double-tap guard (#328).
+
+## [0.103.3.3] - 2026-11-19
+
+### Fixed
+- The boss stays on the big screen through the beat after a right answer (「接下來擲暴擊骰」, 「接下來擲尾刀骰」), in the buzz phase too, instead of turning into a green slime named 「…」. A normal room's beat keeps its monster's name as well. The room now sends the monster on stage with each beat (#401).
+
+## [0.103.3.2] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) gains `HIDEDIE`, `CHEFFIX` and `LIB` to try rebalancing ideas for 隱藏暴擊骰 without editing lib. Tooling only; no game change.
+
+## [0.103.3.1] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) follows the boss room's no-persuasion-check rule, and `HIDECRIT=1` models the lobby's 隱藏暴擊骰. Tooling only; no game change.
+
+## [0.103.3.0] - 2026-11-19
+
+### Fixed
+- A score the host sets (改分) while a dish waits for 上菜 shows as set, instead of short by the dish's 飽足感 (or below 0).
+- The boss-defeated sound plays once on the final blow, not again when the kill dice land.
+- A room restart during 「說服成功」 shows that card again before the question, and a restart during a boss-entry dish still has the narrator announce the team walking into the boss room.
+
+## [0.103.2.0] - 2026-11-19
+
+### Added
+- End-to-end tests for the buzzer phase's category and type pick, the big screen's media test, uploaded and Instagram clips and their playback errors, memory and timing questions (with their bank-editor fields), and the host's room-closing warning, fixes and re-judging.
+
+## [0.103.1.1] - 2026-11-19
+
+### Changed
+- README and the hosting guide (both languages) match the current game: the home page is a title screen with a player door and a host door, a boss hit scores by the question's difficulty (5/10/15/20/25, unset counts as 3), fleeing reveals the old question's answer, a team whose phones step away keeps its turn, and the README names the four songs (title, tavern lobby, boss, victory) and when each plays. The overview screenshot is retaken with the dungeon art, and the question-bank guide now says an unset boss difficulty is 3, not 5 (#327).
+
 ## [0.103.1.0] - 2026-11-19
 
 ### Changed

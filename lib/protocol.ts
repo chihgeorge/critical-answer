@@ -128,10 +128,10 @@ export type AnswerReveal = {
   video?: HiddenVideo;
   /** Set when a team's lock was judged (phone answering): the answered question's options, which one
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
-   * Safe to send: it goes out only once the answer is revealed. `chefBonus`: a chef's share of `points`, shown as （廚師 +N）. */
-  choice?: { options: string[]; correctIndex: number; teamId: string; points: number; chefBonus?: number };
-  /** Set when a sort question was answered right: its items in the correct order, who answered and the points (`chefBonus` as in `choice`). */
-  sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
+   * Safe to send: it goes out only once the answer is revealed. */
+  choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+  /** Set when a sort question was answered right: its items in the correct order, who answered and the points. */
+  sorted?: { items: string[]; teamId: string; points: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
   fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
   /** A timing question's round (docs/designs/timing-tap.md): the target (song ms), every tap closest first (`errorMs`
@@ -151,8 +151,9 @@ export type AnswerReveal = {
   /** The monster the answer was given to and its room (`room` null for the boss), so the stage keeps that room through the
    * reveal instead of the next team's, dish or not. Absent from older servers: the stage then falls back to `dish`. */
   at?: { monster: PublicQuestion["monster"]; room: number | null };
-  /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
-  scored?: { teamId: string; points: number };
+  /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers.
+   * `dishDie`: the dish die behind it, `dishBonus` what it changed (absent when nothing), `chef` read with the chef's multipliers. */
+  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; chef?: true };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -161,8 +162,11 @@ export type AnswerReveal = {
     method: string;
     comment: string;
     points: number;
-    /** A chef's share of `points`, shown as （廚師 +N）. */
-    chefBonus?: number;
+    /** The dish die's share of `points` (negative on a 1), and its value. */
+    dishBonus?: number;
+    dishDie?: number;
+    /** What the dish die made of it: burnt (dish-burnt) or legendary (<dish>-legend, with a glow). Absent: the dish as it is. */
+    look?: "burnt" | "legend";
     /** The monster that was cooked, and whose room it was (`room` null for the boss), so the stage can show it
      * during the reveal instead of the next team's monster (docs/designs/monster-cuisine.md, cooking I6). */
     monster: PublicQuestion["monster"];
@@ -226,7 +230,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "crit-intro" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "dish-intro" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -245,7 +249,7 @@ export type ClientMessage =
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
   /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off.
    * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number; hideCritRoll?: boolean }
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -410,7 +414,7 @@ export type ClientMessage =
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
   | { type: "HOST_ROLL_CHECK"; teamId: string; questionId: string; eventId: number }
-  /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
+  /** 🧪 喝下幸運藥水 on the team's own turn: its next die on `questionId` (a check, a class die or the dish die) rolls twice, keeping the higher
    * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
   /** 🔮 公開問神諭 on the team's own room question (anti-ai-cheating.md). */
@@ -465,22 +469,24 @@ export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 
-/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
- * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
+/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
+ * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
- * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). A crit or check rolled with a 🧪
+ * `value`, the bonus they score; docs/designs/kill-roll.md). Any die but the kill's rolled with a 🧪
  * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
- * Class dice: a mage's skill die, a cleric's prayer die, and a fill-in's answer die (a chef's, or a thief's with 偷襲
- * armed) after a correct answer; `rejudge`: that answer die is the host's 改成答對, paid when it lands. */
+ * Class dice: a mage's skill die, a cleric's prayer die, and the thief's sneak die (`penalty`: what its 1 takes);
+ * `rejudge`: the dish die is the host's 改成答對, paid when it lands. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
-  kind?: "warrior" | "crit" | "check" | "kill" | "mage" | "cleric" | "answer";
+  kind?: "warrior" | "dish" | "check" | "kill" | "mage" | "cleric" | "thief";
   bonus?: number;
   dc?: number;
   values?: number[];
   rejudge?: true;
+  warrior?: number;
+  penalty?: number;
 }
 
 export type ServerErrorCode =
@@ -536,7 +542,7 @@ export type ServerMessage =
       reveal: AnswerReveal | null;
       /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
       pendingLock: LockedOption | null;
-      /** A d20 being held for the beat before it is judged: a warrior's (class-abilities.md R2) or a correct lock's crit die. */
+      /** A d20 being held for the beat before it is judged: a class die, a check, a correct answer's dish die or the kill's 4d20. */
       pendingRoll: PendingRoll | null;
       /** A wrong sort lock waiting for its 重答 / 逃跑: per slot, top to bottom, whether the team's item there is right. */
       wrongSlots?: boolean[];
@@ -557,7 +563,8 @@ export type ServerMessage =
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };
-      /** A 答錯 used up the boss phase and its card opens in a moment: an event turn waits for it (event-rooms.md). */
+      /** A 答錯 used up the boss phase and its card opens in a moment: an event turn waits for it (event-rooms.md). Also
+       * during a phase-clearing hit's reveal, whose card opens on 下一題: `question` is still the one just answered. */
       phaseCardDue?: true;
       /** How-to-play page on show (1..4); `question` is null until the host leaves page 4. */
       intro?: { page: number };
@@ -610,7 +617,10 @@ export type ServerMessage =
       pacing?: "manual";
       hold?: Hold;
       /** A narrated pause before the next question or die. */
-      stageBeat?: "crit-intro" | "check-success" | "kill-defeated";
+      stageBeat?: "dish-intro" | "check-success" | "kill-defeated";
+      /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.
+       * Absent from older servers. */
+      stageMonster?: PublicQuestion["monster"];
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
       late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };
@@ -838,7 +848,7 @@ export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as con
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
-export const INTRO_PAGES = 7;
+export const INTRO_PAGES = 4;
 /** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
 export const HANDOFF_MS = 5 * 60 * 1000;
 
@@ -907,7 +917,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
       if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
       if (m.bossThreshold !== undefined && !isBossThreshold(m.bossThreshold)) return null;
-      if (m.hideCritRoll !== undefined && typeof m.hideCritRoll !== "boolean") return null;
       return {
         type: "HOST_START",
         aiNarration: m.aiNarration,
@@ -915,7 +924,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         ...(m.initiative ? { initiative: true } : {}),
         ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
         ...(m.bossThreshold !== undefined ? { bossThreshold: m.bossThreshold } : {}),
-        ...(m.hideCritRoll ? { hideCritRoll: true } : {}),
       };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1

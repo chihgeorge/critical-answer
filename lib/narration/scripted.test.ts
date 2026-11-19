@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { BUZZ_REOPEN_LINE, createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_LINE, MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 import * as scripted from "./scripted";
@@ -88,6 +88,8 @@ describe("scripted lines", () => {
     for (let i = 0; i < 20; i++) {
       const line = p.line({ type: "retry", team, monster, buzzOut: true, buzzAgain: true });
       expect(again.has(line)).toBe(true);
+      expect(line).not.toMatch(/同一首/); // #328 m4: the buzz phase also holds text questions, so no song measure word
+      expect(BUZZ_REOPEN_LINE).not.toMatch(/同一首/);
       expect(line.length).toBeLessThanOrEqual(40);
     }
   });
@@ -514,7 +516,7 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
 
 // Value: protects=a 20 or a 1 swaps the result line, not adds one (dnd design E3, R1); fails_when=the roll is ignored,
 // or a fumble line forgets the hit still landed
-describe("scripted: the crit die", () => {
+describe("scripted: a roll's 20 or 1", () => {
   // Value: protects=a persuasion check's 20 or 1 (dnd design R7, R8) gets its own line, not the attack's 大成功 / 手滑
   it("a check's 20 gets a 說服 win line and its 1 a line that says only half was paid, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);
@@ -530,11 +532,11 @@ describe("scripted: the crit die", () => {
   });
 
   // Value: protects=a warrior's d20 is said once (TODOS: 旁白念出戰士擲到幾點); fails_when=a 20 line also gets the prefix
-  it("a warrior's roll leads the line with its number and hit or miss, except a crit die's 大成功 or 手滑 line, which already says it", () => {
+  it("a warrior's roll leads the line with its number and hit or miss, then its own tier's line on a 20 too", () => {
     const p = createScriptedProvider(() => 0);
     expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 3 })).toMatch(/^戰士擲出 3 點，沒打中。.+/);
     expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 9 })).toMatch(/^戰士擲出 9 點，命中！.*2 顆心/);
-    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).not.toContain("戰士擲出");
+    expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！獎勵加倍！(?!.*戰士擲出)/);
     // The boss kill has no 大成功 line, and a check's 1 is the persuasion die (its 答對 line would be wrong): both say the warrior's number.
     expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！/);
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 5, warriorRoll: 9, roll: { kind: "check", value: 1 } })).toMatch(/^戰士擲出 9 點，命中！(?!.*說服)/);
@@ -555,30 +557,27 @@ describe("scripted: the crit die", () => {
     }
   });
 
-  it("a 20 gets a 大成功 line and a 1 a 手滑 line that still hits, for room and boss hits", () => {
+  it("a class die's 20 gets a 大成功 line, for room and boss hits", () => {
     const p = createScriptedProvider(() => 0);
     const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 15 } as const;
     expect(p.line({ ...correct, roll: { kind: "crit", value: 20 } })).toMatch(/20.*\+15/);
     expect(ROLL_VARIANTS.crit.correct).toContain(p.line({ ...correct, roll: { kind: "crit", value: 20 } }).replace("紅隊", "{team}").replace("史萊姆", "{monster}").replace("15", "{points}"));
-    const fumble = p.line({ ...correct, points: 10, roll: { kind: "crit", value: 1 } });
-    expect(fumble).toMatch(/擲出 1|停在 1/);
-    expect(fumble).toMatch(/打中|倒了/);
     const boss = p.line({ type: "boss-hit", team: "紅隊", bossHp: 1, bossMaxHp: 3, roll: { kind: "crit", value: 20 } });
     expect(boss).toContain("1 顆心");
-    for (const kind of ["crit", "fumble"] as const) for (const lines of Object.values(ROLL_VARIANTS[kind])) expect(lines.length).toBeGreaterThanOrEqual(2);
+    for (const lines of Object.values(ROLL_VARIANTS)) for (const pool of Object.values(lines)) expect(pool.length).toBeGreaterThanOrEqual(2);
   });
 
-  // Value: protects=every crit/fumble line fills from its event (dnd design E3); fails_when=a template names a field the
-  // event lacks ({bossHP}, {points} on a boss hit), so the TV shows a raw brace; seam=none; no_claim=wording quality
-  it("every crit and fumble line uses only the placeholders its event fills", () => {
+  // Value: protects=every 20/1 line fills from its event (dnd design E3); fails_when=a template names a field the event
+  // lacks ({bossHP}, {points} on a boss hit), so the TV shows a raw brace; seam=none; no_claim=wording quality
+  it("every 20 and 1 line uses only the placeholders its event fills", () => {
     const allowed = { correct: ["{team}", "{monster}", "{points}"], "boss-hit": ["{team}", "{bossHp}"] } as const;
-    for (const kind of ["crit", "fumble"] as const)
+    for (const lines of Object.values(ROLL_VARIANTS))
       for (const type of ["correct", "boss-hit"] as const)
-        for (const t of ROLL_VARIANTS[kind][type]) for (const ph of t.match(/\{\w+\}/g) ?? []) expect(allowed[type]).toContain(ph);
+        for (const t of lines[type]) for (const ph of t.match(/\{\w+\}/g) ?? []) expect(allowed[type]).toContain(ph);
     const p = createScriptedProvider(() => 0);
-    const fumbleBoss = p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, roll: { kind: "crit", value: 1 } });
-    expect(fumbleBoss).toContain("2 顆心");
-    expect(fumbleBoss).not.toMatch(/[{}]/);
+    const burntBoss = p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, roll: { kind: "dish", value: 1 } });
+    expect(burntBoss).toContain("2 顆心");
+    expect(burntBoss).not.toMatch(/[{}]/);
   });
 
   // Value: protects=a 20 or 1 on a cooked room hit says the roll, not the dish (user decision, 2026-11-06: rarer beat wins);
@@ -789,5 +788,64 @@ describe("every scripted pool line fits the dialogue box", () => {
   // The chest's dish changes satiety, not score: a bare 「+3」 would read as points.
   it("says 飽足感 on every chest feast and rotten line", () => {
     for (const l of [...scripted.EVENT_VARIANTS.feast, ...scripted.EVENT_VARIANTS.rotten]) expect(l).toContain("飽足感");
+  });
+});
+
+// Value: protects=the owner's dice lines (2026-11-19) play by tier, fill every slot, and fit MAX_LINE with a long team
+// name; fails_when=a tier picks another tier's pool, a warrior's or a dish die's line loses its facts, or a raw brace shows
+describe("scripted: the dice lines by tier (class-dice-rework.md)", () => {
+  const long = "超級無敵霹靂好隊伍";
+  const vars = { team: long, monster: "害羞幽靈" };
+  const tiers = [1, 4, 12, 20];
+  it("a class die, the check and the potion pick their own pool and fill every slot", () => {
+    const p = createScriptedProvider(() => 0);
+    for (const kind of ["thief", "mage", "cleric"] as const)
+      tiers.forEach((v, t) => {
+        const line = p.dieLine(kind, v, vars);
+        expect(scripted.SKILL_TIER_VARIANTS[kind][t].map((l) => l.replaceAll("{team}", long).replaceAll("{monster}", "害羞幽靈"))).toContain(line);
+      });
+    for (const kind of ["fumble", "fail", "pass"] as const) expect(p.checkLine(kind, vars)).not.toMatch(/[{}]/);
+    for (const kind of ["drink", "saved", "bust"] as const) expect(p.potionLine(kind, long)).not.toMatch(/[{}]/);
+  });
+
+  it("every dice line fits MAX_LINE with its prefix and a long team name, and has no 擲筊 or 老六", () => {
+    const all = [
+      ...Object.values(scripted.SKILL_TIER_VARIANTS).flat(2),
+      ...scripted.WARRIOR_TIER_VARIANTS.flat(),
+      ...scripted.DISH_TIER_VARIANTS.flat(),
+      ...Object.values(scripted.CHEF_DISH_VARIANTS).flat(),
+      ...Object.values(scripted.CHECK_VARIANTS).flat(),
+      ...Object.values(scripted.POTION_VARIANTS).flat(),
+    ];
+    for (const l of all) {
+      const filled = `戰士擲出 20 點，命中！${l.replaceAll("{team}", long).replaceAll("{monster}", "害羞幽靈")}`;
+      expect([...filled].length, filled).toBeLessThanOrEqual(MAX_LINE);
+      expect(l).not.toMatch(/擲筊|老六|\{(?!team\}|monster\})/);
+    }
+  });
+
+  it("the warrior's roll says its result, then its tier's line; a dish die's 20 or 1 line wins over it", () => {
+    const p = createScriptedProvider(() => 0);
+    const prefix = /^戰士擲出 12 點，命中！拿八成獎勵。/;
+    const hit = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 8, warriorRoll: 12, dish: 10 });
+    expect(hit).toMatch(prefix);
+    expect(scripted.WARRIOR_TIER_VARIANTS[2].map((l) => l.replace("{team}", "紅隊").replace("{monster}", "史萊姆"))).toContain(hit.replace(prefix, ""));
+    const miss = p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1, penalty: 10 });
+    expect(miss).toMatch(/^戰士擲出 1 點，大失敗，扣 10 分！/);
+    const legend = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 12, warriorRoll: 12, dish: 20, roll: { kind: "dish", value: 20 } });
+    expect(scripted.WARRIOR_TIER_VARIANTS[2].some((l) => legend.endsWith(l.replace("{team}", "紅隊").replace("{monster}", "史萊姆")))).toBe(false);
+  });
+
+  it("the dish die picks its tier's pool on 1, 2–6 and 20, a chef's extra lines too, and joins the usual pool on 7–19", () => {
+    const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 10 } as const;
+    const fills = (pool: readonly string[]) => pool.map((l) => l.replaceAll("{team}", "紅隊").replaceAll("{monster}", "史萊姆").replaceAll("{points}", "10"));
+    const p = createScriptedProvider(() => 0);
+    expect(fills([...scripted.DISH_TIER_VARIANTS[0], ...ROLL_VARIANTS.burnt.correct])).toContain(p.line({ ...correct, dish: 1, roll: { kind: "dish", value: 1 } }));
+    expect(fills(scripted.DISH_TIER_VARIANTS[1])).toContain(p.line({ ...correct, dish: 4 }));
+    const chefLegend = new Set(Array.from({ length: 12 }, () => p.line({ ...correct, classId: "chef", dish: 20, roll: { kind: "dish", value: 20 } })));
+    expect([...chefLegend]).toContain("食神降臨！紅隊這盤值兩倍。");
+    const served = new Set(Array.from({ length: 40 }, () => p.line({ ...correct, dish: 12 })));
+    expect(fills(scripted.DISH_TIER_VARIANTS[2]).some((l) => served.has(l))).toBe(true);
+    expect(fills(VARIANTS.correct).some((l) => served.has(l))).toBe(true);
   });
 });

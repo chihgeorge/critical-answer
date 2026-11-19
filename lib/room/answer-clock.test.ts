@@ -2,6 +2,7 @@
 // an answer waiting for the host stops it, 重答 and new turns start it again, a video waits for its clip, and a
 // restart keeps the remaining time.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -23,7 +24,7 @@ const bank = (first: object = text("r1")) =>
 /** The room's screen key, as the big screen link on the host page carries it (docs/designs/screen-video-key.md). */
 const screenKeyOf = (room: DungeonRoom) => (room as unknown as { screenKey: string }).screenKey;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage() {

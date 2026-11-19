@@ -4,7 +4,7 @@
 import { epilogueParts, type NarrationEvent, type NextTurn } from "./events";
 import { ordinal } from "../ordinal";
 import { placeLine } from "../podium";
-import type { ClassId, EventOutcome, FortuneCondition, FortuneEffect } from "../game-state";
+import { skillTier, type ClassId, type EventOutcome, type FortuneCondition, type FortuneEffect } from "../game-state";
 import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "../event-text";
 import type { Reaction } from "../protocol";
 
@@ -123,28 +123,38 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
   },
 };
 
-/** A natural 20 (a critical hit) or a 1 (a fumble that still hits) on the die behind a hit (event.roll): this line
- * replaces the usual one, it is not an extra line (dnd design R1, E3). */
-export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", { correct: string[]; "boss-hit": string[] }> = {
+/** A natural 20 or 1 behind a hit (event.roll): a class die's 20 (`crit`: a warrior's roll or the sneak die), the dish
+ * die's 20 (`legend`) or 1 (`burnt`), or the persuasion check's. This line replaces the usual one, it is not an extra
+ * line (dnd design R1, E3; class-dice-rework.md). */
+export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded" | "blunder", { correct: string[]; "boss-hit": string[] }> = {
   crit: {
     correct: [
       "{team}擲出 20！一擊打飛{monster}，+{points}！",
       "20 點！{team}會心一擊撂倒{monster}，+{points}！",
-      "天選的 20！{team}暴擊，多拿一半，+{points}！",
     ],
     "boss-hit": [
       "{team}擲出 20！重擊首領，剩 {bossHp} 顆心！",
-      "暴擊 20！{team}多打一顆，剩 {bossHp} 顆心！",
+      "大成功 20！{team}多打一顆，剩 {bossHp} 顆心！",
     ],
   },
-  fumble: {
+  legend: {
     correct: [
-      "{team}擲出 1，手滑也打中{monster}，+{points}。",
-      "擲出 1，{team}跌倒，{monster}也倒了，+{points}。",
+      "料理骰 20！{team}端出傳說級料理，+{points}！",
+      "{team}的料理骰擲出 20，香氣飄滿整個地城，+{points}！",
     ],
     "boss-hit": [
-      "擲出 1！{team}跌倒也打中，剩 {bossHp} 顆心。",
-      "手一滑！{team}歪歪打中，首領剩 {bossHp} 顆心。",
+      "料理骰 20！{team}的傳說級料理香暈首領，剩 {bossHp} 顆心！",
+      "{team}料理骰擲出 20，首領看傻了，剩 {bossHp} 顆心！",
+    ],
+  },
+  burnt: {
+    correct: [
+      "料理骰擲出 1！{team}把{monster}燒成焦炭，只拿 +{points}。",
+      "{team}料理骰 1，鍋子冒黑煙，+{points}。",
+    ],
+    "boss-hit": [
+      "料理骰 1！{team}燒焦了，首領還剩 {bossHp} 顆心。",
+      "{team}的料理骰擲出 1，滿室黑煙，首領剩 {bossHp} 顆心。",
     ],
   },
   // A persuasion check (kind "check"): a natural 20 wins without an answer, a 1 halves the reward.
@@ -152,6 +162,9 @@ export const ROLL_VARIANTS: Record<"crit" | "fumble" | "persuaded" | "blunder", 
     correct: [
       "擲出 20！{team}說動{monster}讓路，+{points}！",
       "20 點！{team}三言兩語說動{monster}，+{points}！",
+      "嘴遁大成功！{monster}聽完直接讓路。",
+      "{monster}：我信了。{team}一句話就過關。",
+      "{team}一句話，{monster}自己把門打開。",
     ],
     "boss-hit": [
       "擲出 20！{team}說服首領，剩 {bossHp} 顆心！",
@@ -375,12 +388,12 @@ export const BOSS_ENTER_PHASE_VARIANTS = [
 /** A wrong buzz (boss-buzzer.md): short, the music is playing again. */
 export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快搶！", "不對！{team}這題不能再搶，音樂繼續！", "{monster}大笑，{team}出局！還有誰知道？"];
 
-/** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
-export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局！同一首再搶一次！", "{monster}得意大笑：沒人答對！同一首再搶一次！"];
+/** Every online team missed the question (a song or text, #328) (boss-music-buzzer.md M1): the same one again, everyone in. */
+export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一題再搶一次！", "{team}也答錯，全員出局！同一題再搶一次！", "{monster}得意大笑：沒人答對！同一題再搶一次！"];
 /** A music question with fields (#369): nobody got every field, so its second and last round opens to all. */
 export const BUZZ_SECOND_VARIANTS = ["都沒全對！第二輪開搶，這是最後一次機會！", "{team}也沒全對！同一首第二輪，最後一次搶！", "{monster}冷笑：第二輪，也是最後一輪，快搶！"];
-/** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
-export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
+/** The last team still in dropped instead, so nobody answered wrong: the same question reopens to all (M1). */
+export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一題再搶一次！";
 
 /** 🚨 成立 (anti-ai-cheating.md): {team} was caught asking an AI by {caught}. */
 export const CAUGHT_VARIANTS = [
@@ -402,6 +415,63 @@ export const FLEE_SWITCH_VARIANTS = [
 
 /** A cleric's prayer on a miss: the team answers again now, keeping the turn, so never "next round". */
 export const PRAYER_VARIANTS = ["聖光降臨，{team}再答一次！", "{team}的祈禱得到回應，馬上再答一次！", "一道聖光落下，{team}重整旗鼓，現在再答！"];
+
+// The dice lines the owner approved (2026-11-19), one pool per skill tier: [1, 2–6, 7–19, 20] (skillTier). A class die's
+// line plays as the die lands (dieLine); the warrior's and the dish die's replace the answer's line (line / plainLine).
+type Tiers = readonly [string[], string[], string[], string[]];
+const CLERIC_SILENT = ["神明已讀不回，{team}的祈禱沒有回應。", "{team}問了神奇海螺，海螺說：什麼都不要做。", "{team}雙手合十……天上一片安靜。"];
+export const SKILL_TIER_VARIANTS: Record<"thief" | "mage" | "cleric", Tiers> = {
+  thief: [
+    ["有內鬼，終止交易！{team}的偷襲被發現了。", "{team}大意了，沒有閃，當場被逮。", "{team}踩到樹枝，啪一聲，全地城都聽到了。"],
+    ["{team}繞到背後……{monster}剛好轉身，尷尬。", "這波偷襲，{monster}表示：是在哈囉？", "{team}的偷襲慢了半拍，只好正面上。"],
+    ["年輕人不講武德，搞偷襲！{team}就位。", "來騙，來偷襲！{team}已經繞到{monster}背後。", "{team}消失在陰影裡，答對就是一點五倍。"],
+    ["完美偷襲！{monster}大意了，沒有閃。", "{team}偷襲得手，勸{monster}耗子尾汁。", "教科書等級的背刺！{team}答對直接翻倍。"],
+  ],
+  mage: [
+    ["{team}念了咒語……重音念錯，什麼都沒發生。", "{team}想翻找提示，結果卡在寶箱怪裡。", "魔力不足！{team}的法杖只冒出一點煙。"],
+    ["{team}問了神奇海螺，海螺只肯說一點點。", "聽君一席話，如聽一席話。{team}拿到小提示。", "水晶球霧霧的，{team}只看到一點輪廓。"],
+    ["{team}，你的下一句話是：「原來是這樣！」", "疾疾，提示現身！{team}拿到大提示。", "{team}的水晶球亮了，線索全都串起來了。"],
+    ["領域展開！答案直接出現在{team}眼前。", "真相只有一個！{team}已經看穿答案。", "大成功！魔法書把答案整頁攤開給{team}。"],
+  ],
+  cleric: [
+    CLERIC_SILENT,
+    CLERIC_SILENT,
+    ["死者蘇生！{team}原地復活，馬上再答。", "教練，{team}想再答一次！祈禱應驗了。", "{team}覺得還可以搶救一下，神明同意了。"],
+    ["神蹟降臨！{team}滿血復活，這次神明請客。", "神明秒回還加碼：{team}再答一次，這次免費。", "大成功！聖光照亮{team}整隊，祈禱不算次數。"],
+  ],
+};
+
+/** The warrior's roll, after 「戰士擲出 N 點，命中！／沒打中。」 (line()). */
+export const WARRIOR_TIER_VARIANTS: Tiers = [
+  ["{team}梭哈了……然後輸光了，整題賠掉。", "{team}衝進去了！……然後就沒有然後了。", "骰子停在一。{team}的劍飛出去，分數也飛了。"],
+  ["大力沒有出奇蹟，{team}揮空了。", "氣勢滿分，準度零分。{team}沒打中。", "{team}的劍卡在牆上，拔了好久。"],
+  ["大力出奇蹟！{team}不用答題，硬砍過關。", "超派！{team}一記重擊，{monster}倒了。", "題目？{team}選擇用劍回答，打八折照收。"],
+  ["各位觀眾，二十點！{team}獎勵翻倍。", "{team}說要打十個，結果真的打贏了，翻倍！", "一劍定江山！{team}擲出二十，翻倍入袋。"],
+];
+
+/** A correct answer's dish die (every team). 7–19 joins the answer's usual pool; 1 and 20 join the burnt and legend lines. */
+export const DISH_TIER_VARIANTS: Tiers = [
+  ["完了，芭比Q了。{team}的料理變成焦炭。", "黑暗料理界發來賀電，{team}這盤只剩一成。", "食神吃了一口，只說兩個字：失敗。"],
+  ["食神一樣一樣挑：太鹹、太硬、沒入味。勉強過關。", "主廚大喊：還是生的！{team}這盤勉強過關。", "{team}的料理有點鹹，配三碗飯剛好。"],
+  ["只要有心，人人都是食神。{team}上菜！", "真香！{team}這盤一上桌就被掃光。", "火候剛好，{team}上菜！"],
+  ["黯然銷魂！{team}這盤吃了會想哭。", "評審含著淚問：以後吃不到怎麼辦？", "這道菜在發光！{team}煮出傳說級料理。"],
+];
+/** A chef's extra dish lines, on 7–19 and 20 only. */
+export const CHEF_DISH_VARIANTS = { success: ["廚師出手就是不一樣，{team}多拿兩成。"], legend: ["食神降臨！{team}這盤值兩倍。"] };
+
+/** The persuasion check as it lands (a 20 wins at once: its lines join ROLL_VARIANTS.persuaded). */
+export const CHECK_VARIANTS = {
+  fumble: ["聽君一席話，如聽一席話。{monster}更生氣了。", "{team}一開口，{monster}：是在哈囉？", "{monster}：你說得很好，下次別說了。"],
+  fail: ["{monster}聽完了：可是我拒絕。", "{monster}：我不要你覺得，我要我覺得。", "{team}說了很多，{monster}一個字也沒聽進去。"],
+  pass: ["{team}發動嘴遁，{monster}聽得頻頻點頭。", "{monster}，{team}是來談條件的。……談成了。", "{team}把{monster}誇上天，對方很受用。"],
+};
+
+/** 🧪 The lucky potion: drunk, then its two dice landed (one good one bad: saved; both bad: bust). */
+export const POTION_VARIANTS = {
+  drink: ["小孩子才擲一顆，{team}兩顆都要。", "左手只是輔助，第二顆骰才是關鍵。", "{team}一口乾了，下一顆骰多一次機會。"],
+  saved: ["還好有喝！第二顆骰救了{team}一命。", "一顆失敗，一顆成功，{team}選成功那顆。", "藥水發威，壞骰子當作沒看到。"],
+  bust: ["喝了也沒用，兩顆都很慘。{team}盡力了。", "兩顆骰子手牽手，一起擺爛。", "藥水：我只負責多骰一顆，不負責結果。"],
+};
 
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
 export const BOSS_MISS_VARIANTS = [
@@ -551,13 +621,20 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     if (event.type === "boss-kill") return "命中！";
     return value === 20 ? "命中！獎勵加倍！" : "命中！拿八成獎勵。";
   }
-  /** Set by plainLine when it picked a crit die's line, which says the number itself. */
+  /** Set by plainLine when it picked a class die's 20 line, which says the number itself. */
   let saidDie = false;
   const provider = {
     name: "scripted",
     /** Synchronous, so it can back up a slow provider without awaiting anything. */
     line(event: NarrationEvent): string {
       saidDie = false;
+      // The warrior's roll gets its own tier line, unless its hit's dish die landed a 20 or 1 (that line wins).
+      const w = "warriorRoll" in event ? event.warriorRoll : undefined;
+      const ownLine = (event.type === "correct" && !event.entersBoss && event.roll?.kind !== "dish") || (event.type === "retry" && !event.boss && !event.exhausted);
+      if (w !== undefined && ownLine) {
+        const t = skillTier(w);
+        return `戰士擲出 ${w} 點，${warriorResult(event)}${fill(pick(WARRIOR_TIER_VARIANTS[t], `warrior-${t}`), event)}`;
+      }
       const text = provider.plainLine(event);
       // A 大成功 / 手滑 line already says the warrior's die.
       const said = "warriorRoll" in event && event.warriorRoll !== undefined && !saidDie;
@@ -589,22 +666,35 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // A phase under way means a team is already inside, so the phase lines are join lines too (none says 推開).
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
+      // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, 2–6 and 20.
+      const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? skillTier(event.dish) : undefined;
+      const chef = "classId" in event && event.classId === "chef";
+      if (event.type === "correct" && dishTier !== undefined && dishTier !== 2) {
+        const pool =
+          dishTier === 0
+            ? [...DISH_TIER_VARIANTS[0], ...ROLL_VARIANTS.burnt.correct]
+            : dishTier === 1
+              ? DISH_TIER_VARIANTS[1]
+              : [...DISH_TIER_VARIANTS[3], ...(chef ? CHEF_DISH_VARIANTS.legend : []), ...ROLL_VARIANTS.legend.correct];
+        return fill(pick(pool, `dish-${dishTier}`), event);
+      }
+      // 7–19: the dish lines join the answer's usual pool.
+      const served = dishTier === 2 ? [...DISH_TIER_VARIANTS[2], ...(chef ? CHEF_DISH_VARIANTS.success : [])] : [];
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
         // A warrior answered with its own d20, so a check's line (說服, 答對) would tell the wrong story.
         if (event.roll && !(event.roll.kind === "check" && event.warriorRoll !== undefined)) {
           const twenty = event.roll.value === 20;
-          const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : twenty ? "crit" : "fumble";
+          const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : event.roll.kind === "dish" ? (twenty ? "legend" : "burnt") : "crit";
           saidDie = event.roll.kind === "crit";
-          // A warrior's 20 doubles the reward instead of the crit's half (#305).
-          const pool = ROLL_VARIANTS[kind][event.type].filter((l) => event.warriorRoll !== 20 || !l.includes("多拿一半"));
-          return fill(pick(pool, `${kind}-${event.type}`), event);
+          return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
       }
-      if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick(namesPart(event.part) ? [...FOODIE.dishPart, ...DISH_VARIANTS] : DISH_VARIANTS, "dish"), event);
+      if (event.type === "correct" && event.cooked && !event.entersBoss) return fill(pick([...(namesPart(event.part) ? [...FOODIE.dishPart, ...DISH_VARIANTS] : DISH_VARIANTS), ...served], "dish"), event);
       const bossEnter = event.type === "correct" && event.entersBoss;
       if (!bossEnter && (event.type === "correct" || event.type === "boss-hit") && event.classId) {
-        return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type]], event.type), event);
+        return fill(pick([...CLASS_VARIANTS[event.classId][event.type], ...VARIANTS[event.type], ...(event.type === "correct" ? served : [])], event.type), event);
       }
+      if (event.type === "correct" && !bossEnter && served.length) return fill(pick([...VARIANTS.correct, ...served], "correct"), event);
       if (bossEnter && event.entersBoss?.order) return fill(pick(BOSS_JOIN_VARIANTS, "boss-join"), event);
       return fill(pick(bossEnter ? BOSS_ENTER_VARIANTS : VARIANTS[event.type], bossEnter ? "boss-enter" : event.type), event);
     },
@@ -621,6 +711,19 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       return epilogueParts(event).map((p) =>
         p.kind === "title" ? "" : p.kind === "place" ? placeLine(p.place, p.team) : scriptedEpilogue(event.ranking, event.winners, rng),
       );
+    },
+    /** A class die's line as it lands (SKILL_TIER_VARIANTS). */
+    dieLine(kind: "thief" | "mage" | "cleric", value: number, vars: { team: string; monster: string }): string {
+      const t = skillTier(value);
+      return fill(pick(SKILL_TIER_VARIANTS[kind][t], `${kind}-${t}`), vars);
+    },
+    /** The persuasion check's line as it lands: a 1, a miss or a pass (CHECK_VARIANTS). */
+    checkLine(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string }): string {
+      return fill(pick(CHECK_VARIANTS[kind], `check-${kind}`), vars);
+    },
+    /** 🧪 The potion's line: drunk, or its two dice landed (POTION_VARIANTS). */
+    potionLine(kind: keyof typeof POTION_VARIANTS, team: string): string {
+      return fill(pick(POTION_VARIANTS[kind], `potion-${kind}`), { team });
     },
     /** Synchronous like line(): the scripted prompt for whoever is up next. */
     nextLine(next: NextTurn): string {

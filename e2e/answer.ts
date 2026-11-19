@@ -23,17 +23,28 @@ export async function screenUrl(host: Page): Promise<string> {
   const link = host.getByTestId("screen-link");
   // Once the game has started the link lives in ⚙ 更多 (the lobby's 開始遊戲 is gone by then).
   const inDrawer = (await link.count()) === 0 && !(await host.getByRole("button", { name: /開始遊戲/ }).isVisible());
-  if (inDrawer) await host.getByRole("button", { name: "⚙ 更多" }).click();
+  if (inDrawer) await openMore(host, "screen");
   await expect(link).toHaveAttribute("href", /\/screen#s=./);
   const href = (await link.getAttribute("href"))!;
   if (inDrawer) await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
   return href;
 }
 
-/** Opens the host's ⚙ 更多 drawer, where the rarer controls live (a no-op when it is open). */
-export async function openMore(host: Page) {
+/** Opens the host's ⚙ 更多 drawer, where the rarer controls live (a no-op when it is open), and unfolds `section`
+ * (teams, rejudge, setup, screen, other: one at a time; the drawer opens on 隊伍 in a game, 開局準備 in the lobby). */
+export async function openMore(host: Page, section?: "teams" | "rejudge" | "setup" | "screen" | "other") {
   if ((await host.getByTestId("more-drawer").count()) === 0) await host.getByRole("button", { name: "⚙ 更多" }).click();
   await expect(host.getByTestId("more-drawer")).toBeVisible();
+  if (!section) return;
+  const head = host.getByTestId(`more-section-${section}`);
+  if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
+}
+
+/** Unfolds a team's ⋯ in ⚙ 更多's 隊伍: 指定下一題, 🧪 給藥水, 交給新手機, 設定分數 and the ability fixes. */
+export async function openTeamTools(host: Page, team: string) {
+  await openMore(host, "teams");
+  const more = host.getByRole("button", { name: `${team}的更多工具` });
+  if ((await more.getAttribute("aria-expanded")) !== "true") await more.click();
 }
 
 /** Closes the host's ⚙ 更多 drawer. */
@@ -103,7 +114,7 @@ export async function answerCorrectly(host: Page) {
     await phone.getByRole("button", { name }).click();
     await phone.getByRole("button", { name: "鎖定答案" }).click();
     await revealLock(host);
-    // A right lock is judged after two beats: the reveal (2 s), then the crit die (2 s). Wait them out here, so
+    // A right lock is judged after two beats: the reveal (2 s), then the dish die (2 s). Wait them out here, so
     // callers see the judged state with their own default timeouts.
     return expect(host.getByTestId("host-mc-status")).toHaveCount(0, { timeout: 10_000 });
   }

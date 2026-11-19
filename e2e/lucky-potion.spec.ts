@@ -1,14 +1,14 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, openTeamTools, closeMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
 restoreRoom0AfterEach();
 
 // Value: protects=the 🧪 幸運藥水 path end to end (docs/designs/lucky-potion.md): the host gives one, the pawn and the phone show it,
-// the team drinks it, and its crit die rolls as two dice on the big screen; fails_when=a screen misses the item or the roll
+// the team drinks it, and its dish die rolls as two dice on the big screen; fails_when=a screen misses the item or the roll
 // shows one die; seam=none; no_claim=which values land (unit tests)
-test("lucky potion: host gives it, the team drinks it, the crit rolls two dice and the potion is gone", async ({ browser }) => {
+test("lucky potion: host gives it, the team drinks it, the dish die rolls two dice and the potion is gone", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   // Every message the host page sends, to prove 取消 sent no HOST_GIVE_ITEM.
   const sent: string[] = [];
@@ -28,7 +28,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
 
   // 給…一瓶幸運藥水？ asks first (#267): 取消 gives nothing, so the button stays and the next press still asks.
   // The potion is in ⚙ 更多's 隊伍.
-  await openMore(host);
+  await openTeamTools(host, "藥水隊");
   const asked: string[] = [];
   host.once("dialog", (d) => void (asked.push(d.message()), d.dismiss()));
   await host.getByTestId("give-potion").click();
@@ -60,12 +60,12 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await host.getByRole("button", { name: /公布答案/ }).click();
 
   const overlay = screen.getByTestId("roll-overlay");
-  await expect(overlay).toHaveAttribute("data-kind", "crit");
+  await expect(overlay).toHaveAttribute("data-kind", "dish");
   await expect(overlay).toContainText("幸運藥水！擲兩次取高");
   await expect(screen.getByTestId("potion-die")).toHaveCount(2);
   await expect(screen.getByTestId("roll-result")).toHaveText(/^取高：\d+/);
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
-  await openMore(host);
+  await openTeamTools(host, "藥水隊");
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 給藥水");
   await expect(screen.getByTestId("pawn-potion")).toHaveCount(0);
 });

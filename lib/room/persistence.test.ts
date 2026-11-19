@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
 import { BANK_KEY, NARRATION_MAX_LINES, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
@@ -60,7 +61,7 @@ function makeRoom(storage: RoomStorage, opts: ConstructorParameters<typeof Dunge
   return { room: new DungeonRoom(io, () => 0, { epilogueDelayMs: 0, ...opts }), io };
 }
 
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -121,9 +122,11 @@ describe("saving", () => {
     const storage = memoryStorage(log);
     const { room } = makeRoom(storage, {}, log);
     const { host, a } = startedGame(room);
-    log.length = 0;
-    judgeCorrect(room, host, T1);
+    // 答對 rolls the dish die first: the judgment lands when it does (class-dice-rework.md).
+    room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: T1, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: true }), host);
     void a;
+    log.length = 0;
+    settleDish(room);
     expect(log[0]).toBe("put"); // the judgment is saved first
     expect(log).toContain("broadcast");
     expect((storage.data.get(SNAPSHOT_KEY) as any).game.teams.find((t: any) => t.id === T1).score).toBe(1);
@@ -607,6 +610,7 @@ describe("restoring after a restart", () => {
     expect((second.room as any).cue).toBe("flee");
     serveNext(second.room, host, (second.room as any).eventSeq);
     vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
+    settleDish(second.room); // the natural 20 rolls its dish die
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
     const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
@@ -976,6 +980,71 @@ describe("restoring after a restart", () => {
     second.room.onConnect(late);
     expect(lastOf(late, "EPILOGUE")).toMatchObject({ text: "已經寫好的後記" });
   });
+
+  /** Restores a copy of `saved`, changed by `patch`, into a fresh room. */
+  const restoredFrom = async (storage: ReturnType<typeof memoryStorage>, saved: unknown, patch: (s: any) => void = () => {}) => {
+    const s = structuredClone(saved);
+    patch(s);
+    storage.data.set(SNAPSHOT_KEY, s);
+    const room = makeRoom(storage).room;
+    await room.restore();
+    return room as any;
+  };
+
+  // Value: protects=a restart during a passed check's card shows the card again (#364 follow-up); fails_when=the beat is
+  // not saved, or a saved one comes back for a turn or a check it no longer fits, or from a damaged save
+  it("a restart during a passed check's card brings the card back, only for the same turn and a passed check", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage);
+    startedGame(first.room);
+    const g = first.room.game!;
+    const teamId = currentTurnTeamId(g)!;
+    const questionId = g.teams.find((t) => t.id === teamId)!.currentQuestionId;
+    first.room.game = { ...g, checks: { ...g.checks, [checkKey(questionId, teamId)]: { value: 15, bonus: 0, dc: 8, passed: true } } };
+    (first.room as any).checkSuccessBeat(teamId, questionId);
+    (first.room as any).persist();
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    expect(saved.checkBeat).toEqual({ teamId, questionId });
+    // The turn is not pinned during the card: a save after it moved on still names the team that passed.
+    first.room.game = { ...first.room.game!, currentTurnIndex: (g.currentTurnIndex + 1) % g.turnOrder.length };
+    (first.room as any).persist();
+    expect((storage.data.get(SNAPSHOT_KEY) as any).checkBeat).toEqual({ teamId, questionId });
+    vi.useFakeTimers();
+    const room = await restoredFrom(storage, saved);
+    expect(room.snapshot()).toMatchObject({ stageBeat: "check-success", question: null });
+    vi.advanceTimersByTime(10_000);
+    expect(room.stageBeat).toBeNull();
+    expect(room.snapshot().question).toMatchObject({ id: questionId });
+    expect((await restoredFrom(storage, saved, (s) => (s.checkBeat.teamId = T2 === teamId ? T1 : T2))).stageBeat).toBeNull();
+    expect((await restoredFrom(storage, saved, (s) => (s.game.checks[checkKey(questionId, teamId)].passed = false))).stageBeat).toBeNull();
+    expect((await restoredFrom(storage, saved, (s) => (s.checkBeat = { teamId }))).stageBeat).toBeNull();
+  });
+
+  // Value: protects=a restart during a boss-entry dish still announces the entrance the dish held back (#364 follow-up);
+  // fails_when=the entrance is not saved, or is added to another narration
+  it("a restart during a boss-entry dish adds the held-back entrance to the narration on show", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage, { holdMs: 10 });
+    const { host } = startedGame(first.room);
+    first.room.game = { ...first.room.game!, config: { ...first.room.game!.config, bossThreshold: 1 } };
+    judgeCorrect(first.room, host, T1);
+    await new Promise((r) => setTimeout(r, 30));
+    expect((first.room as any).bossEntryBefore).not.toBeNull();
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    // Two teams and a threshold of 1: this entry also starts 最後衝刺, saved with it.
+    expect(saved.bossEntry).toMatchObject({ teamId: T1, eventId: saved.lastNarration.eventId, sprint: true });
+    const lines = async (patch?: (s: any) => void) => (await restoredFrom(storage, saved, patch)).lastNarration.lines.join(" ");
+    expect(saved.lastNarration.lines.join(" ")).not.toContain("吃飽後走進首領房");
+    expect(await lines()).toContain("甲隊吃飽後走進首領房");
+    // Restoring it saves nothing half-restored: the room's start time stays as saved.
+    expect((storage.data.get(SNAPSHOT_KEY) as any).createdAt).toBe(saved.createdAt);
+    // A 最後衝刺 that started with this entry is said after it; one that was already on is not said again.
+    const sprinting = (sprint: boolean) => (s: any) => Object.assign(s, { game: { ...s.game, sprint: { teamIds: [T2] } }, bossEntry: { eventId: s.bossEntry.eventId, teamId: s.bossEntry.teamId, ...(sprint ? { sprint: true } : {}) } });
+    expect(await lines(sprinting(true))).toContain("乙隊獲得祝福");
+    expect(await lines(sprinting(false))).not.toContain("祝福");
+    expect(await lines((s) => (s.bossEntry.eventId -= 1))).not.toContain("吃飽後走進首領房");
+    expect(await lines((s) => (s.bossEntry = { teamId: T1 }))).not.toContain("吃飽後走進首領房");
+  });
 });
 
 describe("saved data that cannot be used", () => {
@@ -1103,6 +1172,21 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     expect(await second.room.restore()).toBe("restored");
     await vi.waitFor(() => expect(lastState(second.io)?.podium.beats).toBeTruthy());
     expect(lastState(second.io).podium.elapsedMs).toBe(-(FINISH_PODIUM_MS - 1000));
+  });
+
+  // Value: protects=the podium and phones show the killer's true score, boss dish included (#400); fails_when=the
+  // unserved-dish hiding still applies once the game is over (a finished game's boss dish is never 上菜'd);
+  // why_new=bug #400; seam=none; no_claim=the screen's drawing
+  it("after the finishing blow, STATE scores and the podium ranking use the true scores, boss dish included", async () => {
+    const { room, io } = killedBoss(memoryStorage(), () => 1_000_000);
+    await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
+    const live = room.game!.teams;
+    const state = lastState(io);
+    expect(state.reveal?.dish).toBeTruthy(); // the boss dish is up, never served
+    for (const t of live) expect(state.view.teams.find((s: { id: string }) => s.id === t.id).reward).toBe(t.reward);
+    // Sanity check: the ranking reads game.ranking (true scores), not the STATE view the loop above covers.
+    const best = Math.max(...live.map((t) => t.reward));
+    expect(live.find((t) => t.id === state.podium.ranking[0])!.reward).toBe(best);
   });
 
   // Value: protects=an epilogue that throws still lets the places be called, on scripted lines (/review pass 2);

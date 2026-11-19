@@ -10,22 +10,22 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type CalibrateRun, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
-import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
-import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
+import { LabelChip, Panel, PixelButton, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { memoryPhoneHint } from "@/lib/memory-copy";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
-import { McOption } from "@/components/mc-option";
+import { McOption, optionLetter } from "@/components/mc-option";
 import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
+import { dishPhoneLine, rollStatus } from "@/lib/class-dice";
 import { visibleInitiativeRoll } from "@/lib/initiative";
 import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
@@ -33,42 +33,43 @@ import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
 import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 
-/** What each class does, for the lobby cards (docs/designs/class-abilities.md). */
+/** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
+ * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  warrior: `擲 d20 代替答題：${WARRIOR_TARGET} 以上算答對拿八成，20 雙倍，1 扣整題`,
-  mage: "擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效",
-  cleric: "答錯後祈禱擲骰：7 以上這回合再答一次，20 不扣次數",
-  thief: `偷襲：答對後看答對骰，7 以上獎勵分 ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2，20 再翻倍`,
-  chef: "被動：答對時看答對骰，1 ×0.1、2–6 ×0.8、7–19 ×1.3、20 ×2（魔王搶答階段不算），不用按",
+  mage: "刪掉錯的選項／看第一個字",
+  cleric: "答錯可以當場再答一次",
+  warrior: "不會的題，擲骰代替作答",
+  thief: "先擲偷襲骰，成功的話答對加碼",
+  chef: "料理骰加成更多，不用按",
 };
 
-/** The lobby's class picker (D10=A): five cards and 不選; the passive chef takes a whole row (chef design D6). */
+/** The lobby's class picker (D10=A): one row per class, then 不選. */
 function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMessage) => void }) {
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
-      <div className="text-[18px]">選一個職業（技能一場 {ABILITY_USES} 次，都要擲 d20：1 大失敗、2–6 小失敗、7–19 成功、20 大成功；魔王搶答階段都不能用）</div>
-      <div className="grid grid-cols-2 gap-2">
-        {CLASS_IDS.map((id) => {
-          const picked = current === id;
-          return (
-            <button
-              key={id}
-              type="button"
-              aria-pressed={picked}
-              onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
-              className={`px-opt !flex-col !items-start !gap-[2px] !px-[10px] !py-2${picked ? " picked" : ""}`}
-              style={{ minHeight: id === "chef" ? 64 : 96, ...(id === "chef" ? { gridColumn: "span 2" } : {}) }}
-            >
-              <span className="text-[22px]">
-                {CLASS_ICONS[id]} {CLASS_LABELS[id]}
-              </span>
-              <span className="text-[13px] leading-[1.3]">{CLASS_HINTS[id]}</span>
-              {picked ? <span className="text-[13px]" style={{ color: "#a8470f" }}>◀ 已選</span> : null}
-            </button>
-          );
-        })}
+      <div className="text-[18px]">
+        選一個職業<span className="ml-2 text-[14px]">一場 {ABILITY_USES} 次・擲骰看玩法說明</span>
       </div>
-      <PixelButton aria-pressed={!current} className="!m-0 !min-h-[48px] !text-[18px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
+      {CLASS_IDS.map((id) => {
+        const picked = current === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={picked}
+            onClick={() => send({ type: "TEAM_PICK_CLASS", classId: id })}
+            className={`px-opt !gap-2 !px-[10px] !py-[6px]${picked ? " picked" : ""}`}
+            style={{ minHeight: 48 }}
+          >
+            <span className="!flex-none text-[20px]">
+              {CLASS_ICONS[id]} {CLASS_LABELS[id]}
+            </span>
+            <span className="text-[14px] leading-[1.3]">{CLASS_HINTS[id]}</span>
+            {picked ? <i style={{ color: "#a8470f" }}>◀ 已選</i> : null}
+          </button>
+        );
+      })}
+      <PixelButton aria-pressed={!current} className="!m-0 !min-h-[44px] !text-[17px]" style={{ background: current ? "var(--cream)" : "var(--turn)" }} onClick={() => send({ type: "TEAM_PICK_CLASS", classId: null })}>
         不選（普通冒險者）
       </PixelButton>
       {!current && <div data-testid="no-class-nudge" className="text-[14px]">還沒選職業：不選就沒有技能，比較吃虧</div>}
@@ -112,40 +113,28 @@ function LookPicker({ me, teams, send }: { me: string; teams: { id: string; name
   );
 }
 
-/** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. The caller shows it only while
- * a crit or check die can still roll; this hides it in a buzzer phase, without a potion, or once drunk on this question. */
-function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "crit" | "check" | "mage" | "cleric"; send: (m: ClientMessage) => void }) {
+/** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. It doubles the team's next die
+ * on this question, whichever it is (class-dice-rework.md); this hides it in a buzzer phase, without a potion, or once drunk. */
+function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "dish" | "check" | "mage" | "cleric"; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
-  if (!me?.item || me.itemArmed || game.view.buzz || (die === "crit" && game.view.hideCritRoll && !(me.classId === "mage" && me.abilityUses > 0))) return null;
+  if (!me?.item || me.itemArmed || game.view.buzz) return null;
+  const classDie = die === "dish" && me.abilityUses > 0 && (me.classId === "warrior" || me.classId === "mage" || me.classId === "thief");
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水<small className="text-[13px]">{die === "crit" && game.view.hideCritRoll ? POTION_DIE.mage : POTION_DIE[die]}</small>
-      {die === "crit" && me.classId === "mage" && me.abilityUses > 0 ? <small className="text-[13px]">先施法的話，用在技能骰</small> : null}
-      {/* The server never doubles the warrior's answer die (dungeon-room.ts startRoll); its button sits right below. */}
-      {die === "crit" && me.classId === "warrior" && me.abilityUses > 0 ? <small className="text-[13px]">戰士的答題骰不算</small> : null}
+      🧪 喝下幸運藥水<small className="text-[13px]">{POTION_DIE[die]}</small>
+      {classDie ? <small className="text-[13px]">先用職業技能的話，用在職業骰</small> : null}
     </PixelButton>
   );
 }
 
-/** Which die a potion drunk now doubles: the next one this team rolls (class dice). */
-const POTION_DIE = { crit: "答對時的暴擊骰擲兩次取高", check: "說服檢定擲兩次取高", mage: "法師技能骰擲兩次取高", cleric: "祈禱骰擲兩次取高" } as const;
-
-/** What a roll in its beat says on the phone; the big screen shows it. */
-function rollStatus(kind: string | undefined, value: number): string {
-  if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
-  if (kind === "crit") return `答對！暴擊骰擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "check") return `說服檢定擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "mage") return `🔮 施法擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "cleric") return `✝️ 祈禱擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "answer") return `答對！答對骰擲出 ${value}，看大螢幕 ▶`;
-  return value === 20 ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${value}！看大螢幕 ▶`; // a warrior's 20 is a crit on any question
-}
+/** Which die a potion drunk now doubles: the next one this team rolls (class-dice-rework.md). */
+const POTION_DIE = { dish: "答對時的料理骰擲兩次取高", check: "說服檢定擲兩次取高", mage: "法師技能骰擲兩次取高", cleric: "祈禱骰擲兩次取高" } as const;
 
 /** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
  * (E2: until the team's next turn). */
 function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
   if (!team?.item) return null;
-  if (team.itemArmed) return { text: "🧪 已喝下：這題的暴擊骰或說服檢定擲兩次取高", drunk: true };
+  if (team.itemArmed) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
   return { text: team.itemArmedFor && !myTurn ? "🧪 藥水還在：這題沒擲到骰" : "🧪 有一瓶幸運藥水" };
 }
 
@@ -171,16 +160,23 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   if (roll) {
     body = (
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
-        {/* A kill's 4d20 has four dice: the big screen shows them (kill-roll.md). */}
-        <D20 value={roll.kind === "kill" ? "?" : roll.value} size={54} />
-        <span className="text-[20px]">{rollStatus(roll.kind, roll.value)}</span>
+        {/* The value lands on the big screen first (#328 m2); a kill's 4d20 has four dice there too (kill-roll.md). */}
+        <D20 value="?" size={54} />
+        <span className="text-[20px]">{rollStatus(roll.kind)}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {
     body = (
-      <div className="px-bar mt-1 flex-col !gap-0 !text-[19px]" role="status" style={{ background: "#ff8787", boxShadow: "inset 0 -5px 0 #e03131" }}>
-        <span>🗝️ 偷襲準備好了！</span>
-        <small className="text-[13px]">這題答對{scoreName(game.cuisine)} ×{SNEAK_REWARD_MULTIPLIER}・答錯就沒了・剩 {me.abilityUses} 次</small>
+      <div data-testid="sneak-bar" className="px-bar mt-1 flex-col !gap-0 !text-[19px]" role="status" style={me.sneakCrit ? { background: "var(--warn)", boxShadow: "inset 0 -5px 0 var(--orange)" } : { background: "#ff8787", boxShadow: "inset 0 -5px 0 #e03131" }}>
+        <span>{me.sneakCrit ? `🗡️ 完美偷襲：答對 ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `🗡️ 偷襲就位：答對 ×${SNEAK_REWARD_MULTIPLIER}`}</span>
+        <small className="text-[13px]">答錯就沒了・剩 {me.abilityUses} 次</small>
+      </div>
+    );
+  } else if (me?.classId === "thief" && q && me.sneakTry?.questionId === q.id && me.sneakTry.value !== undefined) {
+    // One 偷襲 per question: a 1 or 2–6 leaves its grey bar until the question changes.
+    body = (
+      <div data-testid="sneak-bar" className="px-bar mt-1 !text-[17px]" role="status" style={{ background: "var(--dim-line)" }}>
+        {me.sneakTry.value === 1 ? `偷襲被發現・−${me.sneakTry.penalty ?? 0} 分・剩 ${me.abilityUses} 次` : `沒偷襲成・剩 ${me.abilityUses} 次`}
       </div>
     );
   } else if (me?.classId === "mage" && q && cast?.qid === q.id && cast.eventId === game.eventId && gone.length > cast.before) {
@@ -194,9 +190,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && !me.inBossPhase && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2); the boss room has none (#364).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
-  } else if (me.classId === "thief" && !q.checkFirst) {
-    // Not before the check: 偷襲 is armed once the question is up.
-    body = button("🗝️", "偷襲：這題答對加碼", `答對骰 7 以上 ${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2・剩 ${me.abilityUses} 次`, "#ff8787", use);
+  } else if (me.classId === "thief" && !q.checkFirst && (me.sneakTry?.questionId !== q.id || me.sneakTry.value === undefined)) {
+    // Not before the check: 偷襲 rolls once the question is up, once per question.
+    body = button("🗡️", "偷襲：先擲偷襲骰", `7 以上答對 ×${SNEAK_REWARD_MULTIPLIER}、20 ×${SNEAK_CRIT_MULTIPLIER}・擲 1 扣一成・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && game.view.mageCasts?.[checkKey(q.id, teamId)]) {
     // One cast per question, whatever the die showed (rules 「一題一次」).
     return null;
@@ -240,7 +236,7 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
- * either the beat (locked) or, after a wrong lock, 下輪再答 / 逃跑. Eliminated options are grey and inert.
+ * either the beat (locked) or, after a wrong lock, one 你們選的 line and 下輪再答 / 逃跑. Eliminated options are grey and inert.
  * `drops` counts lock refusals and socket drops: one after a press means the lock is lost now, with no confirm wait.
  * (A refusal of another action with the same detail can flash 沒送出 until the lock's STATE lands; a second press is
  * refused as answer_pending, so it cannot lock twice.)
@@ -264,7 +260,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
   // question (after 重答, which bumps eventId) never looks like it is still in flight.
   const [locking, setLocking] = useState<{ qid: string; eventId: number; drops: number } | null>(null);
   const [lockFailed, setLockFailed] = useState(false);
-  // Not while the crit die rolls: the lock has landed, and the judgment that moves eventId comes after the die.
+  // Not while the dish die rolls: the lock has landed, and the judgment that moves eventId comes after the die.
   const pressed = !lock && !wrong && !rolling && locking?.qid === q.id && locking.eventId === game.eventId;
   // Refused or cut off since the press: failed now, not in 3 s. `locking` stays set after the lock lands, so a confirmed
   // lock the room then loses in a restart shows here too.
@@ -314,6 +310,14 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
             setMine({ qid: q.id, order });
           }}
         />
+      ) : wrong ? (
+        // After a wrong lock the four grey tiles would push 逃跑 under the fold (cleric): one line says what was picked.
+        wrong.optionIndex !== null && options[wrong.optionIndex] !== undefined && (
+          <div data-testid="my-wrong-pick" className="flex items-baseline gap-2 border-t-[3px] border-[var(--dim-line)] pt-1 text-[18px] [overflow-wrap:anywhere]">
+            <span className="min-w-0 text-[var(--k)]">你們選的：{optionLetter(wrong.optionIndex)} {options[wrong.optionIndex]}</span>
+            <span className="ml-auto shrink-0 text-[var(--wrong)]">✕ 答錯</span>
+          </div>
+        )
       ) : (
       <div role="group" aria-labelledby={text ? stripId : undefined} aria-label={text ? undefined : "選項"} className="flex flex-col gap-2">
         {options.map((opt, i) => {
@@ -374,7 +378,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
       ) : (
         <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} die="crit" send={send} />
+        <PotionButton game={game} teamId={teamId} questionId={q.id} die="dish" send={send} />
         <PixelButton
           variant="ok"
           disabled={!pickable}
@@ -661,7 +665,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </>
       )}
       {/* A mage's skill die may still take a potion once the check is done (class dice), before its hint shows. */}
-      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint && <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} />}
+      {/* Anyone else's potion waits for its next die: the warrior's or thief's own, else the dish die (class-dice-rework.md). */}
+      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && (me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint ? <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} /> : <PotionButton game={game} teamId={teamId} questionId={q.id} die="dish" send={send} />)}
       {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
@@ -697,16 +702,11 @@ function HandoffForm({ send }: { send: (m: ClientMessage) => void }) {
 
 /** The phone's end card. It waits out the big screen's cooking (cooking I5) and the place calls, on the room's clock and
  * PHONE_LAG_MS behind it, so no phone names the winner before the podium does (podium-reveal.md D16, eng D23). */
-function FinishedPanel({ place, reward, cuisine, finale, podium, onPodium }: { place: number | null; reward: number; cuisine?: boolean; finale: boolean; podium?: StateMessage["podium"]; onPodium: (up: boolean) => void }) {
+function FinishedPanel({ place, reward, cuisine, finale, podium }: { place: number | null; reward: number; cuisine?: boolean; finale: boolean; podium?: StateMessage["podium"] }) {
   const step = useFinaleStep(finale);
   // Reduced motion does not end a phone's wait: it has nothing to animate, and showing the end would spoil first place.
   const t = useRevealTime(podium, PHONE_LAG_MS, false);
   const up = step === 4 && revealNow(podium, t).result;
-  // The story (it names the winner) shows exactly while `up` holds; before paint, so it never flashes.
-  useLayoutEffect(() => {
-    onPodium(up);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [up]);
   return (
     <Panel tone="lav" className="px-4 py-5 text-center">
       <div className={!up || place === null ? "text-[26px]" : "text-[18px]"}>遊戲結束！</div>
@@ -888,11 +888,9 @@ export default function PlayPage() {
   /** LOBBY's 🎯 校正喇叭 test, while it runs (docs/designs/tap-calibrate.md). */
   const [calibrate, setCalibrate] = useState<CalibrateRun | null>(null);
   const [game, setGame] = useState<StateMessage | null>(null);
-  const [narration, setNarration] = useState<NarrationState>(null);
-  const [epilogue, setEpilogue] = useState<string | null>(null);
-  /** A boss kill seen live (cooking I5): the end card and the epilogue wait for the big screen's podium. */
+  /** A boss kill seen live (cooking I5): the end card waits for the big screen's podium. The phone shows no narration:
+   * the story is the big screen's (ui-simplify, owner 2026-11-19). */
   const [finale, setFinale] = useState(false);
-  const [podium, setPodium] = useState(true);
   /** ⚔️ 最後衝刺 seen on this connection (lib/transitions.ts sprintSeen), and its 3-second card for a blessed team. */
   const sprintSeenRef = useRef<boolean | null>(null);
   const [sprintCard, setSprintCard] = useState(false);
@@ -994,11 +992,8 @@ export default function PlayPage() {
           if (msg.teams.some((t) => t.id === getOrCreateTeamId())) joined.current = true;
           setGame(null);
           // Back from a finished game (回到大廳): its story is over.
-          setNarration(null);
-          setEpilogue(null);
           setRevealedText(undefined);
           setFinale(false);
-          setPodium(true);
           seen.current.clear();
           lastGame.current = null;
           livePhase.current = null;
@@ -1012,7 +1007,6 @@ export default function PlayPage() {
           // A boss kill seen live: the winner waits for the big screen's cooking (cooking I5).
           if (msg.phase === "finished" && livePhase.current === "playing" && msg.reveal?.dish) {
             setFinale(true);
-            setPodium(false);
           }
           setGame(msg);
           {
@@ -1040,12 +1034,6 @@ export default function PlayPage() {
           setLobby(null);
           break;
         }
-        case "NARRATION":
-          setNarration((n) => keepLatest(n, msg));
-          break;
-        case "EPILOGUE":
-          setEpilogue(msg.text);
-          break;
         case "GAME_OVER":
           setGame((g) => (g ? { ...g, phase: "finished", winners: msg.winners } : g));
           break;
@@ -1069,8 +1057,9 @@ export default function PlayPage() {
   const roster = game?.view.teams ?? lobby ?? [];
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myLook = lookOf(roster[myIndex], myIndex);
+  const lobbyMe = lobby?.find((t) => t.id === teamId);
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
-  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const potion = game ? potionLine(myTeam, isMyTurn) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
@@ -1082,50 +1071,36 @@ export default function PlayPage() {
   /** 擲先攻 (lib/initiative.ts): the phone rolls here, the big screen shows every team's die. */
   const initiative = !finished ? (game?.initiative ?? null) : null;
   const myRoll = initiative && teamId ? visibleInitiativeRoll(initiative, teamId) : undefined;
-  const cards = (
-    <>
-      {/* While waiting, the roster above already highlights our own team. */}
-      {game && (
-        <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind="hero" variant={myLook} cls={myTeam?.classId} scale={3} className="flex-none" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[17px]">{myTeam?.name ?? teamName}</div>
-            {myTeam?.classId && (
-              <div className="text-[15px]">
-                {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
-              </div>
+  /** Our team in one line (ui-simplify P5): the sprite, name, class and score; a boon or potion adds a second line. */
+  const cards = game && (
+    <Panel tone={isMyTurn && !initiative ? "turn" : "cream"} className="flex items-center gap-2 px-2 py-[6px]">
+      <Sprite kind="hero" variant={myLook} cls={myTeam?.classId} scale={2} className="flex-none" />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 text-[16px]">
+          <span className="min-w-0 truncate">{myTeam?.name ?? teamName}</span>
+          {myTeam?.classId && (
+            <span className="flex-none text-[14px]">
+              {CLASS_ICONS[myTeam.classId]} {CLASS_LABELS[myTeam.classId]}・{myTeam.classId === "chef" ? "被動" : `剩 ${myTeam.abilityUses} 次`}
+            </span>
+          )}
+          <span className="ml-auto flex-none text-[16px]" style={{ color: "#a8470f" }}>
+            {myTeam ? (
+              <>
+                <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
+              </>
+            ) : (
+              `隊伍 ${TEAM_LOOKS[myLook % TEAM_LOOKS.length].name}`
             )}
-            {myTeam?.boon && <div data-testid="phone-boon" className="text-[15px]">{BOON_TEXT[myTeam.boon]}</div>}
-            {potion && (
-              <div data-testid="phone-potion" className="text-[15px]" style={potion.drunk ? { background: "var(--lav)" } : undefined}>
-                {potion.text}
-              </div>
-            )}
-            <div className="my-1 text-[18px]" style={{ color: "#a8470f" }}>
-              {myTeam ? (
-                <>
-                  <span className="px-num">{myTeam.reward}</span> {scoreName(game.cuisine)}
-                </>
-              ) : (
-                `隊伍 ${TEAM_LOOKS[myLook % TEAM_LOOKS.length].name}`
-              )}
-            </div>
+          </span>
+        </div>
+        {myTeam?.boon && <div data-testid="phone-boon" className="text-[14px]">{BOON_TEXT[myTeam.boon]}</div>}
+        {potion && (
+          <div data-testid="phone-potion" className="text-[14px]" style={potion.drunk ? { background: "var(--lav)" } : undefined}>
+            {potion.text}
           </div>
-          {/* 每題作答倒數 (answer-countdown.md D5): only the turn's own phone, and silent. */}
-          {isMyTurn && typeof game.answerClock?.left === "number" && <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />}
-        </Panel>
-      )}
-
-      {game && !finished && !held && !intro && !initiative && turn?.team && !turn.team.fork && !game.forkBeat && (
-        <Panel className="flex items-center gap-3 px-3 py-[10px]">
-          <Sprite kind={turn.monster.kind} hue={turn.monster.hue} accessory={turn.monster.accessory} scale={turn.miniScale} className="flex-none" />
-          <div className="text-[15px]">
-            <div>{turn.team.name} 正在面對</div>
-            <div className="text-[18px]">{turn.monster.name}</div>
-          </div>
-        </Panel>
-      )}
-    </>
+        )}
+      </div>
+    </Panel>
   );
 
   // Turned away: the room still broadcasts LOBBY and STATE to this connection, but none of it is ours to show.
@@ -1239,21 +1214,19 @@ export default function PlayPage() {
           )
         )}
 
-        {/* Who has joined so far, updating live while everyone waits for the host. */}
-        {!game && lobby && (
-          <ul data-testid="roster" className="flex flex-col gap-2">
-            {lobby.map((t, i) => (
-              <Panel key={t.id} tone={t.id === teamId ? "turn" : "cream"} className="flex items-center gap-3 px-3 py-2">
-                <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
-                <span className="min-w-0 flex-1 truncate text-[18px]">{t.name}</span>
-                {t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]} {CLASS_LABELS[t.classId]}</span>}
-                {t.id === teamId && <span className="text-[14px]">你們</span>}
-              </Panel>
-            ))}
-          </ul>
+        {/* Our own team only, with its character (owner 2026-11-19): the big screen lists every team by the campfire. */}
+        {!game && lobbyMe && (
+          <div data-testid="roster">
+            <Panel tone="turn" className="flex items-center gap-3 px-3 py-2">
+              <Sprite kind="hero" variant={myLook} cls={lobbyMe.classId} scale={2} className="flex-none" />
+              <span className="min-w-0 flex-1 truncate text-[18px]">{lobbyMe.name}</span>
+              {lobbyMe.classId && <span className="text-[14px]">{CLASS_ICONS[lobbyMe.classId]} {CLASS_LABELS[lobbyMe.classId]}</span>}
+              <span className="text-[14px]">你們</span>
+            </Panel>
+          </div>
         )}
-        {!game && lobby?.some((t) => t.id === teamId) && <LookPicker me={teamId} teams={lobby} send={send} />}
-        {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
+        {!game && lobby && lobbyMe && <ClassPicker current={lobbyMe.classId} send={send} />}
+        {!game && lobby && lobbyMe && <LookPicker me={teamId} teams={lobby} send={send} />}
 
         {intro !== null && (
           <div data-testid="phone-intro" className="flex flex-col gap-2">
@@ -1295,7 +1268,10 @@ export default function PlayPage() {
         )}
 
         {game && !finished && !intro && !initiative && turn && (
-          <TurnRibbon color={isMyTurn ? undefined : "#6ab4ff"}>
+          <TurnRibbon
+            color={isMyTurn ? undefined : "#6ab4ff"}
+            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" /> : undefined}
+          >
             {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
         )}
@@ -1363,38 +1339,34 @@ export default function PlayPage() {
         {/* 🔮 under 送出 on our own turn; the open catch for everyone (anti-ai-cheating.md). */}
         {game && !finished && !buzz && !held && isMyTurn && <AntiCheatPanel game={game} teamId={teamId} isMyTurn send={send} />}
 
-        {/* D14: our own lock was right — the same tiles, the right one green, and the points. */}
+        {/* D14: our own lock was right — the question and the points; the answer itself is the 正解 line below (one place, ui-simplify P3). */}
         {game && !finished && revealed?.choice && revealed.choice.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
             {revealedText && <QuestionStrip text={revealedText} />}
-            {revealed.choice.options.map((opt, i) => (
-              <McOption key={i} index={i} text={opt} disabled look={i === revealed.choice!.correctIndex ? "ok" : "dim"} label={i === revealed.choice!.correctIndex ? "✓ 答對" : undefined} className="min-h-[56px] text-[21px]" />
-            ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{(!revealed.dish || revealed.served) && revealed.choice.points > 0 ? `＋${revealed.choice.points} ${scoreName(game.cuisine)}` : ""}
-              {(!revealed.dish || revealed.served) && revealed.choice.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.choice.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}
 
-        {/* A sort question we got right: the correct order, every place ✓. */}
+        {/* A sort question we got right: the question and the points; the order is the 正解 line below. */}
         {game && !finished && revealed?.sorted && revealed.sorted.teamId === teamId && (
           <Panel tone="turn" className="flex flex-col gap-2 px-[10px] py-[10px]">
             {revealedText && <QuestionStrip text={revealedText} />}
-            {revealed.sorted.items.map((item, i) => (
-              <McOption key={i} index={i} badge={i + 1} text={item} disabled look="ok" label="✓" className="min-h-[56px] text-[21px]" />
-            ))}
             <div className="px-bar ok mt-1 !text-[22px]" role="status">
               答對了！{(!revealed.dish || revealed.served) && revealed.sorted.points > 0 ? `＋${revealed.sorted.points} ${scoreName(game.cuisine)}` : ""}
-              {(!revealed.dish || revealed.served) && revealed.sorted.chefBonus ? <span style={{ color: "#7a3208" }}>（廚師 {signed(revealed.sorted.chefBonus)}）</span> : null}
             </div>
           </Panel>
         )}
 
-        {/* Eng review R1, R3: one fixed media slot. On our own turn it comes right after the turn panel
-            (or the ribbon) and the cards go below it; while waiting the cards stay above it. */}
-        {!isMyTurn && cards}
+        {/* Our own dish die, once its answer is scored (and its dish served): what it did to the reward. */}
+        {game && !finished && revealed?.scored?.teamId === teamId && revealed.scored.dishDie !== undefined && (!revealed.dish || revealed.served) && (
+          <div data-testid="dish-roll-row" className="px-bar mt-1 !text-[19px]" role="status" style={revealed.scored.dishDie === 1 ? { background: "var(--danger)", color: "#fff" } : revealed.scored.dishDie === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -5px 0 var(--orange)" } : undefined}>
+            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine))}
+          </div>
+        )}
 
+        {/* Eng review R1, R3: one fixed media slot, right after the turn panel (or the ribbon); the one-line team card goes below it. */}
         {/* The video plays on the big screen only (D7): the phone says where to look, and keeps its space for answering (D21). */}
         {game && !finished && !held && game.question?.content.kind === "youtube" && !game.question.memorize && (
           <div data-testid="play-media-hint" className="self-start border-[3px] border-[var(--k)] bg-[var(--lav)] px-3 py-1 text-[18px]">
@@ -1441,35 +1413,16 @@ export default function PlayPage() {
           </Panel>
         )}
 
-        {finished && game && <FinishedPanel place={teamPlace(game.view.teams, game.podium?.ranking, teamId)} reward={myTeam?.reward ?? 0} cuisine={game.cuisine} finale={finale} podium={game.podium} onPodium={setPodium} />}
+        {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
+            while connected, since a tap sent offline reaches the room before the phone has rejoined its team. Right under
+            the 正解 line, so the reactions sit on the first screen (ui-simplify P3). */}
+        {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
+        {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
+        {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
+        {!isMyTurn && cards}
 
-        <div className="mt-auto">
-          {/* Waiting teams only: never on our own turn, nor in a buzzer phase where every team is answering; and only
-              while connected, since a tap sent offline reaches the room before the phone has rejoined its team. */}
-          {/* 🚨 抓包 for a waiting team, above its reactions (anti-ai-cheating.md). */}
-          {game && !finished && !isMyTurn && !held && !intro && !initiative && !disconnected && !unreachable && !rested && <AntiCheatPanel game={game} teamId={teamId} isMyTurn={false} send={send} />}
-          {game && !finished && !isMyTurn && !game.view.buzz && !intro && !initiative && !disconnected && !unreachable && !rested && <ReactBar send={send} sent={reactSent} setSent={setReactSent} />}
-          <DialogueBox
-            compact
-            // The intro narrates nothing: after a replay eventId is past the last narration, so it must not spin.
-            loading={!!game && !finished && intro === null && !initiative && isPending(game.eventId, narration)}
-            lines={
-              finished
-                ? epilogue && podium
-                  ? [epilogue]
-                  : narration
-                    ? narration.lines
-                    : ["冒險結束了，大螢幕正在頒獎。"]
-                : intro !== null || initiative
-                  ? [initiative ? "擲完先攻，輪到你們時這裡會出現題目" : "說明結束後，輪到你們時這裡會出現題目"]
-                  : narration
-                  ? narration.lines
-                  : [turn?.team ? `輪到${turn.team.name}了，${turn.monster.name}擋在前面……` : "火光搖曳，冒險者們正在集合……"]
-            }
-            // A host edit of this narration reads on from the edited line instead of starting over (D13).
-            id={narration && intro === null && !initiative && !(finished && epilogue && podium) ? narration.eventId : undefined}
-          />
-        </div>
+        {finished && game && <FinishedPanel place={teamPlace(game.view.teams, game.podium?.ranking, teamId)} reward={myTeam?.reward ?? 0} cuisine={game.cuisine} finale={finale} podium={game.podium} />}
+
       </div>
     </main>
   );

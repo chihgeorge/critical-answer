@@ -1,6 +1,7 @@
 // The room side of 開場點亮音效 (docs/designs/immersion.md PR0): each keyed big screen reports SCREEN_SOUND, and STATE
 // tells the host pages `screenSound`: "ready" when any screen is ready, "muted" when none is, "none" with no screen.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -12,7 +13,7 @@ const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function game() {

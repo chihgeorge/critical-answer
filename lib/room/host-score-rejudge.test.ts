@@ -1,6 +1,7 @@
 // ⚙ 更多 › 修正's 設定 (an exact reward) and 改判 (a past judgment's reward points flipped) (docs/hosting.md).
 // Host only, the same holds as 修正, no line on the big screen, every press kept in the game log and the transcript.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -19,7 +20,7 @@ const bank = () =>
   });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage() {
@@ -47,11 +48,15 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
   const lastTo = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).at(-1);
   const setScore = (teamId: string, score: unknown, conn: Conn = host) => send(room, conn, { type: "HOST_SET_SCORE", teamId, score });
   const ledger = () => room.game!.judgments ?? [];
-  /** A 改成答對 that rolls an answer die (a chef's or armed thief's row) waits out its 2 s beat. */
+  /** A 改成答對 rolls the dish die and waits out its 2 s beat; with no setDie it shows a plain 10 (the rng's 1 would burn it). */
   const rejudge = (index: number, correct: boolean, conn: Conn = host) => {
     const j = ledger()[index];
     send(room, conn, { type: "HOST_REJUDGE", index, teamId: j?.teamId ?? A, questionId: j?.questionId ?? "r1", correct });
-    if ((room as unknown as { pendingRoll: { rejudge?: true } | null }).pendingRoll?.rejudge) vi.advanceTimersByTime(2000);
+    const r = room as unknown as { pendingRoll: { rejudge?: true; value: number } | null; fixedDie?: number };
+    if (r.pendingRoll?.rejudge) {
+      if (r.fixedDie === undefined) r.pendingRoll.value = 10;
+      vi.advanceTimersByTime(2000);
+    }
   };
   /** The next d20 the room rolls (its fixedDie). */
   const setDie = (value: number) => ((room as unknown as { fixedDie: number }).fixedDie = value);
@@ -62,6 +67,8 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
     setDie(value);
     send(room, phones[0], { type: "TEAM_USE_ABILITY", questionId: q });
     vi.advanceTimersByTime(2000);
+    // A hit rolls its dish die (the same fixed value) in a beat of its own.
+    if ((room as unknown as { pendingRoll: { kind: string } | null }).pendingRoll?.kind === "dish") vi.advanceTimersByTime(2000);
     // A hit's reveal closes as judge() closes one.
     if (state().reveal) {
       vi.advanceTimersByTime(10_000);
@@ -177,8 +184,8 @@ describe("the 改判 ledger", () => {
     g.judge(false); // 乙 (chef) wrong
     expect(g.ledger()).toEqual([
       { teamId: A, questionId: expect.any(String), correct: true, points: 10 },
-      // A chef's 答錯 is the plain N; its 改成答對 reads an answer die rolled then.
-      { teamId: B, questionId: expect.any(String), correct: false, points: 10, reads: "chef" },
+      // A 答錯 is the plain N; its 改成答對 rolls the dish die then (a chef's multipliers).
+      { teamId: B, questionId: expect.any(String), correct: false, points: 10, dish: { chef: true } },
     ]);
     expect(g.team(A).reward).toBe(10);
     expect(g.picks().judged).toEqual(g.ledger().map((j, index) => ({ ...j, index })));
@@ -195,7 +202,7 @@ describe("the 改判 ledger", () => {
     expect(g.room.game!.pendingWrong).toMatchObject({ teamId: A });
     expect(g.ledger()).toEqual([]);
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "retry", eventId: g.state().eventId });
-    expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10 }]);
+    expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10, dish: {} }]);
   });
 
   it("the host's 祈禱 for a cleric adds one 答錯 entry, like its 重答", () => {
@@ -209,7 +216,7 @@ describe("the 改判 ledger", () => {
     expect(g.team(A).abilityUses).toBe(uses - 1); // the prayer was spent
     expect(g.ledger()).toEqual([]); // until its die lands
     vi.advanceTimersByTime(2000);
-    expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10 }]);
+    expect(g.ledger()).toEqual([{ teamId: A, questionId: q, correct: false, points: 10, dish: {} }]);
   });
 
   it("an upheld 🚨 catch adds no entry", () => {
@@ -230,7 +237,7 @@ describe("the 改判 ledger", () => {
     const bossQ = () => g.room.game!.boss.currentQuestionId;
     const hit = bossHitReward(g.room.game!); // what the question just missed would have paid, by its difficulty
     judgeNow(A, bossQ(), false, "retry");
-    expect(g.ledger().at(-1)).toEqual({ teamId: A, questionId: expect.any(String), correct: false, points: hit });
+    expect(g.ledger().at(-1)).toEqual({ teamId: A, questionId: expect.any(String), correct: false, points: hit, dish: {} });
     g.room.game = { ...g.room.game!, boss: { ...g.room.game!.boss, hp: 1 }, currentTurnIndex: g.room.game!.turnOrder.indexOf(A) };
     const before = g.team(A).reward;
     judgeNow(A, bossQ(), true, "retry", undefined, [5, 5, 5, 5]);
@@ -408,9 +415,9 @@ describe("改判", () => {
     expect(g.ledger()).toHaveLength(2);
   });
 
-  // Value: protects=a chef's or armed thief's 改成答對 re-rolls the answer die and pays from it, once (owner, 2026-11-17);
+  // Value: protects=a 改成答對 rolls the dish die and pays from it, once (owner, 2026-11-17; class-dice-rework.md);
   // fails_when=it pays the plain N, rolls on every flip, or never shows the die.
-  it("a chef's 改成答對 rolls its answer die now, shown like any roll, and pays from it; flipping back reuses that payment", () => {
+  it("a chef's 改成答對 rolls the dish die now, shown like any roll, and pays from it; flipping back reuses that payment", () => {
     const g = started();
     g.judge(true); // 甲
     g.judge(false); // 乙 (chef) wrong
@@ -418,24 +425,24 @@ describe("改判", () => {
     g.setReward(B, 0);
     g.setDie(12);
     send(g.room, g.host, { type: "HOST_REJUDGE", index: 1, teamId: B, questionId: g.ledger()[1].questionId, correct: true });
-    expect(g.state().pendingRoll).toMatchObject({ teamId: B, kind: "answer", value: 12, rejudge: true });
+    expect(g.state().pendingRoll).toMatchObject({ teamId: B, kind: "dish", value: 12, rejudge: true });
     expect(g.team(B).reward).toBe(0);
     vi.advanceTimersByTime(2000);
-    expect(g.team(B).reward).toBe(13); // 10 × 1.3
+    expect(g.team(B).reward).toBe(12); // 10 × 1.2
     expect(g.ledger()[1]).toMatchObject({ correct: true, flipped: true });
-    expect(g.transcript().at(-1)).toBe("乙隊 rejudge #2 答錯→答對 d20=12 0→13");
+    expect(g.transcript().at(-1)).toBe("乙隊 rejudge #2 答錯→答對 d20=12 0→12");
     g.rejudge(1, false);
     expect(g.team(B).reward).toBe(0);
     g.setDie(1);
     g.rejudge(1, true);
     expect(g.state().pendingRoll ?? null).toBeNull(); // no second die
-    expect(g.team(B).reward).toBe(13);
+    expect(g.team(B).reward).toBe(12);
   });
 
-  // Value: protects=the room pays a chef's 改成答對 20 with the crit's half only on a multipleChoice or sort question, as
-  // live (#342); fails_when=applyRejudge drops the question kind, or a fill-in gets the crit.
-  it("a chef's 改成答對 20 adds the crit's half on a multipleChoice question, not on a fill-in", () => {
-    for (const [kind, paid] of [["text", 20], ["multipleChoice", 30]] as const) {
+  // Value: protects=a 改成答對's dish die pays the same on every question kind, as live (no crit die any more,
+  // class-dice-rework.md); fails_when=applyRejudge still reads the question kind.
+  it("a chef's 改成答對 20 pays ×2 on a fill-in and a multipleChoice question alike", () => {
+    for (const [kind, paid] of [["text", 20], ["multipleChoice", 20]] as const) {
       const g = started();
       g.judge(true); // 甲
       g.judge(false); // 乙 (chef) wrong
@@ -455,7 +462,7 @@ describe("改判", () => {
 
   // Value: protects=a 改成答對's die never takes the roll slot from another team's waiting wrong answer (its boss miss's beat
   // uses the same slot, /review); fails_when=the die starts and the other team's wrong answer is never settled.
-  it("a chef's 改成答對 die waits while any team's wrong answer is still waiting", () => {
+  it("a 改成答對's dish die waits while any team's wrong answer is still waiting", () => {
     const g = started(["cleric", "chef"]);
     g.judge(false); // 甲
     g.judge(false); // 乙 (chef) wrong: row 1
