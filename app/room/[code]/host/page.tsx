@@ -602,7 +602,9 @@ export default function HostPage() {
   // holds the new turn when it is painted: a key pressed right after a turn change judges that turn.
   // The intro's own keys (D7): → / Enter and ←. The judge keys below stay off while it shows.
   const introPage = game?.phase === "playing" ? (game.intro?.page ?? null) : null;
-  useEffect(() => {
+  // A layout effect too: with a plain effect, a key pressed just after a page turn reached the old listener, which sent
+  // the old page ± 1 and the room dropped it (the e2e intro test flaked on this).
+  useLayoutEffect(() => {
     if (introPage === null || !ready) return;
     function onKey(e: KeyboardEvent) {
       if (picking || drawer || !swapArmed) return;
