@@ -2176,7 +2176,7 @@ export default function ScreenPage() {
         {game?.phase === "playing" && game.intro && (
           <>
             <Room room={0} />
-            <HowToPlay page={game.intro.page} cuisine={!!game.cuisine} />
+            <HowToPlay page={game.intro.page} />
           </>
         )}
         {game?.phase === "playing" && !game.intro && game.initiative && (
