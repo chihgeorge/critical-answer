@@ -48,6 +48,8 @@ import {
   hostSetScore,
   recordJudgment,
   type HostFix,
+  type Judgment,
+  SNEAK_REWARD_MULTIPLIER,
   drinkPotion,
   potionArmed,
   spendPotion,
@@ -368,7 +370,15 @@ function restoredJudgments(g: GameState): GameState["judgments"] {
   const list = g.judgments;
   if (list === undefined) return undefined;
   const ok = Array.isArray(list) && list.every((j) => typeof j?.teamId === "string" && typeof j.questionId === "string" && typeof j.correct === "boolean" && Number.isInteger(j.points) && j.points >= 0 && (j.taken === undefined || (Number.isInteger(j.taken) && j.taken >= 0)) && (j.flipped === undefined || j.flipped === true));
-  return ok ? list : [];
+  return ok ? list.map(legacyDish) : [];
+}
+
+/** A v0.104 entry's `reads` (the answer die a chef or an armed thief read on 改成答對) becomes its `dish`, so 改成答對 still
+ * rolls. Any other older entry pays plain N, as when it was judged: a buzzer phase's answer looks the same there. */
+function legacyDish(j: Judgment): Judgment {
+  const { reads, ...rest } = j as Judgment & { reads?: unknown };
+  if (reads === undefined || j.dish) return reads === undefined ? j : rest;
+  return reads === "chef" ? { ...rest, dish: { chef: true } } : reads === "thief" ? { ...rest, dish: { sneak: SNEAK_REWARD_MULTIPLIER } } : rest;
 }
 
 /** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's room question, or it is
@@ -4801,15 +4811,20 @@ export class DungeonRoom {
   private resolveSneak(teamId: string, value: number) {
     const { game, penalty } = sneakRoll(this.game!, teamId, value);
     this.game = game;
+    // No judgment carries this loss, so the transcript's score trail says where it went.
+    if (penalty) {
+      const team = game.teams.find((t) => t.id === teamId)!;
+      this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `${team.name} sneak d20=${value} ${team.reward + penalty}→${team.reward}` });
+    }
     this.sayDie("thief", teamId, value, penalty ? `（−${penalty} 分）` : "");
     this.setCue(skillCue(value));
     this.broadcastState();
   }
 
   /** 🧪 A potion's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
-   * good. Good: a check that passes, any other die 7 or more (skillTier). */
+   * good. Good: a check that passes, a dish die that burns nothing (2–6 pays ×1 too), any other die 7 or more (skillTier). */
   private sayPotion(roll: PendingRoll) {
-    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : skillTier(v) >= 2);
+    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : roll.kind === "dish" ? v !== 1 : skillTier(v) >= 2);
     const [low, high] = [Math.min(...roll.values!), Math.max(...roll.values!)];
     const kind = !good(high) ? "bust" : good(low) ? null : "saved";
     if (kind) this.appendLine(this.eventSeq, `🧪 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);

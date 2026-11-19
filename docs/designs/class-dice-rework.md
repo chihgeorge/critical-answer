@@ -175,6 +175,8 @@
 
 現行規則基準：只留 `PGIVE=0.1`。`PGIVE=0`、`PGIVE=0.2` 是 0 瓶和約 4 瓶。
 
+上面那串開關是在舊 lib 外面模擬新規則用的。新規則進 lib 之後（#416）這些開關拿掉了，模擬器直接跑 lib：`PGIVE=0.1 taskpolicy -b node --no-warnings scripts/balance-sim.ts 40000`。
+
 ## 走過但沒採用的
 
 數字都是最大差（活動／預設）。

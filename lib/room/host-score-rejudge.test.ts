@@ -536,4 +536,24 @@ describe("改判", () => {
     badTaken.setScore(A, 1);
     expect((await restart(badTaken.storage)).judgments).toEqual([]);
   });
+
+  // Value: protects=a room saved before the dish die (v0.104 `reads`) still rolls on 改成答對 after a restart (#416);
+  // fails_when=restore keeps `reads` and drops the die, or gives an unmarked older entry a die it never had.
+  it("a v0.104 save's chef or thief entry rolls the dish die after a restart; an unmarked one pays plain N", async () => {
+    const g = started();
+    g.judge(true);
+    g.judge(false);
+    const [a, b] = g.ledger();
+    const legacy = (e: object, reads?: string) => ({ ...e, dish: undefined, ...(reads ? { reads } : {}) }) as unknown as NonNullable<GameState["judgments"]>[number];
+    g.room.game = { ...g.room.game!, judgments: [legacy(b, "chef"), legacy({ ...b, teamId: A }, "thief"), legacy(a), legacy(b)] };
+    g.setScore(A, 1); // saves
+    const second = new DungeonRoom({ broadcast: vi.fn(), storage: g.storage } as unknown as RoomIO, () => 0, { bank: bank(), epilogueDelayMs: 0 });
+    expect(await second.restore()).toBe("restored");
+    const restored = second.game!.judgments!;
+    expect(restored[0]).toEqual({ ...b, dish: { chef: true } });
+    expect(restored[1]).toEqual({ ...b, teamId: A, dish: { sneak: 1.5 } });
+    expect(restored[2].dish).toBeUndefined();
+    expect(restored[3].dish).toBeUndefined();
+    expect(restored.some((j) => "reads" in j)).toBe(false);
+  });
 });
