@@ -133,7 +133,7 @@ function Picture({ page }: { page: number }) {
       <div className="flex items-center gap-8 text-[18px]">
         <div className="flex flex-col items-center gap-2">
           <D20 value={15} size={44} />
-          <span>🗣️ 說服成功</span>
+          <span>自動說服・成功</span>
         </div>
         <span className="text-[26px]">→</span>
         {fillInPhone("💡 提示：海")}
@@ -179,12 +179,13 @@ function Picture({ page }: { page: number }) {
   if (page === 6)
     return (
       <div className="flex flex-col items-center gap-3 text-[20px]">
-        <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--lav)", border: "4px solid var(--k)" }}>🧪 已喝下！</div>
+        <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--lav)", border: "4px solid var(--k)" }}>幸運骰備好了！</div>
         <div className="flex items-center gap-4">
           {face(6, "dim")}
           {face(17, "kept")}
           <span>→ 取高：17</span>
         </div>
+        <span className="text-[16px]">技能骰；沒技能可用就是料理骰</span>
       </div>
     );
   if (page === 7)

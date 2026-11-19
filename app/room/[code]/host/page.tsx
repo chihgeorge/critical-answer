@@ -566,9 +566,7 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  // A fill-in whose team has not rolled its persuasion check: no count runs, so the row offers 替○○擲骰 after 15 s.
-  const checkStuck = !isMc && !!turn?.team && !turn.inBoss && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
-  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, check: checkStuck, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
+  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
@@ -716,7 +714,7 @@ export default function HostPage() {
           <span className="px-key" aria-hidden="true">{HOST_KEYS.ruling.dismiss}</span>
         </PixelButton>
       </div>
-      <div className="px-1 text-center text-[13px] text-white">成立：這題不算分、{teamName(openCatch.teamId)}扣 {CATCH_PAY.caught} 分換題，{teamName(openCatch.by)} +{CATCH_PAY.bounty}。冤枉：{teamName(openCatch.teamId)}拿藥水（有了就 +{CATCH_PAY.wronged}）繼續答。</div>
+      <div className="px-1 text-center text-[13px] text-white">成立：這題不算分、{teamName(openCatch.teamId)}扣 {CATCH_PAY.caught} 分換題，{teamName(openCatch.by)} +{CATCH_PAY.bounty}。冤枉：{teamName(openCatch.teamId)}拿幸運骰（有了就 +{CATCH_PAY.wronged}）繼續答。</div>
     </div>
   );
   // ↩ 撤回裁決: the ruling card left one button behind, until the next question shows or anything moves (the room decides).
@@ -822,9 +820,9 @@ export default function HostPage() {
     return (
       <>
         {picks && !t.inBossPhase && pickButton(t.id)}
-        {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🧪. */}
-        <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在同一列的 ⋯ 收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
-          {t.item ? "🧪 已有" : "🧪 給藥水"}
+        {/* 🍀 幸運骰 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🍀. */}
+        <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一顆幸運骰？（給錯了可以在同一列的 ⋯ 收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+          {t.item ? "🍀 已有" : "🍀 給幸運骰"}
         </PixelButton>
         <PixelButton
           className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
@@ -1225,7 +1223,7 @@ export default function HostPage() {
                   {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
                   {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
                     <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
-                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 等這隊擲完說服，大螢幕才出題"}
+                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 說服骰等一下會自動擲，結算後大螢幕才出題"}
                     </div>
                   )}
                   {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}
@@ -1475,14 +1473,6 @@ export default function HostPage() {
                       {turn.team.name}擲出了骰子…
                     </Panel>
                   )}
-                  {stuck && checkStuck && (
-                    <>
-                      <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>
-                      <PixelButton data-testid="host-roll-check" variant="primary" className="!min-h-[48px] text-[16px]" disabled={!ready} onClick={() => send({ type: "HOST_ROLL_CHECK", teamId: turn.team!.id, questionId: turn.questionId!, eventId: game.eventId })}>
-                        🎲 替{turn.team.name}擲骰
-                      </PixelButton>
-                    </>
-                  )}
                   {cleric === "wait" ? (
                     <>
                       <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">{prayedWrong ? `${turn.team.name}祈禱了！` : "答錯了！"}等{turn.team.name}選，或替他們選：</div>
@@ -1587,7 +1577,7 @@ export default function HostPage() {
                     {t.sneakArmed && <span title={t.sneakCrit ? `完美偷襲：這題答對${scoreName(game.cuisine)} ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `偷襲就位：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`}>🗡️</span>}
                     {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                     {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
-                    {t.item && <span title="有一瓶幸運藥水">🧪</span>}
+                    {t.item && <span title="有一顆幸運骰">🍀</span>}
                     {picks?.queued[t.id] && <span title={`下一題：${pickLabel(picks.queued[t.id])}`}>📌</span>}
                     <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
                     <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>

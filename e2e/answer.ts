@@ -10,11 +10,11 @@ const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
  * (docs/designs/kill-roll.md). */
 const JUDGE_LANDS_MS = 9000;
 
-/** 擲骰說服 on a fill-in question (dnd design R6): the answer box shows once the check's beat ends. The e2e
- * worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a room's DC and never wins outright. */
-export async function rollCheck(team: Page) {
-  await team.getByTestId("roll-check").click();
-  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 5000 });
+/** A fill-in's persuasion check rolls itself (dnd design R6, owner 2026-11-19): the answer box shows once its beat ends,
+ * after the 說服成功 card. The e2e worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a
+ * room's DC and never wins outright. */
+export async function checkLanded(team: Page) {
+  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 8000 });
 }
 
 /** The big screen link on the host page. It carries the room's screen key: only a screen opened by it is sent the
@@ -40,7 +40,7 @@ export async function openMore(host: Page, section?: "teams" | "rejudge" | "setu
   if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
 }
 
-/** Unfolds a team's ⋯ in ⚙ 更多's 隊伍: 指定下一題, 🧪 給藥水, 交給新手機, 設定分數 and the ability fixes. */
+/** Unfolds a team's ⋯ in ⚙ 更多's 隊伍: 指定下一題, 🍀 給幸運骰, 交給新手機, 設定分數 and the ability fixes. */
 export async function openTeamTools(host: Page, team: string) {
   await openMore(host, "teams");
   const more = host.getByRole("button", { name: `${team}的更多工具` });

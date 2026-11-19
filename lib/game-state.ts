@@ -1943,23 +1943,36 @@ export interface RoomEvent {
   fortune?: FortuneDraw;
 }
 export type Boon = "curse" | "blessing";
-/** 🧪 幸運藥水: the only item so far (docs/designs/lucky-potion.md). */
+/** 🍀 幸運骰 (once the lucky potion; the id stays for saved games): the only item so far (docs/designs/lucky-potion.md). */
 export type Item = "luckyPotion";
 
-/** 🧪 給藥水: the host gives `teamId` a potion, at any time of the game (premise 1). One at a time (premise 4). */
+/** 🍀 給幸運骰: the host gives `teamId` a lucky die, at any time of the game (premise 1). One at a time (premise 4). */
 export function giveItem(game: GameState, teamId: string): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   if (getTeam(game, teamId).item) throw new InvalidActionError("item_held");
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: "luckyPotion", potionsGiven: (t.potionsGiven ?? 0) + 1 })) };
 }
 
-/** Whether `teamId`'s potion doubles its next die (check, class die or dish die; class-dice-rework.md): drunk on the question it faces now, this turn (E1). */
+/** Whether `teamId`'s lucky die is armed: used on the question it faces now, this turn (E1). Which die it doubles: luckyDieFits. */
 export function potionArmed(game: GameState, teamId: string): boolean {
   const t = getTeam(game, teamId);
   return !!t.item && t.itemArmedFor === currentQuestionIdOf(game, teamId) && t.itemArmedTurn === (t.turns ?? 0);
 }
 
-/** 🧪 喝下: the team arms its potion for its current question. The room checks the turn and D6's cases first. */
+/** 🍀 用幸運骰 (甲2, owner 2026-11-19): an armed lucky die goes on the team's next class skill die (洞悉, 祈禱, 衝鋒, 偷襲);
+ * a team with no skill uses left (a chef, no class, or all used) puts it on its next dish die instead. Never on the
+ * persuasion check (it rolls itself) or a kill's dice. The room calls it after spending the use, so a class die always fits. */
+export function luckyDieFits(team: Pick<Team, "classId" | "abilityUses">, kind: string): boolean {
+  if (kind === "mage" || kind === "cleric" || kind === "warrior" || kind === "thief") return true;
+  return kind === "dish" && !hasSkillUses(team);
+}
+
+/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. */
+export function hasSkillUses(team: Pick<Team, "classId" | "abilityUses">): boolean {
+  return (team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") && team.abilityUses > 0;
+}
+
+/** 🍀 用幸運骰: the team arms its lucky die for its current question. The room checks the turn and D6's cases first. */
 export function drinkPotion(game: GameState, teamId: string): GameState {
   assertPlaying(game);
   assertTurn(game, teamId);

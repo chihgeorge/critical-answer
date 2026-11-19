@@ -677,10 +677,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
               🔮 {turn.name}請示了神諭（獎勵減半）
             </span>
           )}
-          {/* 🧪 The team on turn holds a potion, or drank it on this question (lucky-potion.md D1, D8). */}
+          {/* 🍀 The team on turn holds a lucky die, or used it on this question (lucky-potion.md D1, D8). */}
           {!reveal && !card && turn?.item && (
             <span data-testid="screen-potion">
-              <LabelChip>{turn.itemArmed ? "🧪 已喝下！" : "🧪 有幸運藥水"}</LabelChip>
+              <LabelChip>{turn.itemArmed ? "🍀 幸運骰備好了！" : "🍀 有幸運骰"}</LabelChip>
             </span>
           )}
         </div>
@@ -745,7 +745,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           </div>
         ) : question ? (
           // Check first, question after: the room sends no text until the die's beat ends.
-          question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : pendingRoll || !turn ? "🎲 說服檢定中……擲完才出題" : `${turn.name}：按手機上的「🎲 擲骰說服」，擲完才出題`}</span> :
+          question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : "🎲 說服檢定中……擲完才出題"}</span> :
           // 記憶題 (memory-questions.md): the room sends only the media while it plays; the question comes after.
           question.memorize ? (
             <span data-testid="screen-memorize" role="status" className="inline-flex flex-wrap items-center justify-center gap-2">

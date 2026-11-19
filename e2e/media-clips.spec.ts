@@ -3,7 +3,7 @@
 // (docs/designs/instagram-explanations.md). Nothing leaves the machine: YouTube is a fake or blocked, the R2 bucket
 // and Instagram are answered by page routes.
 import { test, expect, type APIRequestContext, type Browser, type BrowserContext, type Route } from "@playwright/test";
-import { startGame, rollCheck, screenUrl, openMore, closeLeftoverContexts } from "./answer";
+import { startGame, checkLanded, screenUrl, openMore, closeLeftoverContexts } from "./answer";
 import { tapScreen } from "./tts";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
@@ -172,7 +172,7 @@ test("uploaded video: a file that fails tells the host, ▶ loads it again, and 
   await tapScreen(screen); // lets the screen play sound once a clip loads
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team);
+  await checkLanded(team);
 
   await expect(screen.getByText("這段影片在哪裡拍的？")).toBeVisible();
   await expect(screen.getByTestId("file-player")).toHaveAttribute("data-status", "error");
@@ -210,7 +210,7 @@ test("Instagram explanation: the reveal embeds it on the big screen, ▶ asks fo
   );
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team);
+  await checkLanded(team);
   await host.getByRole("button", { name: "答對！" }).click();
 
   const player = screen.getByTestId("instagram-player");

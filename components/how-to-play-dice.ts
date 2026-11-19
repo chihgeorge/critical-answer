@@ -1,4 +1,4 @@
-// All dice text of the how-to-play pages (persuasion check, dish die, lucky potion, class dice), computed from the
+// All dice text of the how-to-play pages (persuasion check, dish die, lucky die, class dice), computed from the
 // rules' constants (docs/designs/class-dice-rework.md).
 import {
   CLASS_IDS,
@@ -17,12 +17,12 @@ const BURNT = `${"零一二三四五六七八九"[Math.round(DISH_BURNT_MULTIPLI
 
 type PageText = { topic: string; big: string; owl: string; script: string };
 
-/** Page 3 (填空題): typing, the host's judging, and the persuasion check before it. */
+/** Page 3 (填空題): typing, the host's judging, and the persuasion check that rolls itself before it. */
 export const FILL_IN_PAGE: PageText = {
   topic: "填空題",
-  big: "先說服，再回答；說服成功有提示",
+  big: "說服骰會自動擲，過了有提示",
   owl: "說服成功有提示！擲到 20 免答，擲到 1 只拿一半！",
-  script: "先說服，再回答。說服擲 d20 加職業加值，過了怪物的檢定就有提示：答案第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
+  script: "輪到填空題，說服骰會自動擲：d20 加職業加值，過了怪物的檢定就有提示，答案第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
 };
 
 /** Page 5 (答對後的料理骰). */
@@ -35,14 +35,15 @@ export const DISH_PAGE: PageText = {
     `廚師更好：2 到 ${OK - 1} 照常，${OK} 到 19 拿 ${CHEF_DISH_SUCCESS_MULTIPLIER} 倍，20 拿 ${CHEF_DISH_LEGEND_MULTIPLIER} 倍。搶答和打倒首領的最後一擊不擲。`,
 };
 
-/** Page 6 (幸運藥水): how a team gets one is lib/game-state.ts giveItem (the host), the fortune teller and 冤枉. */
+/** Page 6 (幸運骰): how a team gets one is lib/game-state.ts giveItem (the host), the fortune teller and 冤枉; which die it
+ * doubles is luckyDieFits (owner's 甲2, 2026-11-19). */
 export const POTION_PAGE: PageText = {
-  topic: "幸運藥水",
-  big: "喝下藥水，這題下一顆骰擲兩次取高",
-  owl: "喝下幸運藥水，下一顆骰子擲兩次，取大的那個！",
+  topic: "幸運骰",
+  big: "用技能前按幸運骰，技能骰擲兩顆取高",
+  owl: "按下幸運骰，下一顆技能骰擲兩顆，取大的那個！",
   script:
-    "我會送幸運藥水給表現好的隊伍，占卜師和被冤枉的抓包也會送；一隊一次只能有一瓶。輪到自己時按「🧪 喝下幸運藥水」，" +
-    "這題擲的下一顆骰擲兩次取高：說服、法師、牧師、戰士、偷襲、料理骰都可以。一瓶只管一顆骰，沒擲到骰藥水會還給你。",
+    "我會送幸運骰給表現好的隊伍，占卜師和被冤枉的抓包也會送；一隊一次只能有一顆。輪到自己、要用技能前按「用幸運骰」，" +
+    "下一顆技能骰擲兩顆取高。廚師、沒職業或技能用完的隊伍，改用在答對的料理骰。說服骰不算；這題沒擲到骰，幸運骰會還給你。",
 };
 
 /** Page 7 (職業骰): when each class rolls and the one scale they share; never each class's effect (owner 2026-11-18). */

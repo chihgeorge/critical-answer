@@ -15,7 +15,7 @@ const answer = (g: GameState, id: string, correct: boolean) => {
 };
 
 describe("game log", () => {
-  // Value: protects=the 🧪 藥水成癮 podium title's source (lucky-potion.md E8); fails_when=the counts stop reaching the log
+  // Value: protects=the 🍀 骰子成癮 podium title's source (lucky-potion.md E8); fails_when=the counts stop reaching the log
   it("records each team's potions given and drunk, 0 for none", () => {
     const g = giveItem(spendPotion(giveItem(twoTeams(), "A"), "A"), "A");
     expect(gameLog(endGame(g, first), 0).teams).toEqual([

@@ -464,11 +464,11 @@ export const CHECK_VARIANTS = {
   pass: ["{team}發動嘴遁，{monster}聽得頻頻點頭。", "{monster}，{team}是來談條件的。……談成了。", "{team}把{monster}誇上天，對方很受用。"],
 };
 
-/** 🧪 The lucky potion: drunk, then its two dice landed (one good one bad: saved; both bad: bust). */
+/** 🍀 The lucky die: used, then its two dice landed (one good one bad: saved; both bad: bust). */
 export const POTION_VARIANTS = {
-  drink: ["小孩子才擲一顆，{team}兩顆都要。", "左手只是輔助，第二顆骰才是關鍵。", "{team}一口乾了，下一顆骰多一次機會。"],
-  saved: ["還好有喝！第二顆骰救了{team}一命。", "一顆失敗，一顆成功，{team}選成功那顆。", "藥水發威，壞骰子當作沒看到。"],
-  bust: ["喝了也沒用，兩顆都很慘。{team}盡力了。", "兩顆骰子手牽手，一起擺爛。", "藥水：我只負責多骰一顆，不負責結果。"],
+  drink: ["小孩子才擲一顆，{team}兩顆都要。", "左手只是輔助，第二顆骰才是關鍵。", "{team}掏出幸運骰，下一顆骰多一次機會。"],
+  saved: ["還好有幸運骰！第二顆骰救了{team}一命。", "一顆失敗，一顆成功，{team}選成功那顆。", "幸運骰發威，壞骰子當作沒看到。"],
+  bust: ["多擲一顆也沒用，兩顆都很慘。{team}盡力了。", "兩顆骰子手牽手，一起擺爛。", "幸運骰：我只負責多骰一顆，不負責結果。"],
 };
 
 /** A wrong boss answer: the boss brings a new question, there is nothing to answer again (D2=B). */
@@ -721,7 +721,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     checkLine(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string }): string {
       return fill(pick(CHECK_VARIANTS[kind], `check-${kind}`), vars);
     },
-    /** 🧪 The potion's line: drunk, or its two dice landed (POTION_VARIANTS). */
+    /** 🍀 The lucky die's line: used, or its two dice landed (POTION_VARIANTS). */
     potionLine(kind: keyof typeof POTION_VARIANTS, team: string): string {
       return fill(pick(POTION_VARIANTS[kind], `potion-${kind}`), { team });
     },

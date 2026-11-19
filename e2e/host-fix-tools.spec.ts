@@ -1,7 +1,7 @@
 // The host's tools for a day that goes wrong: 🩺 檢查題庫, the room's closing warning with 延長 1 小時, and ⚙ 更多's
 // 修正・改判 with the scoreboard they change (docs/hosting.md).
 import { test, expect, type WebSocketRoute } from "@playwright/test";
-import { startGame, rollCheck, openMore, openTeamTools, serveDish, closeLeftoverContexts, textOnlyBank } from "./answer";
+import { startGame, checkLanded, openMore, openTeamTools, serveDish, closeLeftoverContexts, textOnlyBank } from "./answer";
 
 closeLeftoverContexts();
 textOnlyBank();
@@ -72,7 +72,7 @@ test("host fixes: 🩺 檢查題庫 answers in the lobby, then 修正 and 改判
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team);
+  await checkLanded(team);
   await host.getByRole("button", { name: "答對！" }).click();
   await expect(host.getByTestId("host-reveal")).toBeVisible({ timeout: 10_000 });
   // A cooked monster's points count once its dish is served (docs/designs/monster-cuisine.md).

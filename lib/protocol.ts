@@ -324,7 +324,7 @@ export type ClientMessage =
   | { type: "HOST_FORTUNE_RANDOM"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
-  /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
+  /** 🍀 給幸運骰 (docs/designs/lucky-potion.md): the host gives a team a lucky die, at any time of the game; refused while it holds one. */
   | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** ⚙ 更多's 修正 (game-state hostFix): one correction to a team, recorded in its game log. No line, no cue on the big screen. */
   | { type: "HOST_FIX"; teamId: string; fix: HostFix }
@@ -411,12 +411,9 @@ export type ClientMessage =
   | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
   /** The team that drew the fortune teller picks an effect (docs/designs/fortune-teller.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_CHOOSE_FORTUNE"; effect: FortuneEffect; eventId: number }
-  /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
-  | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
-  /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
-  | { type: "HOST_ROLL_CHECK"; teamId: string; questionId: string; eventId: number }
-  /** 🧪 喝下幸運藥水 on the team's own turn: its next die on `questionId` (a check, a class die or the dish die) rolls twice, keeping the higher
-   * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
+  /** 🍀 用幸運骰 on the team's own turn (wire name kept from the potion it was): its next class skill die on `questionId`,
+   * or its dish die when it has no skill uses left, rolls twice, keeping the higher (lucky-potion.md). `eventId`: the STATE
+   * it was pressed under. The persuasion check rolls itself, so an older phone's TEAM_ROLL_CHECK is a bad_message now. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
   /** 🔮 公開問神諭 on the team's own room question (anti-ai-cheating.md). */
   | { type: "TEAM_ORACLE"; questionId: string }
@@ -473,8 +470,8 @@ export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
  * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
- * `value`, the bonus they score; docs/designs/kill-roll.md). Any die but the kill's rolled with a 🧪
- * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
+ * `value`, the bonus they score; docs/designs/kill-roll.md). A skill or dish die rolled with a 🍀
+ * lucky die has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
  * Class dice: a mage's skill die, a cleric's prayer die, and the thief's sneak die (`penalty`: what its 1 takes);
  * `rejudge`: the dish die is the host's 改成答對, paid when it lands. */
 export interface PendingRoll {
@@ -1208,17 +1205,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_ROLL_INITIATIVE":
     case "HOST_ROLL_INITIATIVE":
       return { type: m.type };
-    case "TEAM_ROLL_CHECK": {
-      const questionId = str(m.questionId, MAX_ID);
-      if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
-      return { type: "TEAM_ROLL_CHECK", questionId, eventId: m.eventId as number };
-    }
-    case "HOST_ROLL_CHECK": {
-      const questionId = str(m.questionId, MAX_ID);
-      const teamId = str(m.teamId, MAX_ID);
-      if (questionId === null || teamId === null || !isCount(m.eventId)) return null;
-      return { type: "HOST_ROLL_CHECK", teamId, questionId, eventId: m.eventId };
-    }
     case "TEAM_SUBMIT_TEXT": {
       const questionId = str(m.questionId, MAX_ID);
       const text = str(m.text, MAX_RAW_TEXT);

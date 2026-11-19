@@ -39,7 +39,9 @@ function makeRoom(storage = memoryStorage()) {
   const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const room = new DungeonRoom(io, d.rng, { bank: bank(), epilogueDelayMs: 0 });
   const state = () => msgs(io.broadcast.mock.calls).findLast((m) => m.type === "STATE");
-  return { room, io, storage, queue: d.queue, state };
+  // The STATE that opened the game: a fill-in's persuasion check rolls itself in the STATE after it.
+  const started = () => msgs(io.broadcast.mock.calls).find((m) => m.type === "STATE" && m.eventId === 1);
+  return { room, io, storage, queue: d.queue, state, started };
 }
 
 /** Three teams (甲 乙 丙, in that lobby order) and a host; `fields` go on HOST_START. */
@@ -96,7 +98,7 @@ describe("擲先攻 in the room", () => {
 
     vi.advanceTimersByTime(INITIATIVE_ORDER_MS);
     expect(g.state().initiative).toBeUndefined();
-    expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
+    expect(g.started()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.state().question).not.toBeNull();
     expect(g.state().view.currentTurnTeamId).toBe(B);
   });

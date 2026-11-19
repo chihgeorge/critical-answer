@@ -61,6 +61,7 @@ import {
   drinkPotion,
   potionArmed,
   spendPotion,
+  luckyDieFits,
   resolveFortune,
   type ClassId,
   type Difficulty,
@@ -2804,7 +2805,18 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
   });
 });
 
-describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
+describe("🍀 lucky die (docs/designs/lucky-potion.md)", () => {
+  // Value: protects=the owner's 甲2 (2026-11-19): a skill die while uses are left, else the dish die, never the check or
+  // the kill; fails_when=luckyDieFits takes any next die again, or a chef / no-class team never gets it on the dish die
+  it("luckyDieFits: a class skill die; the dish die only with no skill uses left; never the check or the kill", () => {
+    for (const kind of ["mage", "cleric", "warrior", "thief"]) expect(luckyDieFits({ classId: "mage", abilityUses: 0 }, kind)).toBe(true);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 1 }, "dish")).toBe(false);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: "chef", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: undefined, abilityUses: 3 }, "dish")).toBe(true);
+    for (const kind of ["check", "kill"]) expect(luckyDieFits({ classId: undefined, abilityUses: 0 }, kind)).toBe(false);
+  });
+
   it("giveItem: gives one, refuses a second while held, and refuses a finished game", () => {
     const g = giveItem(makeGame(), "T1");
     expect(g.teams[1]).toMatchObject({ item: "luckyPotion", potionsGiven: 1 });
