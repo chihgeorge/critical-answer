@@ -2,11 +2,21 @@
 // Pure and client-safe: the reward math mirrors game-state hostRejudge.
 import type { JudgedEntry } from "./protocol";
 
-/** 第 n 題: each question id numbered 1, 2, 3… in the order it was first judged, so two teams on one question share n. */
+/** 第 n 題: each question id numbered 1, 2, 3… in the order it was last judged, so two teams on one question share n,
+ * and a question retried after 下輪再答 moves up with its newest judgment (#328 m6). */
 export function questionOrdinals(judged: Pick<JudgedEntry, "questionId">[]): Map<string, number> {
-  const n = new Map<string, number>();
-  for (const j of judged) if (!n.has(j.questionId)) n.set(j.questionId, n.size + 1);
-  return n;
+  const last = new Map<string, number>();
+  judged.forEach((j, i) => {
+    last.delete(j.questionId); // re-inserted last: a Map keeps insertion order
+    last.set(j.questionId, i);
+  });
+  return new Map([...last.keys()].map((id, i) => [id, i + 1]));
+}
+
+/** The list's rows, newest question first, each question's rows together (newest first): the numbers only go down. */
+export function rejudgeRows<T extends Pick<JudgedEntry, "questionId">>(judged: T[]): T[] {
+  const n = questionOrdinals(judged);
+  return judged.map((j, i) => ({ j, i })).sort((a, b) => n.get(b.j.questionId)! - n.get(a.j.questionId)! || b.i - a.i).map(({ j }) => j);
 }
 
 /** What pressing the row's button does to the team's reward now: 改成答錯 takes min(taken ?? N, reward), 改成答對 gives

@@ -1695,7 +1695,8 @@ export class DungeonRoom {
       ...this.buzzTypes(),
       // No dish: the boss's dish is served on the kill, not before (monster-cuisine.md).
       ...(this.phaseCard ? { phaseCard: { monster: this.bossLook() } } : {}),
-      ...(this.phaseCardDue ? { phaseCardDue: true as const } : {}),
+      // A phase-clearing hit's reveal too: its card opens on 下一題, so the host page's ⏭ preview is the new phase, not this question (#328 m5).
+      ...(this.phaseCardDue || (this.reveal && this.game?.phase === "playing" && this.game.boss.phasePending) ? { phaseCardDue: true as const } : {}),
       ...(this.intro !== null ? { intro: { page: this.intro } } : {}),
       ...(this.initiative ? { initiative: { ...this.initiative, ...(this.initiative.order ? {} : { rolls: hiddenInitiativeRolls(this.initiative.rolls) }), left: Math.max(0, this.initiativeEndsAt - this.now()), ...(this.pacing === "manual" && !this.initiative.order ? { untimed: true as const } : {}) } } : {}),
       ...this.syncAnswerClock(),
