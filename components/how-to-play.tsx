@@ -197,7 +197,7 @@ function Picture({ page }: { page: number }) {
         </div>
         <div className="flex text-[18px]">
           {DICE_SCALE.map(([n, t], i) => (
-            <div key={n} className="text-center" style={{ ...cell, background: i === 0 || i === 1 ? "var(--danger)" : i === DICE_SCALE.length - 1 ? "var(--warn)" : "var(--cream)", color: i < 2 ? "#fff" : "var(--k)" }}>
+            <div key={n} className="text-center" style={{ ...cell, background: i === 0 || i === 1 ? "var(--danger)" : i === DICE_SCALE.length - 1 ? "var(--warn)" : "var(--cream)", color: "var(--k)" }}>
               <span className="px-num">{n}</span> {t}
             </div>
           ))}

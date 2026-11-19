@@ -666,7 +666,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // A phase under way means a team is already inside, so the phase lines are join lines too (none says 推開).
       if (event.type === "correct" && event.entersBoss?.phase) return fill(pick(BOSS_ENTER_PHASE_VARIANTS, "boss-enter-phase"), { ...event, phase: event.entersBoss.phase });
       if (event.type === "boss-kill" && event.cooked) return fill(pick(BOSS_DISH_VARIANTS, "boss-dish"), event);
-      // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, 2–6 and 20.
+      // A correct answer's dish die (not a persuasion 20 or 1's: that line wins): its own pool on 1, a chef's 2–6 and 20.
       const chef = "classId" in event && event.classId === "chef";
       // A 2–6 is a plain serve for anyone but a chef (dishTier).
       const dishTier = event.type === "correct" && !event.entersBoss && event.dish !== undefined && event.roll?.kind !== "check" ? tierOfDish(event.dish, chef) : undefined;

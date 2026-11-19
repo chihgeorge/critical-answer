@@ -4076,7 +4076,7 @@ export class DungeonRoom {
     const before = prev.teams.find((t) => t.id === teamId);
     const ateDish = (game.teams.find((t) => t.id === teamId)?.dishes?.length ?? 0) > (before?.dishes?.length ?? 0);
     const ateFrom = !ateDish || !before ? undefined : outcome.type === "correct-boss-hit" ? this.bossId() : (before.swappedMonsterId ?? prev.rooms[before.roomIndex]?.monsterId ?? this.bank.rooms[before.roomIndex]?.monster);
-    // The dish die behind this answer renames a cooked dish on a 1, 2–6 or 20 (a gift stays as the monster gave it).
+    // The dish die behind this answer renames a cooked dish on a 1, a chef's 2–6 or a 20 (a gift stays as the monster gave it).
     const dishDie = roll?.kind === "dish" ? roll.value : roll?.dish;
     const cooked = ateFrom && !persuaded ? catalogMonster(ateFrom).dish : undefined;
     const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random, before?.classId === "chef") : undefined;
