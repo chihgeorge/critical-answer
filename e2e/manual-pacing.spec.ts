@@ -78,8 +78,15 @@ test("manual pacing: a correct answer's dish die, rolled under its reveal, waits
   await expect(host.getByTestId("host-hold")).toContainText("第一題");
   await host.getByTestId("host-step").click();
   await expect(a.getByText("輪到我們了！")).toBeVisible();
+  // The fill-in's persuasion check rolls itself, and in manual its die and card wait for ▶ 下一步 too.
+  const judge = host.getByRole("button", { name: "答對！" });
+  for (let i = 0; i < 10 && !(await judge.isEnabled().catch(() => false)); i++) {
+    const step = host.getByTestId("host-step");
+    if (await step.isVisible()) await step.click();
+    await host.waitForTimeout(500);
+  }
 
-  await host.getByRole("button", { name: "答對！" }).click();
+  await judge.click();
   await host.getByRole("button", { name: "🎲 擲料理骰", exact: true }).click();
   await expect(host.getByTestId("host-hold")).toBeVisible();
   await host.getByTestId("host-step").click();
