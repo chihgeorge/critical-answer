@@ -120,22 +120,22 @@ function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; 
   if (!me?.item || me.itemArmed || game.view.buzz) return null;
   return (
     <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🍀 用幸運骰<small className="text-[13px]">{luckyDieTarget(me)}擲兩顆取高</small>
+      🍀 用幸運骰<small className="text-[13px]">{luckyDieTarget(me, { questionId, mageCasts: game.view.mageCasts })}擲兩顆取高</small>
     </PixelButton>
   );
 }
 
-/** Which die the team's lucky die doubles: its skill die while it has uses, else the dish die (luckyDieFits). */
-function luckyDieTarget(team: { classId?: ClassId; abilityUses: number }): string {
-  return hasSkillUses(team) ? `下一顆${LUCKY_SKILL[team.classId as keyof typeof LUCKY_SKILL]}骰` : "下一顆料理骰";
+/** Which die the team's lucky die doubles: its skill die while one is left on this question, else the dish die (luckyDieFits). */
+function luckyDieTarget(team: Parameters<typeof hasSkillUses>[0], at: Parameters<typeof hasSkillUses>[1]): string {
+  return hasSkillUses(team, at) ? `下一顆${LUCKY_SKILL[team.classId as keyof typeof LUCKY_SKILL]}骰` : "下一顆料理骰";
 }
 const LUCKY_SKILL = { mage: "洞悉", cleric: "祈禱", warrior: "衝鋒", thief: "偷襲" } as const;
 
 /** The team card's lucky-die line (D2, D4, D5): held, used on the question it faces now, or back after a question whose die
  * never rolled (E2: until the team's next turn). */
-function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
+function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean, mageCasts: StateMessage["view"]["mageCasts"]): { text: string; drunk?: true } | null {
   if (!team?.item) return null;
-  if (team.itemArmed) return { text: `🍀 幸運骰準備好了：這題${luckyDieTarget(team)}擲兩顆取高`, drunk: true };
+  if (team.itemArmed) return { text: `🍀 幸運骰準備好了：這題${luckyDieTarget(team, team.itemArmedFor ? { questionId: team.itemArmedFor, mageCasts } : undefined)}擲兩顆取高`, drunk: true };
   return { text: team.itemArmedFor && !myTurn ? "🍀 幸運骰還在：這題沒擲到骰" : "🍀 有一顆幸運骰" };
 }
 
@@ -1043,7 +1043,7 @@ export default function PlayPage() {
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
   const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
-  const potion = game ? potionLine(myTeam, isMyTurn) : null;
+  const potion = game ? potionLine(myTeam, isMyTurn, game.view.mageCasts) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
   const finished = game?.phase === "finished";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): one big 搶答 button, answers spoken aloud. */

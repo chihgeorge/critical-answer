@@ -2815,6 +2815,12 @@ describe("🍀 lucky die (docs/designs/lucky-potion.md)", () => {
     expect(luckyDieFits({ classId: "chef", abilityUses: 0 }, "dish")).toBe(true);
     expect(luckyDieFits({ classId: undefined, abilityUses: 3 }, "dish")).toBe(true);
     for (const kind of ["check", "kill"]) expect(luckyDieFits({ classId: undefined, abilityUses: 0 }, kind)).toBe(false);
+    // A skill already used on this question leaves no skill die there: the dish die takes the lucky die (outside review).
+    const at = { questionId: "q1", mageCasts: { [checkKey("q1", "t1")]: true } };
+    expect(luckyDieFits({ id: "t1", classId: "mage", abilityUses: 2 }, "dish", at)).toBe(true);
+    expect(luckyDieFits({ id: "t1", classId: "mage", abilityUses: 2 }, "dish", { questionId: "q2", mageCasts: at.mageCasts })).toBe(false);
+    expect(luckyDieFits({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1", value: 12 } }, "dish", at)).toBe(true);
+    expect(luckyDieFits({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1" } }, "dish", at)).toBe(false);
   });
 
   it("giveItem: gives one, refuses a second while held, and refuses a finished game", () => {

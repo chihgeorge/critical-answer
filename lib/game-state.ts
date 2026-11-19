@@ -1962,14 +1962,23 @@ export function potionArmed(game: GameState, teamId: string): boolean {
 /** 🍀 用幸運骰 (甲2, owner 2026-11-19): an armed lucky die goes on the team's next class skill die (洞悉, 祈禱, 衝鋒, 偷襲);
  * a team with no skill uses left (a chef, no class, or all used) puts it on its next dish die instead. Never on the
  * persuasion check (it rolls itself) or a kill's dice. The room calls it after spending the use, so a class die always fits. */
-export function luckyDieFits(team: Pick<Team, "classId" | "abilityUses">, kind: string): boolean {
+export function luckyDieFits(team: SkillTeam, kind: string, at?: SkillAt): boolean {
   if (kind === "mage" || kind === "cleric" || kind === "warrior" || kind === "thief") return true;
-  return kind === "dish" && !hasSkillUses(team);
+  return kind === "dish" && !hasSkillUses(team, at);
 }
 
-/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. */
-export function hasSkillUses(team: Pick<Team, "classId" | "abilityUses">): boolean {
-  return (team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") && team.abilityUses > 0;
+type SkillTeam = Pick<Team, "classId" | "abilityUses"> & Partial<Pick<Team, "id" | "sneakTry">>;
+/** The question the die is for, and the game's (or view's) mageCasts: a skill already used on it has no die left there. */
+type SkillAt = { questionId: string; mageCasts?: Record<string, unknown> };
+
+/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. With `at`, a mage
+ * that already cast on that question, or a thief whose sneak die already landed there, has no skill die left on it. */
+export function hasSkillUses(team: SkillTeam, at?: SkillAt): boolean {
+  if (!(team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") || team.abilityUses <= 0) return false;
+  if (!at || team.id === undefined) return true;
+  if (team.classId === "mage") return !at.mageCasts?.[checkKey(at.questionId, team.id)];
+  if (team.classId === "thief") return team.sneakTry?.questionId !== at.questionId || team.sneakTry.value === undefined;
+  return true;
 }
 
 /** 🍀 用幸運骰: the team arms its lucky die for its current question. The room checks the turn and D6's cases first. */

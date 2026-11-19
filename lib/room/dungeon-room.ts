@@ -4740,7 +4740,7 @@ export class DungeonRoom {
     // 🍀 A lucky die armed on this question doubles the team's next class skill die, or its dish die once it has no skill uses
     // left (luckyDieFits), never a check, a kill's or a 改成答對's; spent before the STATE goes out, so a restart in the beat
     // cannot roll it again (E3).
-    const potion = !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) && luckyDieFits(this.game.teams.find((t) => t.id === teamId)!, kind) ? [die(), die()] : null;
+    const potion = !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) && luckyDieFits(this.game.teams.find((t) => t.id === teamId)!, kind, { questionId, mageCasts: this.game.mageCasts }) ? [die(), die()] : null;
     if (potion) this.game = spendPotion(this.game!, teamId);
     const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
     // A sneak die's 1 shows what it takes as it lands (sneakRoll, tried on the game now).

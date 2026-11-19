@@ -168,7 +168,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // skill uses left (lib's luckyDieFits). It spends the die on g: call it on its own line, before any call that reads g.
     const potionRoll = (die: "class" | "dish") => {
       const v = d20();
-      if (!team().item || (die === "dish" && G.hasSkillUses(team()))) return v;
+      if (!team().item || (die === "dish" && G.hasSkillUses(team(), { questionId: q, mageCasts: g.mageCasts }))) return v;
       g = G.spendPotion(G.drinkPotion(g, id), id);
       return Math.max(v, d20());
     };
