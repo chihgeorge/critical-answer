@@ -607,6 +607,7 @@ if (process.argv[1]?.endsWith("canary-live.ts")) {
  * from before the groups has no 其他 header, and everything is already in view there. */
 async function openOther(host: Page) {
   await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByTestId("more-drawer").waitFor(); // count() does not wait: an unrendered drawer would read as the old one
   const other = host.getByTestId("more-section-other");
   if ((await other.count()) && (await other.getAttribute("aria-expanded")) !== "true") await other.click();
 }

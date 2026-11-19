@@ -87,7 +87,7 @@ export function MoreDrawer({
   undoWrong?: { teamId: string; questionId: string; fields: boolean };
   /** A question's label from HOST_PICKS ("" when unknown). */
   questionLabel?: (questionId: string) => string;
-  /** The page's last refusal, shown again in 修正: the drawer covers the page's own error line. */
+  /** The page's last refusal, shown again above the groups: the drawer covers the page's own error line. */
   error?: string | null;
   /** The speaker latency for timing questions (timing-tap.md 8) while a game plays; undefined hides the field. */
   tapLatency?: number;
