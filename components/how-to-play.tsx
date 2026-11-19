@@ -98,6 +98,13 @@ const fillInPhone = (hint?: string) => (
 /** The game's own d20 face (no 🎲 on the slides); `tone` marks a potion's kept and dropped die. */
 const face = (n: number, tone?: "kept" | "dim") => <D20 value={n} size={64} tone={tone} />;
 
+/** Page 8's podium: the end screen's places and colours (app/room/[code]/screen/page.tsx PODIUM), heights scaled to fit. */
+const MINI_PODIUM = [
+  { place: 2, bg: "#c9c9d6", h: 56, look: 1 },
+  { place: 1, bg: "#ffcf4a", h: 72, look: 0 },
+  { place: 3, bg: "#e39a5d", h: 46, look: 2 },
+];
+
 function Picture({ page }: { page: number }) {
   const hop = "px-hop";
   if (page === 1)
@@ -212,13 +219,17 @@ function Picture({ page }: { page: number }) {
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-[16px]">
-        {/* As big as the whole left block (owner 2026-11-19): the crown's art is 14×8 px of its 20×12 box (lib/pixel-art.ts),
-            so the box is cropped to the art at scale 20; a gold glow pulses behind it like the torches (px-glow; still under reduced motion). */}
-        <div className="relative" style={{ width: 14 * 20, height: 8 * 20 }}>
-          <div className="px-glow" style={{ width: 380, height: 380, left: "50%", top: "50%", marginLeft: -190, marginTop: -190, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
-          <div className={hop} style={{ position: "absolute", left: -3 * 20, top: -2 * 20 }}>
-            <Sprite kind="crown" scale={20} />
-          </div>
+        {/* The end screen's podium (screen page PODIUM: colours, outline, the winner's crown) at the slime's pixel scale (owner 2026-11-19). */}
+        <div className="flex items-end gap-3">
+          {MINI_PODIUM.map((p) => (
+            <div key={p.place} className="flex flex-col items-center">
+              {p.place === 1 && <Sprite kind="crown" scale={3} style={{ marginBottom: -10, zIndex: 2 }} />}
+              <Sprite kind="hero" variant={p.look} scale={3} className={p.place === 1 ? hop : undefined} />
+              <div className="flex justify-center pt-1 text-white" style={{ width: 84, height: p.h, background: p.bg, boxShadow: "0 0 0 4px var(--k), inset 0 4px 0 #ffffff55, inset 0 -6px 0 #0003" }}>
+                <span className="px-num text-[18px]" style={{ textShadow: "3px 3px 0 var(--k)" }}>{p.place}</span>
+              </div>
+            </div>
+          ))}
         </div>
         <span>分數最高的隊伍贏</span>
       </div>
