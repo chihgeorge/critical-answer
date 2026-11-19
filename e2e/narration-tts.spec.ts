@@ -354,9 +354,9 @@ test("screen TTS: blocked localStorage (private browsing) doesn't break the voic
 });
 
 // Value: protects=the host panel lists every narration line with its own 改 (host-narration-edit.md D5), and an edit of
-// line N reaches the phone's dialogue box; fails_when=the panel shows only the first line, the 改 buttons are missing,
+// line N reaches the big screen's dialogue box; fails_when=the panel shows only the first line, the 改 buttons are missing,
 // or HOST_EDIT_NARRATION no longer replaces line N; no_claim=read lines locking (unit tests in dungeon-room.test.ts)
-test("host narration panel: every line has its own 改, and an edited line reaches the phone", async ({ browser }) => {
+test("host narration panel: every line has its own 改, and an edited line reaches the big screen", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -384,7 +384,11 @@ test("host narration panel: every line has its own 改, and an edited line reach
 
   const edited = "主持人改寫：全場安靜！";
   await editLastLine(host, edited);
-  await expect(team.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
+  // The phones show no narration (the story is the big screen's): a screen opened now shows the edited line.
+  await expect(team.locator(".px-say")).toHaveCount(0);
+  const screen = await (await browser.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  await expect(screen.locator(".px-say")).toContainText(edited, { timeout: 20_000 }); // read after the lines before it
 });
 
 /** Opens the host's narration panel (in ⚙ 更多) if needed, swaps its last line for `text`, and closes the drawer. */

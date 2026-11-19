@@ -339,11 +339,13 @@ export function ScoreMeter({ score: raw, active = false, max = BOSS_THRESHOLD }:
 
 /* ---------- Turn ribbon ---------- */
 
-export function TurnRibbon({ children, color, maxWidth }: { children: ReactNode; color?: string; maxWidth?: number }) {
+/** `end`: a chip at the ribbon's right end (the phone's answer clock). */
+export function TurnRibbon({ children, color, maxWidth, end }: { children: ReactNode; color?: string; maxWidth?: number; end?: ReactNode }) {
   return (
     <div className="px-ribbon" style={{ ...(color ? { background: color } : null), maxWidth }}>
       <i>▶</i>
-      <span className="min-w-0 truncate">{children}</span>
+      <span className={cx("min-w-0 truncate", !!end && "flex-1")}>{children}</span>
+      {end && <span className="flex-none text-[18px]">{end}</span>}
     </div>
   );
 }

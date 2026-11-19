@@ -48,14 +48,14 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // The join QR is right there in the host's lobby, no drawer needed.
   await expect(host.getByRole("img", { name: "掃描加入" })).toBeVisible();
 
-  // While waiting, each phone lists every team that has joined, live.
-  for (const { page } of players) {
-    await expect(page.getByTestId("roster")).toContainText("甲隊");
-    await expect(page.getByTestId("roster")).toContainText("乙隊");
+  // While waiting, each phone shows only its own team (the big screen and the host list every team).
+  for (const [i, { page }] of players.entries()) {
+    await expect(page.getByTestId("roster")).toContainText(["甲隊", "乙隊"][i]);
+    await expect(page.getByTestId("roster")).not.toContainText(["乙隊", "甲隊"][i]);
   }
   const late = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await late.goto(`/room/${code}/play?name=${encodeURIComponent("丙隊")}`);
-  await expect(players[0].page.getByTestId("roster")).toContainText("丙隊"); // shows up without a refresh
+  await expect(host.getByText("丙隊").first()).toBeVisible(); // shows up on the host without a refresh
   await late.close();
 
   // Host claims control, then starts once both teams are in.
@@ -90,7 +90,8 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // Before 上菜 (which shows 「上菜！」 on the screen): the big screen's narrator only says 答對！ until 下一題 (#365); the
   // narration line about 甲隊's answer reaches the other phone.
   await expect(screen.locator(".px-say")).toContainText("答對！");
-  await expect(players[1].page.locator(".px-say")).toContainText("甲隊");
+  // The phones show no narration: the story is the big screen's.
+  await expect(players[1].page.locator(".px-say")).toHaveCount(0);
 
   // The line naming the next team waits for 下一題: the screen still shows 甲隊's room.
   await expect(screen.locator(".px-say")).not.toContainText("乙隊");

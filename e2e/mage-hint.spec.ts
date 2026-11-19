@@ -14,7 +14,7 @@ async function mageRoom(browser: Browser) {
   const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("法師隊")}`);
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
-  await expect(team.getByText("擲技能骰：選擇題刪 2 個錯的、填空題看第一個字、排序題看第 1 個；20 全給，1 沒效")).toBeVisible();
+  await expect(team.getByText("刪掉錯的選項／看第一個字")).toBeVisible();
   await team.getByRole("button", { name: /法師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
