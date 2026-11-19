@@ -390,14 +390,14 @@ export const CAUGHT_VARIANTS = [
 ];
 /** 逃跑: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
-  "{team}逃進隔壁房，迎面是{to}！",
+  "{team}轉身就跑，迎面是{to}！",
   "{team}甩開{monster}，撞上了{to}。",
   "{team}換條路跑，前面站著{to}。",
   "{monster}還在原地，{team}已經遇上{to}。",
   "腳底抹油！{team}溜到{to}的地盤。",
-  "{team}逃出房門，{to}正在等著。",
-  "門一開，{team}和{to}大眼瞪小眼。",
-  "{team}換了個戰場，這回對上{to}。",
+  "{team}逃開{monster}，{to}正在等著。",
+  "一轉身，{team}和{to}大眼瞪小眼。",
+  "{team}換個對手，這回對上{to}。",
 ];
 
 /** A cleric's prayer on a miss: the team answers again now, keeping the turn, so never "next round". */
