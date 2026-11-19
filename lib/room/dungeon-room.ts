@@ -2061,6 +2061,7 @@ export class DungeonRoom {
    * its code can be used again.
    */
   async onAlarm() {
+    const firedAt = this.alarmAt;
     this.alarmAt = null;
     const last = this.lastActivityAt;
     const closesAt = this.closesAt();
@@ -2079,7 +2080,11 @@ export class DungeonRoom {
       const closing = this.closingMessage();
       if (closing.minutesLeft !== null) for (const conn of this.hostConns.values()) this.sendTo(conn, closing);
     }
-    await this.setAlarmAt(this.nextAlarmAt()!);
+    // An alarm can run while Date.now() is still a few ms short of its time, so the check above finds nothing due and
+    // the next one is that same time. Setting an unchanged alarm writes nothing, and the platform then deletes the alarm
+    // that just ran: the room would never rest or expire (issue 396). Step 1 ms past it instead.
+    const next = this.nextAlarmAt()!;
+    await this.setAlarmAt(firedAt !== null && next <= firedAt ? firedAt + 1 : next);
   }
 
   private async expire() {
