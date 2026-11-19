@@ -1251,7 +1251,7 @@ export class DungeonRoom {
       this.restoreBeats(s);
     } catch (err) {
       // a damaged save (a null team) restores without its beats
-      console.error(JSON.stringify({ event: "restore_beats_failed", error: String(err) }));
+      console.error(JSON.stringify({ event: "restore_beats_failed", error: err instanceof Error ? err.stack ?? err.message : String(err) }));
     }
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
@@ -3087,8 +3087,9 @@ export class DungeonRoom {
     this.broadcastState();
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
-    // The entrance before the handoff to the next team (#394).
-    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint)) this.appendLine(this.eventSeq, entry);
+    // The entrance before the handoff to the next team (#394), leaving the handoff a slot under the line cap.
+    const room = NARRATION_MAX_LINES - (this.lastNarration?.lines.length ?? 0) - (held && line ? 1 : 0);
+    if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint).slice(0, Math.max(0, room))) this.appendLine(this.eventSeq, entry);
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
   }
 
