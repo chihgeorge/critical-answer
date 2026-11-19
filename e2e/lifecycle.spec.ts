@@ -14,11 +14,11 @@ closeLeftoverContexts();
 const PORT = 1994;
 const STORE = ".wrangler/lifecycle-e2e";
 const BASE = `ws://localhost:${PORT}/parties/main/LFCY`;
-// The idle time must outlast a correct lock's beats (2 s reveal + 2 s crit die, BEAT_MS in
+// The idle time must outlast a correct lock's beats (2 s reveal + 2 s dish intro + 2 s dish die, BEAT_MS in
 // lib/room/dungeon-room.ts). The beats do mark activity, but markActivity only moves the alarm earlier: with
 // an idle time equal to a beat, the alarm set at HOST_REVEAL fires with the reveal beat and closes the room
 // before the judgment.
-const IDLE_MS = 6000;
+const IDLE_MS = 9000;
 // Counted from the first game start: long enough for the game, both idle closes and the reconnect between them.
 const EXPIRE_MS = 40000;
 const CLOSE_IDLE = 4001;
@@ -102,7 +102,8 @@ test("an unused room closes its connections after the idle time, keeps the game,
       await wait(() => last(host, "STATE")?.pendingLock, "the lock is in");
       send(host, { type: "HOST_REVEAL", teamId: last(host, "STATE").pendingLock.teamId, questionId: dealt.questionId });
     } else send(host, { type: "HOST_JUDGE", teamId: last(a, "STATE").view.currentTurnTeamId, questionId: dealt.questionId, correct: true });
-    await wait(() => last(a, "STATE")?.eventId >= 2, "the judgment is applied");
+    // A right lock is judged after its beats (reveal, dish intro, dish die), so wait for the score itself.
+    await wait(() => last(a, "STATE")?.view.teams.some((t: any) => t.score > 0), "the judgment is applied");
     const before = last(a, "STATE");
     const epoch = before.roomEpoch;
     const scores = before.view.teams.map((t: any) => [t.id, t.score]);

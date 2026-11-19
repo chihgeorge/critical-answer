@@ -36,6 +36,7 @@ import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
 import { isAnswerSeconds } from "./answer-clock";
 import { isLook } from "./team-look";
+import { MAX_SEEK_S } from "./youtube";
 import type { MonsterSprite } from "./sprite-kind";
 import type { TranscriptItem } from "./narration/runner";
 
@@ -127,10 +128,10 @@ export type AnswerReveal = {
   video?: HiddenVideo;
   /** Set when a team's lock was judged (phone answering): the answered question's options, which one
    * was right, who locked it and the points it scored, so every screen can light the tile (D8, D14).
-   * Safe to send: it goes out only once the answer is revealed. `chefBonus`: a chef's share of `points`, shown as （廚師 +N）. */
-  choice?: { options: string[]; correctIndex: number; teamId: string; points: number; chefBonus?: number };
-  /** Set when a sort question was answered right: its items in the correct order, who answered and the points (`chefBonus` as in `choice`). */
-  sorted?: { items: string[]; teamId: string; points: number; chefBonus?: number };
+   * Safe to send: it goes out only once the answer is revealed. */
+  choice?: { options: string[]; correctIndex: number; teamId: string; points: number };
+  /** Set when a sort question was answered right: its items in the correct order, who answered and the points. */
+  sorted?: { items: string[]; teamId: string; points: number };
   /** A music question with fields: each field's answer and whether the team got it (docs/designs/multi-field.md F7). */
   fields?: { teamId: string; marks: { label: string; answer: string; right: boolean }[] };
   /** A timing question's round (docs/designs/timing-tap.md): the target (song ms), every tap closest first (`errorMs`
@@ -150,8 +151,9 @@ export type AnswerReveal = {
   /** The monster the answer was given to and its room (`room` null for the boss), so the stage keeps that room through the
    * reveal instead of the next team's, dish or not. Absent from older servers: the stage then falls back to `dish`. */
   at?: { monster: PublicQuestion["monster"]; room: number | null };
-  /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers. */
-  scored?: { teamId: string; points: number };
+  /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers.
+   * `dishDie`: the dish die behind it, `dishBonus` what it changed (absent when nothing), `chef` read with the chef's multipliers. */
+  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; chef?: true };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -160,8 +162,11 @@ export type AnswerReveal = {
     method: string;
     comment: string;
     points: number;
-    /** A chef's share of `points`, shown as （廚師 +N）. */
-    chefBonus?: number;
+    /** The dish die's share of `points` (negative on a 1), and its value. */
+    dishBonus?: number;
+    dishDie?: number;
+    /** What the dish die made of it: burnt (dish-burnt) or legendary (<dish>-legend, with a glow). Absent: the dish as it is. */
+    look?: "burnt" | "legend";
     /** The monster that was cooked, and whose room it was (`room` null for the boss), so the stage can show it
      * during the reveal instead of the next team's monster (docs/designs/monster-cuisine.md, cooking I6). */
     monster: PublicQuestion["monster"];
@@ -225,7 +230,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "dish-intro" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -292,6 +297,9 @@ export type ClientMessage =
   /** /screen: the question video cannot play there (blocked, removed, no network), so the host page warns and offers
    * 現場放歌 (docs/designs/boss-music-buzzer.md M4). Same trust as above. */
   | { type: "SCREEN_CLIP_ERROR"; questionId: string }
+  /** /screen: the length (s) of the video it loaded for that question, so the host's timeline reaches its end. Same trust
+   * as above; one for another question than the one whose video is on screen is dropped. */
+  | { type: "SCREEN_CLIP_DURATION"; questionId: string; seconds: number }
   /** /screen: test clip `index` of SCREEN_TEST `runId` loaded (error null) or failed. Same trust as above; the room also
    * drops a result from another screen than the one it asked, an old run, or an index it already has. */
   | { type: "SCREEN_TEST_RESULT"; runId: number; index: number; error: ScreenTestError | null }
@@ -372,8 +380,8 @@ export type ClientMessage =
       questionId: string;
       correct: boolean;
       /** With correct: false. "team": a cleric's fill-in waits for 祈禱 / 重答 / 逃跑 (#106); "pray": the host
-       * picks 祈禱 for it. */
-      fleeChoice?: "flee" | "retry" | "switch" | "team" | "pray";
+       * picks 祈禱 for it. "switch" is the one 逃跑 (a new monster outside the boss room). */
+      fleeChoice?: "retry" | "switch" | "team" | "pray";
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
       /** A music question with fields: each field right or not (docs/designs/multi-field.md F5); `correct` is then
@@ -390,8 +398,9 @@ export type ClientMessage =
   /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
    * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
   | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
-  /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question (逃跑・同房), or flee to a new monster (逃跑・換房, "switch"). */
-  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" | "switch" }
+  /** The team's choice after a wrong lock: answer again next turn, or 逃跑 ("switch": a new monster and an easier question;
+   * the boss room's 逃跑 is a new boss question). */
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "switch" }
   /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Lobby only (#320): the team's colour, an index into TEAM_LOOKS. A colour another team holds is ignored. */
@@ -406,7 +415,7 @@ export type ClientMessage =
   | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
   /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
   | { type: "HOST_ROLL_CHECK"; teamId: string; questionId: string; eventId: number }
-  /** 🧪 喝下幸運藥水 on the team's own turn: its next crit or check die on `questionId` rolls twice, keeping the higher
+  /** 🧪 喝下幸運藥水 on the team's own turn: its next die on `questionId` (a check, a class die or the dish die) rolls twice, keeping the higher
    * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
   /** 🔮 公開問神諭 on the team's own room question (anti-ai-cheating.md). */
@@ -461,22 +470,24 @@ export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 
-/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the crit die
- * after a correct lock (20 is a critical hit, 1 a fumble), a fill-in's persuasion check (`bonus` + the die against
+/** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
+ * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
- * `value`, the bonus they score, a thief's sneak included; docs/designs/kill-roll.md). A crit or check rolled with a 🧪
+ * `value`, the bonus they score; docs/designs/kill-roll.md). Any die but the kill's rolled with a 🧪
  * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
- * Class dice: a mage's skill die, a cleric's prayer die, and a fill-in's answer die (a chef's, or a thief's with 偷襲
- * armed) after a correct answer; `rejudge`: that answer die is the host's 改成答對, paid when it lands. */
+ * Class dice: a mage's skill die, a cleric's prayer die, and the thief's sneak die (`penalty`: what its 1 takes);
+ * `rejudge`: the dish die is the host's 改成答對, paid when it lands. */
 export interface PendingRoll {
   teamId: string;
   questionId: string;
   value: number;
-  kind?: "warrior" | "crit" | "check" | "kill" | "mage" | "cleric" | "answer";
+  kind?: "warrior" | "dish" | "check" | "kill" | "mage" | "cleric" | "thief";
   bonus?: number;
   dc?: number;
   values?: number[];
   rejudge?: true;
+  warrior?: number;
+  penalty?: number;
 }
 
 export type ServerErrorCode =
@@ -532,7 +543,7 @@ export type ServerMessage =
       reveal: AnswerReveal | null;
       /** A lock being held for the reveal beat before it is judged (phone-answering.md E2). */
       pendingLock: LockedOption | null;
-      /** A d20 being held for the beat before it is judged: a warrior's (class-abilities.md R2) or a correct lock's crit die. */
+      /** A d20 being held for the beat before it is judged: a class die, a check, a correct answer's dish die or the kill's 4d20. */
       pendingRoll: PendingRoll | null;
       /** A wrong sort lock waiting for its 重答 / 逃跑: per slot, top to bottom, whether the team's item there is right. */
       wrongSlots?: boolean[];
@@ -553,7 +564,8 @@ export type ServerMessage =
       /** The boss's phase card is up: `question` is null until the host's 下一題 (docs/designs/boss-phases.md),
        * so the card carries the boss to draw. */
       phaseCard?: { monster: PublicQuestion["monster"] };
-      /** A 答錯 used up the boss phase and its card opens in a moment: an event turn waits for it (event-rooms.md). */
+      /** A 答錯 used up the boss phase and its card opens in a moment: an event turn waits for it (event-rooms.md). Also
+       * during a phase-clearing hit's reveal, whose card opens on 下一題: `question` is still the one just answered. */
       phaseCardDue?: true;
       /** How-to-play page on show (1..4); `question` is null until the host leaves page 4. */
       intro?: { page: number };
@@ -605,6 +617,11 @@ export type ServerMessage =
       /** The host switched the room to manual (HOST_PACING); absent means auto. `hold`: the step it waits on now. */
       pacing?: "manual";
       hold?: Hold;
+      /** A narrated pause before the next question or die. */
+      stageBeat?: "dish-intro" | "check-success" | "kill-defeated";
+      /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.
+       * Absent from older servers. */
+      stageMonster?: PublicQuestion["monster"];
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
       late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };
@@ -652,7 +669,9 @@ export type ServerMessage =
   | { type: "SCREEN_KEY"; ok: boolean }
   /** The YouTube video on the big screen now (the question's, or the reveal's). Never broadcast: it goes only to host
    * pages and to big screens whose SCREEN_HELLO carried the screen key. */
-  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo }
+  /** `range`: the host's 選擇播放段落 bounds (s), lib/youtube.ts seekRange. Here, not in STATE: before the reveal the clip's
+   * bounds and the video's length point at a music question's song. Absent from older servers: 0 to 10 minutes. */
+  | { type: "SCREEN_VIDEO"; questionId: string; video: ScreenVideo; range?: { min: number; max: number } }
   /** To the one keyed big screen that runs the test (screen-media-test.md D2): every distinct clip in the bank, never an
    * answer. It answers each with SCREEN_TEST_RESULT. */
   | { type: "SCREEN_TEST"; runId: number; items: ScreenVideo[] }
@@ -830,7 +849,7 @@ export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as con
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
-export const INTRO_PAGES = 7;
+export const INTRO_PAGES = 4;
 /** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
 export const HANDOFF_MS = 5 * 60 * 1000;
 
@@ -960,6 +979,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.seq !== undefined && !isCount(m.seq)) return null;
       return { type: m.type, questionId, ...(m.seq !== undefined ? { seq: m.seq } : {}) };
     }
+    case "SCREEN_CLIP_DURATION": {
+      const questionId = str(m.questionId, MAX_RAW_TEXT);
+      return questionId && isFiniteNumber(m.seconds) && m.seconds > 0 ? { type: m.type, questionId, seconds: m.seconds } : null;
+    }
     case "SCREEN_TAP_CLOCK": {
       const questionId = str(m.questionId, MAX_ID);
       if (!questionId || !isCount(m.seq) || (m.anchor !== null && !isFiniteNumber(m.anchor))) return null;
@@ -1068,7 +1091,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (questionId === null || !action) return null;
       if (action !== "seek") return { type: "HOST_MEDIA", questionId, action };
       const at = m.at;
-      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= 21600 ? { type: "HOST_MEDIA", questionId, action, at } : null;
+      return typeof at === "number" && Number.isInteger(at) && at >= 0 && at <= MAX_SEEK_S ? { type: "HOST_MEDIA", questionId, action, at } : null;
     }
     case "HOST_MEMORY_DONE": {
       const questionId = str(m.questionId, MAX_ID);
@@ -1109,8 +1132,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
-      if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry" && m.fleeChoice !== "switch" && m.fleeChoice !== "team" && m.fleeChoice !== "pray") return null;
-      if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
+      const fleeChoice = m.fleeChoice === "flee" ? "switch" : m.fleeChoice;
+      if (fleeChoice !== undefined && fleeChoice !== "retry" && fleeChoice !== "switch" && fleeChoice !== "team" && fleeChoice !== "pray") return null;
+      if (m.correct && (fleeChoice === "team" || fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       // Per-field verdicts must agree with `correct`: right when at least one field is (multi-field.md F6).
       const fields = m.fields;
@@ -1120,7 +1145,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         teamId,
         questionId,
         correct: m.correct,
-        fleeChoice: m.fleeChoice,
+        fleeChoice,
         ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}),
         ...(fields !== undefined ? { fields: fields as boolean[] } : {}),
       };
@@ -1161,8 +1186,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_WRONG_CHOICE": {
       const questionId = str(m.questionId, MAX_ID);
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
       if (questionId === null || (m.choice !== "retry" && m.choice !== "flee" && m.choice !== "switch")) return null;
-      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
+      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice === "retry" ? "retry" : "switch" };
     }
     case "TEAM_PICK_CLASS":
       return m.classId === null || isClassId(m.classId) ? { type: "TEAM_PICK_CLASS", classId: m.classId } : null;

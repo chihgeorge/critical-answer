@@ -1,6 +1,8 @@
 // 🧪 幸運藥水 in the room (docs/designs/lucky-potion.md): the host gives one, the team drinks it on its own turn, and its
-// next crit or check die rolls twice keeping the higher, then it is gone. No roll this question: it comes back.
+// next die (check, class die or dish die) rolls twice keeping the higher, then it is gone. No roll this question: it
+// comes back (class-dice-rework.md).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -18,7 +20,7 @@ const bank = (first: object) =>
   });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 /** rollD20 of each value. */
 const die = (v: number) => (v - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
@@ -50,13 +52,14 @@ function started(first: object = mc("m1"), classes: (string | null)[] = [null, n
   const lastTo = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).at(-1);
   const give = (id: string) => send(room, host, { type: "HOST_GIVE_ITEM", teamId: id });
   const drink = (i = 0, eventId = state().eventId, questionId = state().question.id) => send(room, phones[i], { type: "TEAM_DRINK_POTION", questionId, eventId });
-  /** 甲 locks the right option and the host reveals it: the crit die rolls. */
+  /** 甲 locks the right option and the host reveals it: the dish die rolls. */
   const lockRight = () => {
     const q = state().question.id;
     send(room, phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: room.game!.optionOrder[q].indexOf(0) });
     send(room, phones[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     send(room, host, { type: "HOST_REVEAL", teamId: A, questionId: q });
     vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // correct answer introduction before the dish die
   };
   return { room, io, host, phones, dice, all, state, team, lastTo, give, drink, lockRight };
 }
@@ -82,19 +85,19 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.team(A).item).toBeUndefined();
   });
 
-  it("a crit with the potion rolls two dice, keeps the higher, and spends it before the STATE goes out", () => {
+  it("a dish die with the potion rolls two dice, keeps the higher, and spends it before the STATE goes out", () => {
     const g = started();
     g.give(A);
     g.drink();
     expect(g.team(A).itemArmedFor).toBe("m1");
     g.dice.push(3, 18);
     g.lockRight();
-    expect(g.state().pendingRoll).toMatchObject({ kind: "crit", value: 18, values: [3, 18] });
+    expect(g.state().pendingRoll).toMatchObject({ kind: "dish", value: 18, values: [3, 18] });
     expect(g.team(A).item).toBeUndefined();
     expect(g.room.game!.teams[0].potionsDrunk).toBe(1);
   });
 
-  it("a crit without the potion stays one die", () => {
+  it("a dish die without the potion stays one die", () => {
     const g = started();
     g.give(A);
     g.dice.push(7);
@@ -114,18 +117,28 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.team(A).item).toBeUndefined();
   });
 
-  it("the warrior's answer die never uses it: one die, and the potion is back once the question is over", () => {
+  it("doubles the warrior's roll, and its hit's dish die is a single die", () => {
     const g = started(mc("m1"), ["warrior", null]);
     g.give(A);
     g.drink();
-    g.dice.push(15); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
+    g.dice.push(4, 16);
     send(g.room, g.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
-    expect(g.state().pendingRoll).toMatchObject({ kind: "warrior", value: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
-    expect(g.state().pendingRoll.values).toBeUndefined();
+    expect(g.state().pendingRoll).toMatchObject({ kind: "warrior", value: 16, values: [4, 16] });
+    expect(g.team(A).item).toBeUndefined();
+    g.dice.push(9);
     vi.advanceTimersByTime(2000);
+    expect(g.state().pendingRoll).toMatchObject({ kind: "dish", value: 9 });
+    expect(g.state().pendingRoll.values).toBeUndefined();
+  });
+
+  it("a potion with no die this question comes back once the question is over", () => {
+    const g = started(text("t1"));
+    g.give(A);
+    g.drink();
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "flee", eventId: g.state().eventId });
     expect(g.team(A).item).toBe("luckyPotion");
-    expect(g.room.game!.teams[0].currentQuestionId).not.toBe("m1");
-    expect(g.team(A).itemArmedFor).toBe("m1"); // the phone's 「藥水還在」 (E2)
+    expect(g.room.game!.teams[0].currentQuestionId).not.toBe("t1");
+    expect(g.team(A).itemArmedFor).toBe("t1"); // the phone's 「藥水還在」 (E2)
   });
 
   // Value: protects=a potion doubles a mage's skill die (drinkable on a fill-in after its check) and a cleric's prayer die
@@ -134,7 +147,7 @@ describe("🧪 lucky potion in the room", () => {
   it("doubles a mage's skill die after a fill-in check and a cleric's prayer die on its wrong lock", () => {
     const m = started(text("t1"), ["mage", null]);
     m.give(A);
-    m.dice.push(2); // a failed check: no hint, so the mage's die is still to come
+    m.dice.push(1); // a failed check (a natural 1: +6 passes DC 8 on any other die): no hint, so the mage's die is still to come
     send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
     vi.advanceTimersByTime(2000);
     m.drink();
@@ -157,6 +170,30 @@ describe("🧪 lucky potion in the room", () => {
     expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
   });
 
+  it("takes a mage's drink on a fill-in after its skill is cast or its answer is in: the dish die is still to come", () => {
+    const failedCheck = () => {
+      const m = started(text("t1"), ["mage", null]);
+      m.give(A);
+      m.dice.push(1); // a failed check (a natural 1: +6 passes DC 8 on any other die): no hint, the skill die is still to come
+      send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
+      vi.advanceTimersByTime(2000);
+      return m;
+    };
+    const cast = failedCheck();
+    cast.dice.push(9);
+    send(cast.room, cast.phones[0], { type: "TEAM_USE_ABILITY", questionId: "t1" });
+    vi.advanceTimersByTime(2000);
+    expect(cast.room.game!.mageCasts?.[checkKey("t1", A)]).toBeTruthy();
+    cast.drink();
+    expect(cast.team(A).itemArmedFor).toBe("t1");
+
+    const typed = failedCheck();
+    send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });
+    typed.drink();
+    expect(typed.team(A).typedAnswer).toBe("答");
+    expect(typed.team(A).itemArmedFor).toBe("t1");
+  });
+
   it("a wrong answer with no roll keeps the potion, no longer armed", () => {
     const g = started(text("t1"));
     g.give(A);
@@ -166,7 +203,7 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.room.game!.teams[0].itemArmedFor).not.toBe(g.room.game!.teams[0].currentQuestionId);
   });
 
-  it("refuses a drink off turn, under a stale STATE, with no potion, twice, after the check, with a lock in, or at a fork", () => {
+  it("refuses a drink off turn, under a stale STATE, with no potion, twice, with a lock in, or at a fork", () => {
     const g = started(text("t1"));
     g.drink();
     expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "no_item" });
@@ -180,12 +217,6 @@ describe("🧪 lucky potion in the room", () => {
     g.drink();
     expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "already_drunk" });
 
-    const c = started(text("t1"));
-    c.give(A);
-    send(c.room, c.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: c.state().eventId });
-    vi.advanceTimersByTime(2000);
-    c.drink();
-    expect(c.lastTo(c.phones[0])).toMatchObject({ detail: "check_done" });
 
     const l = started();
     l.give(A);

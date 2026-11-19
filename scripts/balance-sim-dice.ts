@@ -177,7 +177,7 @@ function play(classes: C[], maxTurns = 600) {
       const o = r.outcome;
       if (!("reward" in o)) return;
       if (spelled.has(key)) pay(id, Math.round(o.reward * cfg.magePay) - o.reward);
-      if (chefK >= 0) { note("chef", chefK); const plain = o.reward - (o.chefBonus ?? 0); pay(id, Math.round(plain * cfg.chefMul[chefK]!) - o.reward); }
+      if (chefK >= 0) { note("chef", chefK); const plain = o.reward - (o.dishBonus ?? 0); pay(id, Math.round(plain * cfg.chefMul[chefK]!) - o.reward); }
     };
     if (text && !g.checks?.[G.checkKey(q, id)]) {
       const v = potionRoll();
@@ -211,12 +211,12 @@ function play(classes: C[], maxTurns = 600) {
           }
         }
       }
-      if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) g = G.armSneak(g, id);
+      if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) g = G.sneakRoll(G.startSneak(g, id), id, G.SKILL_SUCCESS).game;
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
       const target = DICE ? cfg.warTarget : G.WARRIOR_TARGET;
       if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - target) / 20 > 1 / (opts - gone().length))) {
         const v = d20();
-        if (!DICE) { settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R, !text), v >= target); continue; }
+        if (!DICE) { settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R), v >= target); continue; }
         const k = tier(v), ok = v >= target;
         note("warrior", k);
         const base = inBoss ? g.boss.hitReward : g.rooms[t.roomIndex].reward;
@@ -252,7 +252,7 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
-    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
+    g = G.answerQuestion(g, id, q, false, flee ? "switch" : "retry", R).game;
   }
   return g;
 }

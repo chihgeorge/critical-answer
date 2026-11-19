@@ -2,6 +2,7 @@
 // A whole game with AI narration on a bank whose every question string is a unique marker; the fake fetch keeps
 // every prompt. Only the boss phase's name and rule go in, as quoted data the system prompt says to ignore.
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { findQuestion, type Bank, type BankQuestion } from "../question-bank";
@@ -13,7 +14,7 @@ import { SORT_ORDERS } from "../sort-order";
 // no_claim=what a real model does with the quoted phase text (llm.live.test.ts covers team names).
 const T1 = "00000000-0000-0000-0000-000000000001";
 const conn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn;
-const send = (room: DungeonRoom, c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+const send = (room: DungeonRoom, c: Conn, msg: object) => sendSettled(room, c, msg);
 
 const markers: string[] = [];
 const mark = () => {

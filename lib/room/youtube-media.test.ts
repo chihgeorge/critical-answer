@@ -2,6 +2,7 @@
 // The room side of YouTube questions (docs/designs/youtube-questions.md): the host's ▶ ⏸ ⟲ become STATE
 // `media`, only for the video the big screen shows now, kept in memory only (D6).
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -16,7 +17,7 @@ const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -50,11 +51,12 @@ function game(questions: object[], roll = true) {
   const media = (action: string, questionId = state().question?.id ?? state().reveal?.questionId, conn: Conn = host) =>
     send(room, conn, { type: "HOST_MEDIA", questionId, action });
   /** Answers the question in play correctly; a fill-in question passes its persuasion check first. */
-  const correct = () => {
+  const correct = (settle = true) => {
     const g = room.game!;
     const qid = g.teams[0].currentQuestionId;
     room.game = { ...g, checks: { ...g.checks, [checkKey(qid, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
-    send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId });
+    room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId }), host);
+    if (settle) settleDish(room);
   };
   return { room, io, host, phone, state, media, correct, check };
 }
@@ -197,7 +199,14 @@ describe("HOST_MEDIA", () => {
 // the host pages and to a big screen that sent the room's screen key, never in STATE.
 describe("the screen key", () => {
   const sentTo = (conn: { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls);
-  const videoOf = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_VIDEO");
+  const lastVideo = (conn: { send: ReturnType<typeof vi.fn> }) => sentTo(conn).findLast((m) => m.type === "SCREEN_VIDEO");
+  /** The last SCREEN_VIDEO without its timeline `range` (rangeOf, the timeline test). */
+  const videoOf = (conn: { send: ReturnType<typeof vi.fn> }) => {
+    const v = lastVideo(conn);
+    if (v) delete v.range;
+    return v;
+  };
+  const rangeOf = (conn: { send: ReturnType<typeof vi.fn> }) => lastVideo(conn)?.range;
   const keyOf = (host: { send: ReturnType<typeof vi.fn> }): string => sentTo(host).find((m) => m.type === "HOST_OK").screenKey;
   /** A /screen page: SCREEN_HELLO on open, with the key its link carried. */
   function screen(room: DungeonRoom, id: string, key?: string) {
@@ -207,6 +216,52 @@ describe("the screen key", () => {
     return conn;
   }
   const FULL = { kind: "youtube", videoId: VIDEO, audioOnly: true, start: 5, end: 20 }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+
+  // Value: protects=the host's timeline reaches a long video's end after the reveal, stays inside the clip before it, and never reaches a phone;
+  // fails_when=mediaRange ignores SCREEN_CLIP_DURATION or takes it from a phone or unkeyed screen; why_new=the timeline
+  // stopped at 10 minutes; seam=none; no_claim=the YouTube player's getDuration (screen side)
+  it("the timeline goes only to the host and keyed screens: the clip's bounds before the reveal, the reported length after it", () => {
+    const g = game([video("v1"), video("v2")]);
+    const id = g.state().question.id;
+    expect(rangeOf(g.host)).toEqual({ min: 5, max: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    const bare = screen(g.room, "bare");
+    send(g.room, bare, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 3000 });
+    send(g.room, g.phone, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 3000 });
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: "elsewhere", seconds: 3000 });
+    g.correct();
+    expect(rangeOf(g.host)).toEqual({ min: 0, max: 600 });
+    // A length reported before the reveal stays inside the clip, then opens the whole video at the reveal.
+    serveNext(g.room, g.host, g.state().eventId);
+    g.check();
+    const id2 = g.state().question.id;
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: id2, seconds: 1234.6 });
+    expect(rangeOf(g.host)).toEqual({ min: 5, max: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    const broadcasts = g.io.broadcast.mock.calls.length;
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: id2, seconds: 1234.6 });
+    expect(g.io.broadcast.mock.calls.length).toBe(broadcasts); // the same length again changes nothing
+    g.correct();
+    expect(rangeOf(g.host)).toEqual({ min: 0, max: 1234 });
+    expect(rangeOf(keyed)).toEqual({ min: 0, max: 1234 });
+    // Never in STATE, nor to a phone or an unkeyed screen: the clip's bounds and length point at the song.
+    expect(JSON.stringify([g.io.broadcast.mock.calls, sentTo(g.phone), sentTo(bare)])).not.toMatch(/"range"|mediaRange/);
+  });
+
+  // Value: protects=a file explanation's reveal does not reuse the question video's length (another clip, same question
+  // id); fails_when=clipDuration ignores its file tag; why_new=the timeline is new; seam=none; no_claim=the <video> element
+  it("a file explanation's reveal waits for its own length", () => {
+    const KEY_V = "22222222-2222-2222-2222-222222222222";
+    const g = game([video("v1", { explanation: { kind: "video", value: KEY_V } }), video("v2")]);
+    (g.io as unknown as { env: object }).env = { R2_PUBLIC_BASE_URL: "https://media.example.com" };
+    const keyed = screen(g.room, "keyed", keyOf(g.host));
+    const id = g.state().question.id;
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 3000 });
+    g.correct();
+    expect(g.state().reveal.explanation).toEqual({ kind: "file" });
+    expect(rangeOf(g.host)).toEqual({ min: 0, max: 600 });
+    send(g.room, keyed, { type: "SCREEN_CLIP_DURATION", questionId: id, seconds: 95 });
+    expect(rangeOf(g.host)).toEqual({ min: 0, max: 95 });
+  });
 
   it("a phone, a big screen with no key and one with a wrong key never get the video id: not with the question, the ▶ or the reveal", () => {
     const g = game([video("v1"), video("v2")]);
@@ -298,9 +353,10 @@ describe("the screen key", () => {
   it("sends no SCREEN_VIDEO for a reveal whose video explanation takes the video's place", () => {
     const g = game([video("v1", { explanation: { kind: "youtube", value: VIDEO } }), video("v2", { explanation: { kind: "youtube", value: VIDEO } })]);
     const keyed = screen(g.room, "keyed", keyOf(g.host));
+    g.correct(false); // the question's video stays up during the dish die's beat
     keyed.send.mockClear();
     g.host.send.mockClear();
-    g.correct();
+    settleDish(g.room);
     expect(g.state().reveal.video).toBeUndefined();
     for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
   });

@@ -2,6 +2,7 @@
 // host's first ▶ opens buzzing, the first TEAM_BUZZ wins and stops the music, a wrong answer shuts that team out
 // and resumes the music, and 沒人答對，換下一題 moves on.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -27,7 +28,7 @@ const bank = (q: (id: string) => object = video) =>
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage(): RoomStorage {
@@ -254,7 +255,8 @@ describe("buzzer boss phase in the room", () => {
       vi.useRealTimers();
     }
     expect(g.room.game!.phase).toBe("finished");
-    expect(g.state()).toMatchObject({ cue: "boss-kill" });
+    // The kill's beat played boss-kill; the 4d20 that land after it leave their own roll cue (#364).
+    expect(g.state()).toMatchObject({ cue: "roll" });
   });
 
   it("a buzzing phone that drops during the kill dice still takes the kill (onClose keeps a kill beat's team)", () => {
@@ -488,8 +490,9 @@ describe("buzzer boss phase in the room", () => {
     send(g.room, g.host, { type: "HOST_MEDIA", questionId: "b-a", action: "play" });
     g.buzz(1);
     g.judge(IDS[1], true);
-    // Both fields right: 2 HP, the whole 2-HP last phase (D2), so the kill's 4d20 rolls first.
-    expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
+    // Both fields right: the defeated boss is announced before the kill's 4d20.
+    expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    expect(g.state().stageMonster).toMatchObject(g.state().view.bossLook); // the boss stays on stage (#401)
   });
 
   it("a settled part-right answer that kills keeps its verdicts through the 4d20 beat (#369, kill-roll.md)", () => {
@@ -500,6 +503,8 @@ describe("buzzer boss phase in the room", () => {
     vi.useFakeTimers();
     try {
       g.answer(1, [false, false]);
+      expect(g.state().stageBeat).toBe("kill-defeated");
+      vi.advanceTimersByTime(2000);
       expect(g.state().pendingRoll).toMatchObject({ kind: "kill", teamId: IDS[1] });
       vi.advanceTimersByTime(10000);
     } finally {

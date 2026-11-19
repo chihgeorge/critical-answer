@@ -13,7 +13,7 @@ export const INITIATIVE_ORDER_MS = 4000;
 export type InitiativeView = Initiative & { left: number; /** Manual pacing: no countdown, the rolls wait for the host. */ untimed?: true };
 
 export interface Initiative {
-  /** Each team's d20, by team id, as it comes in. */
+  /** Each team's d20, by team id, as it comes in. Values remain private until order is set. */
   rolls: Record<string, number>;
   /** Set once every team has a roll: the turn order, best first. */
   order?: string[];
@@ -21,9 +21,18 @@ export interface Initiative {
   tieRolls?: TieRoll[];
 }
 
+/** A team may see only whether its own roll was accepted until every team has rolled. */
+export function visibleInitiativeRoll(initiative: Initiative, teamId: string): number | undefined {
+  return initiative.order ? initiative.rolls[teamId] : undefined;
+}
+
+/** Until every team has rolled, STATE says only who rolled (0 stands for a die not yet shown), never the faces. */
+export function hiddenInitiativeRolls(rolls: Record<string, number>): Record<string, number> {
+  return Object.fromEntries(Object.keys(rolls).map((id) => [id, 0]));
+}
+
 /** The turn order from `rolls` (one per id in `teamIds`, in lobby order): highest first, ties rerolled with `roll`. */
 export function initiativeOrder(teamIds: string[], rolls: Record<string, number>, roll: () => number): { order: string[]; tieRolls: TieRoll[] } {
   const { ranking, tieRolls } = rankTeams(teamIds.map((id) => ({ id, reward: rolls[id] })), roll, teamIds.length);
   return { order: ranking, tieRolls };
 }
-

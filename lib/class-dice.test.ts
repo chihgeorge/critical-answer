@@ -1,9 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { answerEffect, answerReader, clericEffect, mageEffect, skillLine, warriorEffect } from "./class-dice";
+import { clericEffect, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
 
-// Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰) and the right team reads the answer die;
-// fails_when=a tier boundary (1, 2–6, 7–19, 20) shows another tier's effect, or an unarmed thief reads the die; seam=none
+// Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰, class-dice-rework.md); fails_when=a tier
+// boundary (1, 2–6, 7–19, 20) shows another tier's effect, or a chef's dish die reads like everyone's; seam=none
 describe("class dice words", () => {
+  it("names every dish die tier with its multiplier, a chef's own on 7–19 and 20", () => {
+    expect([1, 2, 7, 20].map((v) => dishEffect(v, false))).toEqual(["燒焦了！獎勵 ×0.1", "失手了，獎勵不變", "上菜，獎勵不變", "傳說級料理！獎勵 ×1.5"]);
+    expect([1, 6, 19, 20].map((v) => dishEffect(v, true))).toEqual(["燒焦了！獎勵 ×0.1", "失手了，獎勵不變", "上菜！廚師 ×1.2", "傳說級料理！獎勵 ×2"]);
+    expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！ 20 → 2 飽足感");
+    expect(dishPhoneLine(12, 4, 24, "飽足感")).toBe("🍳 廚師加成 20 → 24 飽足感");
+    expect(dishPhoneLine(12, 0, 20, "飽足感")).toBe("🍳 料理骰 12：上菜");
+    expect(dishPhoneLine(20, 20, 40, "飽足感")).toBe("🍳 傳說級！ 20 → 40 飽足感");
+  });
+
   it("names each tier's effect at its boundaries", () => {
     expect([1, 2, 6, 7, 19, 20].map((v) => mageEffect("multipleChoice", v))).toEqual([
       "法術沒效，次數照扣",
@@ -15,16 +24,13 @@ describe("class dice words", () => {
     ]);
     expect(clericEffect(20)).toBe("神蹟！再答一次，次數不扣");
     expect([1, 4, 12, 20].map(warriorEffect)).toEqual(["1 大失敗……答錯，扣掉這題的獎勵", "4，差一點……答錯", "12 命中！拿 8 成", "20 大成功！雙倍"]);
-    expect([1, 4, 12, 20].map((v) => answerEffect("chef", v))).toEqual(["🍳 料理 ×0.1", "🍳 料理 ×0.8", "🍳 料理 ×1.3", "🍳 料理 ×2"]);
-    expect(answerEffect("thief", 12)).toBe("偷襲成功！獎勵 ×1.5");
-    expect(answerEffect(undefined, 20)).toBeNull();
-    expect(skillLine("mage", "甲隊", 20)).toBe("🔮 甲隊施法擲出 20，大成功！");
+    expect([1, 4, 12, 20].map((v) => sneakEffect(v, 2))).toEqual(["被發現了（−2 分）", "沒抓到時機", "答對 ×1.5、首領 −2", "答對 ×2、首領 −3"]);
   });
 
-  it("lets a chef always, and a thief only with 偷襲 armed, read the answer die", () => {
-    expect(answerReader({ classId: "chef" })).toBe("chef");
-    expect(answerReader({ classId: "thief", sneakArmed: true })).toBe("thief");
-    expect(answerReader({ classId: "thief" })).toBeUndefined();
-    expect(answerReader(undefined)).toBeUndefined();
+  // Value: protects=a phone never shows a die's value before the big screen's die lands (#328 m2);
+  // fails_when=rollStatus names a number again; seam=none; no_claim=the D20 sprite (page.tsx passes "?")
+  it("never names the value on the phone while the big screen rolls", () => {
+    for (const kind of ["dish", "check", "mage", "cleric", "thief", "warrior", undefined]) expect(rollStatus(kind)).not.toMatch(/\d/);
+    expect(rollStatus("kill")).toContain("4d20");
   });
 });

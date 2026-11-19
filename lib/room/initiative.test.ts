@@ -2,6 +2,7 @@
 // 擲先攻 in the room (lib/initiative.ts): the phones roll after HOST_START, a team that does not roll is rolled for,
 // ties are rerolled, the order holds on screen, then the game starts in that order. Saved across a restart.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -19,7 +20,7 @@ const bank = () =>
   });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage() {
@@ -84,7 +85,8 @@ describe("擲先攻 in the room", () => {
     g.roll(0, 4);
     send(g.room, g.phones[0], { type: "TEAM_ROLL_INITIATIVE" }); // a second roll from the same phone is ignored
     g.roll(1, 18);
-    expect(g.state().initiative.rolls).toEqual({ [A]: 4, [B]: 18 });
+    // Who rolled shows; the faces wait for the last team (#364).
+    expect(g.state().initiative.rolls).toEqual({ [A]: 0, [B]: 0 });
     expect(g.state().initiative.order).toBeUndefined();
     g.roll(2, 11);
     expect(g.state().initiative).toMatchObject({ order: [B, C, A], tieRolls: [] });

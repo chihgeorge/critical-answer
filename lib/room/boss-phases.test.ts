@@ -2,6 +2,7 @@
 // The room side of a multi-phase boss (docs/designs/boss-phases.md): the answer reveal, then the phase
 // card, then the new phase's question, and nothing about a later phase reaching anyone but the host.
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -31,7 +32,7 @@ function phasedBank(q: (id: string) => object = text, hp1 = 1) {
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -79,6 +80,9 @@ describe("boss phases in the room", () => {
     expect(reveal).toMatchObject({ phase: "playing", cue: "boss-hit", reveal: { questionId: "p1-a" } });
     expect(reveal.view).toMatchObject({ bossHp: 0, bossMaxHp: 1, bossPhase: 1, bossKilledBy: null });
     expect(reveal.phaseCard).toBeUndefined();
+    // Value: protects=the host page's ⏭ preview names the new phase, not the question just answered (#328 m5);
+    // fails_when=the reveal's STATE no longer says the card is due; seam=none; no_claim=the host page's wording
+    expect(reveal.phaseCardDue).toBe(true);
     expect(msgs(g.io.broadcast.mock.calls).some((m) => m.type === "GAME_OVER")).toBe(false);
 
     g.next();
@@ -86,6 +90,7 @@ describe("boss phases in the room", () => {
     expect(card).toMatchObject({ phaseCard: { monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0 } }, question: null, reveal: null, cue: "boss-phase", eventId: reveal.eventId + 1, bossPhaseInfo: PHASE2 });
     expect(card.phaseCard.monster).not.toHaveProperty("dish"); // served on the kill, not before (monster-cuisine.md)
     expect(card.view).toMatchObject({ bossHp: 2, bossMaxHp: 2, bossPhase: 2 });
+    expect(card.phaseCardDue).toBeUndefined();
 
     // Nobody answers a question that is not on screen yet.
     g.judge(true);
@@ -145,7 +150,7 @@ describe("boss phases in the room", () => {
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-a", optionIndex: 0 });
     send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "p1-a" });
     g.reveal();
-    await vi.advanceTimersByTimeAsync(4500); // the reveal's beat, then the crit die's
+    await vi.advanceTimersByTimeAsync(6500); // the reveal, dish introduction, then the dish die
     expect(g.state().reveal).not.toBeNull();
     await vi.advanceTimersByTimeAsync(16_000);
     expect(g.state().reveal).not.toBeNull();

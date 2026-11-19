@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -115,9 +115,9 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   await expect(wall(green)).toHaveAttribute("data-look", "plain");
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(question).toBeVisible();
-  // D2: the options and the 下輪再答 / 逃跑・同房 / 逃跑・換房 buttons fit 375x667 without scrolling (the cards below may run under the fold).
+  // D2: the options and the 下輪再答 / 逃跑 buttons fit 375x667 without scrolling (the cards below may run under the fold).
   // Measured from the top of the page, since the earlier 鎖定答案 click may have scrolled it.
-  const fleeBottom = await team.getByRole("button", { name: /逃跑・換房/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
+  const fleeBottom = await team.getByRole("button", { name: /^逃跑/ }).evaluate((el) => el.getBoundingClientRect().bottom + window.scrollY);
   expect(fleeBottom).toBeLessThanOrEqual(667);
   await team.getByRole("button", { name: /下輪再答/ }).click();
 
@@ -127,12 +127,15 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  // Judged after the reveal beat and the crit die (2 s each); a natural 20 adds half the reward.
+  // Judged after the reveal beat, the dish intro and the dish die (2 s each).
   await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
-  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
+  await expect(team.getByText(/^答對了！/)).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
   await expect(question).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
+  // 飽足感 counts once the dish is served (#364).
+  await serveDish(host);
+  await expect(team.getByText(/答對了！＋1[05] 飽足感/)).toBeVisible();
 });
 
 // Value: protects=the question strip never pushes 鎖定答案 or 下輪再答/逃跑 under the fold on an iPhone 12; fails_when=the strip or option tiles grow; why_new=the 375x667 assert uses a short 3-option question; seam=none; no_claim=custom banks with longer questions
@@ -149,8 +152,11 @@ test("phone answering: the longest default question with four options still fits
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  // The four tiles collapse into one line after a wrong lock, so the next-step buttons fit on an iPhone 13.
+  await expect(team.getByTestId("my-wrong-pick")).toContainText(/^你們選的：[A-D] 〈Fantastic Baby〉✕ 答錯$/);
+  await expect(team.getByRole("button", { name: "〈Power〉" })).toHaveCount(0);
   expect(await bottom(/下輪再答/)).toBeLessThanOrEqual(844);
-  expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
+  expect(await bottom(/^逃跑/)).toBeLessThanOrEqual(844);
 });
 
 // Value: protects=after 15 s with no lock the host gets 替…選・逃跑 and it moves the stuck team on; fails_when=the stuck timer, its key or the rescue button breaks, leaving the host no way past an MC turn; why_new=no spec waits out STUCK_MS; seam=none; no_claim=下輪再答 rescue and keys 2/3 (host clock faked; server timers real)
@@ -177,7 +183,7 @@ test("phone answering: a team that never locks gets the host's stuck row after 1
   await expect(stuckRow).toHaveCount(0);
   await host.clock.fastForward(1_500);
   await expect(stuckRow).toBeVisible();
-  await host.getByRole("button", { name: /替選擇隊選・逃跑・同房/ }).click();
+  await host.getByRole("button", { name: /替選擇隊選・逃跑/ }).click();
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   // The flee is a judgment (new eventId), so the row resets and waits another 15 s.
   await expect(stuckRow).toHaveCount(0);
@@ -205,31 +211,9 @@ async function startOneTeam(
   return { host, team };
 }
 
-// Value: protects=the phone's 逃跑 after a wrong lock sends flee and the team gets the other question; fails_when=the button sends retry or nothing; why_new=the other journey only presses 下輪再答; seam=none; no_claim=which question is dealt first
-test("phone answering: 逃跑 after a wrong lock moves the team to the other question", async ({ browser, request }) => {
-  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
-  const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
-  bank.pools["1"] = [
-    { kind: "multipleChoice", id: "r0-mc-e2e-a", text: "門是什麼顏色？", options: ["紅門", "綠門"], correctIndex: 1 },
-    { kind: "multipleChoice", id: "r0-mc-e2e-b", text: "鑰匙是什麼形狀？", options: ["圓鑰", "方鑰"], correctIndex: 1 },
-  ];
-  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
-
-  const { host, team } = await startOneTeam(browser);
-  const onDoor = await team.getByRole("button", { name: "紅門" }).isVisible();
-  await team.getByRole("button", { name: onDoor ? "紅門" : "圓鑰" }).click(); // the wrong option of whichever was dealt
-  await team.getByRole("button", { name: "鎖定答案" }).click();
-  await revealLock(host);
-  await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  await team.getByRole("button", { name: /逃跑・同房/ }).click();
-  await host.getByRole("button", { name: "下一題", exact: true }).click();
-  await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
-  await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
-});
-
-// Value: protects=the phone's 逃跑・換房 sends switch: same room, a new monster and the other question; fails_when=the button sends
-// flee or retry, or the monster stays; why_new=逃跑・換房 is new; seam=none; no_claim=which monster comes (unit tests)
-test("phone answering: 逃跑・換房 after a wrong lock brings a new monster in the same room", async ({ browser, request }) => {
+// Value: protects=the phone's one 逃跑 sends switch: same room, a new monster and the other question; fails_when=the button sends
+// retry or nothing, or the monster stays; seam=none; no_claim=which monster comes (unit tests)
+test("phone answering: 逃跑 after a wrong lock brings a new monster and the other question in the same room", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   const { bank, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
   bank.pools["1"] = [
@@ -246,7 +230,7 @@ test("phone answering: 逃跑・換房 after a wrong lock brings a new monster i
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  await team.getByRole("button", { name: /逃跑・換房/ }).click();
+  await team.getByRole("button", { name: /^逃跑/ }).click();
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   await expect(team.getByRole("button", { name: onDoor ? "圓鑰" : "紅門" })).toBeVisible();
@@ -331,7 +315,7 @@ test("phone answering: a 150-character question stops at 5 lines and keeps 鎖�
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
-  expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
+  expect(await bottom(/^逃跑/)).toBeLessThanOrEqual(844);
 });
 
 // Value: protects=a phone that reloads during the reveal does not show the answered question it never saw (phone-question-text.md
@@ -343,7 +327,7 @@ test("phone answering: a phone that reloads during the reveal shows no question 
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the dish die
   await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toBeVisible();
   await team.reload();
   await expect(team.getByText(/^答對了！/)).toBeVisible();
@@ -388,7 +372,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the crit die
+  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat, then the dish die
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
   await expect(team.getByText("遊戲結束！")).toBeVisible();
@@ -420,7 +404,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
-  await host.getByRole("button", { name: /更多/ }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();

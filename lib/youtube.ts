@@ -139,6 +139,21 @@ export function formatClipTime(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
+/** The longest seek HOST_MEDIA accepts (s): six hours. */
+export const MAX_SEEK_S = 21600;
+
+/** The host's timeline before any length comes in (s): 10 minutes. */
+export const FALLBACK_SEEK_S = 600;
+
+/** The host's 選擇播放段落 timeline (SCREEN_VIDEO's range). `clip`: a question clip's bounds before the reveal, where the
+ * room clamps a seek to them, else null (the whole video). `duration`: the length the big screen reported (s), or null;
+ * while null the timeline runs to 10 minutes, or to the clip's start or end if that is later. */
+export function seekRange(clip: { start?: number; end?: number } | null, duration: number | null): { min: number; max: number } {
+  const full = Math.min(MAX_SEEK_S, Math.floor(duration ?? Math.max(FALLBACK_SEEK_S, clip?.end ?? 0, clip?.start ?? 0)));
+  const min = Math.min(clip?.start ?? 0, full);
+  return { min, max: Math.max(min, Math.min(clip?.end ?? full, full)) };
+}
+
 /** The host's 大螢幕： status. After a clip error and the 🎤 open, the host plays the song live (boss-music-buzzer.md M4). */
 export function hostMediaStatus(playing: boolean, liveOpen: boolean): string {
   return liveOpen ? "現場放歌中" : playing ? "播放中" : "已暫停";

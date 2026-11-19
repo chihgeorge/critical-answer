@@ -2,6 +2,7 @@
 // 手動停頓 in the room (docs/designs/manual-pacing.md): in manual every pause the room times itself waits for the
 // host's ▶ 下一步 (HOST_STEP); auto is as before; a switch either way moves the waiting step between the two.
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom, FORK_BEAT_MS } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -32,7 +33,7 @@ const mcBank = parseBank({
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: Spy };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const broadcasts = (room: DungeonRoom) => (room.room.broadcast as Spy).mock.calls.map((c) => JSON.parse(c[0]));
 const state = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
 const sent = (conn: Conn) => (conn.send as unknown as Spy).mock.calls.map((c) => JSON.parse(c[0]));
@@ -63,7 +64,8 @@ function setup(o: { bank?: typeof textBank; manual?: boolean; initiative?: boole
 type S = ReturnType<typeof setup>;
 
 /** ▶ 下一步 on the hold the last STATE showed. */
-const step = (s: S) => send(s.room, s.host, { type: "HOST_STEP", eventId: state(s.room).eventId, step: state(s.room).hold.id });
+/** ▶ 下一步, unsettled: a step that starts the dish die leaves it in its beat (the next step lands it). */
+const step = (s: S) => s.room.onMessage(JSON.stringify({ type: "HOST_STEP", eventId: state(s.room).eventId, step: state(s.room).hold.id }), s.host);
 const pacing = (s: S, mode: "auto" | "manual") => send(s.room, s.host, { type: "HOST_PACING", mode });
 
 /** The host judges team `i` right, then 上菜 and 下一題 (the cooking's hold skipped). */
@@ -104,7 +106,9 @@ describe("手動停頓: the switch", () => {
     lockAndReveal(s, true);
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(BEAT_MS);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
+    expect(state(s.room).stageBeat).toBe("dish-intro");
+    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
     vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).reveal).not.toBeNull();
     expect(state(s.room).pacing).toBeUndefined();
@@ -126,14 +130,16 @@ describe("手動停頓: the switch", () => {
 });
 
 describe("手動停頓: each pause waits for ▶ 下一步", () => {
-  it("公布答案's beat, then the crit die: neither moves on by itself, each takes one step", () => {
+  it("公布答案's beat, then the dish die: neither moves on by itself, each takes one step", () => {
     const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
     lockAndReveal(s, true);
     expect(state(s.room).hold).toMatchObject({ kind: "lock" });
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
-    expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: { kind: "crit" }, hold: { kind: "roll" }, reveal: null });
+    expect(state(s.room)).toMatchObject({ stageBeat: "dish-intro", hold: { kind: "dish-intro" }, pendingRoll: null });
+    step(s);
+    expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: { kind: "dish" }, hold: { kind: "roll" }, reveal: null });
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).reveal).toBeNull();
     step(s);
@@ -145,12 +151,12 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
     lockAndReveal(s, true);
     const { eventId, hold } = state(s.room);
-    const press = (e: number, id: number) => send(s.room, s.host, { type: "HOST_STEP", eventId: e, step: id });
+    const press = (e: number, id: number) => s.room.onMessage(JSON.stringify({ type: "HOST_STEP", eventId: e, step: id }), s.host);
     press(eventId - 1, hold.id);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     press(eventId, hold.id);
     press(eventId, hold.id); // the double press: the die's step has another id
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "crit" }, reveal: null });
+    expect(state(s.room)).toMatchObject({ stageBeat: "dish-intro", pendingRoll: null, reveal: null });
     expect(state(s.room).hold.id).not.toBe(hold.id);
   });
 
@@ -225,7 +231,9 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
   it("the kill's 4d20, then the podium: the reveal waits though its lines are in", async () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing" });
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, hold: { kind: "kill-defeated" } });
+    step(s);
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phase).toBe("playing");
     step(s);
@@ -259,7 +267,9 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(BEAT_MS - 1);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     vi.advanceTimersByTime(1);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
+    expect(state(s.room).stageBeat).toBe("dish-intro");
+    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
   });
 
   it("manual to auto on a boss miss, and on an open door: each runs its beat again", () => {
@@ -313,7 +323,8 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
+    step(s);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
 
     const f = setup({ manual: false });
     toChoosing(f);
@@ -332,7 +343,9 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     send(s.room, s.host, { type: "HOST_STEP", eventId: state(s.room).eventId, step: id });
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     vi.advanceTimersByTime(BEAT_MS);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "crit" });
+    expect(state(s.room).stageBeat).toBe("dish-intro");
+    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
   });
 
   it("auto to manual on a finished game: awards always wait for the host", async () => {
@@ -363,6 +376,7 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
     step(s);
+    step(s);
     pacing(s, "auto");
     await vi.advanceTimersByTimeAsync(0);
     expect((s.room as any).revealFrom).toBe(Date.now() + FINISH_PODIUM_MS);
@@ -371,6 +385,7 @@ describe("手動停頓: review cases (2026-11-09)", () => {
   it("a podium step pressed while the boss cooks waits for the host to press after cooking", () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
+    step(s);
     step(s);
     step(s);
     expect(state(s.room).hold).toMatchObject({ kind: "podium" });
@@ -482,6 +497,54 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
   });
 });
 
+describe("#364: 飽足感 waits for 上菜", () => {
+  it("the stage shows the answer's 飽足感 only once the dish is served", () => {
+    const s = setup();
+    const t = s.room.game!.teams[0];
+    send(s.room, s.host, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true, eventId: state(s.room).eventId });
+    const before = state(s.room);
+    expect(before.reveal.dish).toBeTruthy();
+    expect(before.view.teams[0].reward).toBe(0);
+    expect(s.room.game!.teams[0].reward).toBe(10); // scored when judged, shown later
+    send(s.room, s.host, { type: "HOST_SERVE", eventId: before.eventId });
+    expect(state(s.room).view.teams[0].reward).toBe(10);
+  });
+});
+
+describe("#364: beats that hold the turn", () => {
+  // Value: protects=a kill judged at once (a finishing blow rolls no dish die) keeps its team on turn when its phone dropped
+  // during the lock (/review); fails_when=resolveLock syncs the team offline and resolveRoll drops the kill as "turn moved on"
+  it("finishing blow: a phone that dropped during the lock still lands the kill", () => {
+    const s = setup({ bank: mcBank, teams: 2 });
+    const g = s.room.game!;
+    s.room.game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1 } };
+    const turn = s.room.game.turnOrder[s.room.game.currentTurnIndex];
+    const phone = s.phones[[T1, T2].indexOf(turn)];
+    const id = s.room.game.boss.currentQuestionId!;
+    send(s.room, phone, { type: "TEAM_SELECT_OPTION", questionId: id, optionIndex: s.room.game.optionOrder[id].indexOf(1) });
+    send(s.room, phone, { type: "TEAM_LOCK_OPTION", questionId: id });
+    send(s.room, s.host, { type: "HOST_REVEAL", teamId: turn, questionId: id });
+    s.room.onClose(phone);
+    step(s); // the lock's beat: judged at once, no dish die
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", hold: { kind: "kill-defeated" } });
+    step(s); // the defeat beat, then the 4d20
+    step(s);
+    expect(s.room.game!.phase).toBe("finished");
+    expect(s.room.game!.boss.hp).toBe(0);
+  });
+
+  it("a passed check holds its beat in manual until 下一步, then the question shows", () => {
+    const s = setup({ teams: 1, fixedDie: 18 });
+    send(s.room, s.phones[0], { type: "TEAM_ROLL_CHECK", questionId: s.room.game!.teams[0].currentQuestionId, eventId: state(s.room).eventId });
+    step(s); // the check die's beat
+    expect(state(s.room)).toMatchObject({ stageBeat: "check-success", hold: { kind: "check-success" }, question: null });
+    step(s);
+    expect(state(s.room).stageBeat).toBeUndefined();
+    expect(state(s.room).hold).toBeUndefined();
+    expect(state(s.room).question.id).toBe(s.room.game!.teams[0].currentQuestionId);
+  });
+});
+
 describe("host-controlled turns and awards (#366)", () => {
   it("only a current host skip moves an away team, keeping its question and scores", () => {
     const s = setup({ manual: false });
@@ -506,10 +569,14 @@ describe("host-controlled turns and awards (#366)", () => {
   it("a skip cannot discard a pending answer lock or its reveal", () => {
     const s = setup({ bank: mcBank });
     lockAndReveal(s, true);
-    const skip = () => send(s.room, s.host, { type: "HOST_SKIP_TURN", teamId: state(s.room).view.currentTurnTeamId, eventId: state(s.room).eventId });
+    const skip = () => s.room.onMessage(JSON.stringify({ type: "HOST_SKIP_TURN", teamId: state(s.room).view.currentTurnTeamId, eventId: state(s.room).eventId }), s.host);
     skip();
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     expect(state(s.room).pendingLock).toBeTruthy();
+    step(s);
+    skip(); // the dish intro (#364) holds the turn too
+    expect(state(s.room).stageBeat).toBe("dish-intro");
+    expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     step(s);
     skip();
     expect(state(s.room).pendingRoll).toBeTruthy();

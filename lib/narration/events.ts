@@ -29,9 +29,10 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 /** `classId`: the acting team's class, so the weapons and spells in the line fit it. Left out for a team with no class. */
 type ByClass<T> = T & { classId?: ClassId };
 
-/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
- * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
-type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
+/** `roll`: a natural 20 or 1 behind this hit (RollMark: the dish die, a class die's 20 or the persuasion check).
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits).
+ * `dish`: the dish die behind this hit (class-dice-rework.md), for its tier's line. */
+type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number; dish?: number };
 
 export type NarrationEvent =
   /** `initiative`: `teams` is the turn order the teams just rolled (lib/initiative.ts). */
@@ -52,7 +53,7 @@ export type NarrationEvent =
    * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
   // `penalty`: the points a warrior's 1 took away (the question's whole reward, never below 0; #305).
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; buzzSecond?: true; prayed?: true; warriorRoll?: number; penalty?: number }>>
-  /** `to`: 逃跑・換房 put this new monster in the team's room.
+  /** `to`: 逃跑 put this new monster in the team's room.
    * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */
   | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
@@ -135,7 +136,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
   const t = prev.teams.find((x) => x.id === outcome.teamId);
   const team = t?.name ?? "冒險者";
   const cls = t?.classId ? { classId: t.classId } : {};
-  const roll = "roll" in outcome && outcome.roll ? { roll: outcome.roll } : {};
+  const roll = { ...("roll" in outcome && outcome.roll ? { roll: outcome.roll } : {}), ...("dishDie" in outcome && outcome.dishDie !== undefined ? { dish: outcome.dishDie } : {}) };
   switch (outcome.type) {
     case "correct-room-advance": {
       // A team already in the boss room answers correct-boss-hit, never this, so entersBoss fires once per team.

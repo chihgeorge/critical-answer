@@ -1,6 +1,7 @@
 // 占卜師 in the room (docs/designs/fortune-teller.md): the ❓ door into the crystal ball, the pizza clock, the pick and its
 // lit slice, the effect card until 下一題, what STATE shows at each step, pacing, the host's way out, and restarts.
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom, FORK_BEAT_MS, FORTUNE_BEAT_MS } from "./dungeon-room";
 import { FORTUNE_HOST_GRACE_MS } from "../protocol";
 import type { Conn, RoomIO, RoomStorage } from "./io";
@@ -21,7 +22,7 @@ const bank = parseBank({
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: Spy };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const broadcasts = (room: DungeonRoom) => (room.room.broadcast as Spy).mock.calls.map((c) => JSON.parse(c[0]));
 const state = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
 const narrations = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "NARRATION");

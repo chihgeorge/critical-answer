@@ -65,7 +65,12 @@ export function gitRoot(dir: string): string | null {
 }
 
 export function gitIgnored(root: string, rel: string): boolean {
-  try { execFileSync("git", ["-C", root, "check-ignore", "-q", "--", rel], { stdio: "ignore" }); return true; } catch { return false; }
+  // A worktree may symlink node_modules. Git rejects a path beyond that link, so check its parents too.
+  const parts = rel.split("/");
+  for (let count = parts.length; count > 0; count--) {
+    try { execFileSync("git", ["-C", root, "check-ignore", "-q", "--", parts.slice(0, count).join("/")], { stdio: "ignore" }); return true; } catch { /* check the parent */ }
+  }
+  return false;
 }
 
 export type Env = { ignored: (root: string, rel: string) => boolean };

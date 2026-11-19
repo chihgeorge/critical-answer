@@ -109,6 +109,11 @@ export interface RoomSnapshot {
   bankChoice?: { id: string; name: string };
   /** The host's speaker latency for timing questions, ms 0–1000 (timing-tap.md). Missing (or damaged) means 0. */
   tapLatency?: number;
+  /** A passed check's card was on (#364): the team and question it was for. Missing (or damaged) means none. */
+  checkBeat?: { teamId: string; questionId: string };
+  /** A boss-entry dish was on (#364): its narration, the team that walked in, and whether 最後衝刺 started with it.
+   * restore() adds the entrance line the dish held back. Missing (or damaged) means none. */
+  bossEntry?: { eventId: number; teamId: string; sprint?: true };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -177,7 +182,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const createdAt = typeof raw.createdAt === "number" && Number.isFinite(raw.createdAt) && raw.createdAt >= 0 ? raw.createdAt : null;
     const bank = raw.bank === undefined ? undefined : parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
-    if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1 && (raw.intro as number) <= INTRO_PAGES)) return null;
+    if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1)) return null;
     // Host-owned AI keys came later without a version bump: missing fields mean no AI and a fresh budget.
     const aiWanted = raw.aiWanted ?? false;
     const aiSource = raw.aiSource ?? "none";
@@ -207,6 +212,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw as unknown as RoomSnapshot),
       ...(raw.podium !== undefined ? { podium } : {}),
       ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
+      // A save from when the intro had more pages shows the last page now.
+      ...(raw.intro !== undefined ? { intro: Math.min(raw.intro as number, INTRO_PAGES) } : {}),
       initiative: iniOk ? (ini as unknown as Initiative) : undefined,
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,
@@ -221,6 +228,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       ...(raw.memoryDone !== undefined ? { memoryDone } : {}),
       ...(raw.memoryShow !== undefined ? { memoryShow } : {}),
+      checkBeat: isObject(raw.checkBeat) && isString(raw.checkBeat.teamId) && isString(raw.checkBeat.questionId) ? { teamId: raw.checkBeat.teamId, questionId: raw.checkBeat.questionId } : undefined,
+      bossEntry: isObject(raw.bossEntry) && Number.isInteger(raw.bossEntry.eventId) && isString(raw.bossEntry.teamId) ? { eventId: raw.bossEntry.eventId as number, teamId: raw.bossEntry.teamId, ...(raw.bossEntry.sprint === true ? { sprint: true as const } : {}) } : undefined,
       game: withUses as GameState | null,
       lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.

@@ -15,7 +15,7 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
@@ -23,7 +23,7 @@ import { HostFxRow } from "@/components/host-fx-row";
 import { Qr } from "@/components/qr";
 import { MageHint } from "@/components/mage-hint";
 import { clericStage, HOST_KEYS, hostKeyAction, introKeyAction } from "@/lib/host-keys";
-import { INTRO_PAGE_TEXT, introDots } from "@/components/how-to-play";
+import { INTRO_PAGE_TEXT, introDots, introPauseKey } from "@/components/how-to-play";
 import { INITIATIVE_MS } from "@/lib/initiative";
 import { optionLetter } from "@/components/mc-option";
 import { sortOrderOf } from "@/lib/sort-order";
@@ -40,7 +40,7 @@ import { QuestionPicker } from "@/components/question-picker";
 import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
-import { formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
+import { FALLBACK_SEEK_S, formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
@@ -166,6 +166,8 @@ export default function HostPage() {
   /** The room's screen key (HOST_OK), for the big screen link: "" until the room sends it. */
   const [screenKey, setScreenKey] = useState("");
   /** The room's closing warning (HOST_ROOM_CLOSING), counted down here a minute at a time (never below 1). */
+  /** SCREEN_VIDEO's timeline bounds, for the question they came with (host-only: not in STATE). */
+  const [videoRange, setVideoRange] = useState<{ questionId: string; min: number; max: number } | null>(null);
   const [closing, setClosing] = useState<{ minutesLeft: number; canExtend: boolean; sent?: true } | null>(null);
   useEffect(() => {
     if (!closing || closing.minutesLeft <= 1) return;
@@ -271,6 +273,9 @@ export default function HostPage() {
           setTimeout(() => URL.revokeObjectURL(a.href), 1000);
           break;
         }
+        case "SCREEN_VIDEO":
+          setVideoRange(msg.range ? { questionId: msg.questionId, ...msg.range } : null);
+          break;
         case "HOST_ANSWER":
           setAnswer({ questionId: msg.questionId, answer: msg.answer, typed: msg.typed, question: msg.question, tap: msg.tap });
           break;
@@ -447,7 +452,7 @@ export default function HostPage() {
     room.send(msg);
   }
 
-  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "flee" | "retry" | "switch" | "team" | "pray", fields?: boolean[]) {
+  function judge(teamId: string, questionId: string, correct: boolean, fleeChoice?: "retry" | "switch" | "team" | "pray", fields?: boolean[]) {
     setPendingTeamId(teamId);
     send({ type: "HOST_JUDGE", teamId, questionId, correct, fleeChoice, ...(game ? { eventId: game.eventId } : {}), ...(fields ? { fields } : {}) });
   }
@@ -455,7 +460,7 @@ export default function HostPage() {
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
   // notice (lib/offline-notice.ts), and a phone is told after reconnecting if its turn was skipped.
   const ready = connected && claimed;
-  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   // Fresh per-field marks for each buzz: a new question, team or event remounts FieldJudge.
   // Nobody may be on turn (a buzzer phase, a reveal): `team` is then undefined at run time though typed as present.
   const fieldJudgeId = game ? `${turn?.questionId}:${turn?.team?.id}:${game.eventId}` : "";
@@ -490,14 +495,15 @@ export default function HostPage() {
   const clockStuck = clockKey !== null && clockStuckKey === clockKey;
   // Keyed on the pause itself, not just "a pause is up": the answer reveal turning into the phase card
   // swaps 下一題 for another 下一題, and a double-tap must not close the card nobody has seen.
-  // The intro's pages count too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons.
+  // The intro's last page counts too: 下一頁 turns into 開始冒險 in its slot, and then into the judge buttons. The pages
+  // before it share one key: a double tap there sends the same page twice, and the room drops the second.
   // So does a new buzz (boss-buzzer.md): 答錯 tapped twice must not judge the next team before it speaks.
   // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
   const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
   const servedUp = !!game?.reveal?.served;
   // A manual room's hold (manual-pacing.md) is one more: ▶ 下一步 takes the slot, and each new hold arms it again.
   const hold = game?.hold;
-  const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.fortune ? `fortune-${game.eventId}-${game.fortune.step}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? `intro-${game.intro.page}` : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
+  const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.fortune ? `fortune-${game.eventId}-${game.fortune.step}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? introPauseKey(game.intro.page) : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
   const [armedFor, setArmedFor] = useState(pauseKey);
   const swapArmed = armedFor === pauseKey;
   const [serveLeft, setServeLeft] = useState({ key: "", left: 0 });
@@ -560,7 +566,7 @@ export default function HostPage() {
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
   // A fill-in whose team has not rolled its persuasion check: no count runs, so the row offers 替○○擲骰 after 15 s.
-  const checkStuck = !isMc && !!turn?.team && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
+  const checkStuck = !isMc && !!turn?.team && !turn.inBoss && !!game?.question?.checkFirst && !roll && !wrong && !revealUp && !game.forkBeat;
   const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, check: checkStuck, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
@@ -587,13 +593,17 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [fortuneKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const atFork = !revealUp && !atFortune && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
+  // A phase-clearing hit's reveal with a boss team next: `question` is still the boss question just answered (#328 m5).
+  const phaseNext = !!game?.reveal && !!game.phaseCardDue && !!turn?.inBoss;
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
   // holds the new turn when it is painted: a key pressed right after a turn change judges that turn.
   // The intro's own keys (D7): → / Enter and ←. The judge keys below stay off while it shows.
   const introPage = game?.phase === "playing" ? (game.intro?.page ?? null) : null;
-  useEffect(() => {
+  // A layout effect too: with a plain effect, a key pressed just after a page turn reached the old listener, which sent
+  // the old page ± 1 and the room dropped it (the e2e intro test flaked on this).
+  useLayoutEffect(() => {
     if (introPage === null || !ready) return;
     function onKey(e: KeyboardEvent) {
       if (picking || drawer || !swapArmed) return;
@@ -649,8 +659,8 @@ export default function HostPage() {
         if (held || (cleric === "wait" && action === "pray" && game.view.awaitingPrayer !== turn.team.id)) return;
         if (action === "correct") judge(turn.team.id, turn.questionId, true);
         else if (action === "wrong") judge(turn.team.id, turn.questionId, false, "team");
-        // No 逃跑 button on a boss miss, and no 逃跑・換房 in the boss room.
-        else if (!(bossMiss && action === "flee") && !(turn.inBoss && action === "switch")) judge(turn.team.id, turn.questionId, false, action);
+        // No 逃跑 button on a boss miss.
+        else if (!(bossMiss && action === "switch")) judge(turn.team.id, turn.questionId, false, action);
       }
       e.preventDefault();
     }
@@ -731,7 +741,7 @@ export default function HostPage() {
       {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} measured={game.reveal.timing.latencyMs ?? 0} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
       {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
-          <MediaControls questionId={game.reveal.questionId} media={game.media} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
+          <MediaControls questionId={game.reveal.questionId} media={game.media} range={videoRange?.questionId === game.reveal.questionId ? videoRange : undefined} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
           {game.clipError && (
             <div data-testid="host-reveal-clip-error" role="alert" className="mt-2 p-2 text-[15px]" style={{ background: "#ffd6dc", boxShadow: "0 0 0 3px var(--k)" }}>
               大螢幕：這支影片放不出來，按 ▶ 再試一次
@@ -799,38 +809,37 @@ export default function HostPage() {
     />
   );
 
-  // ⚙ 更多's 隊伍: each team's rarer buttons, by its hero so the host finds the team at a glance.
-  const teamTools = game?.phase === "playing" && (
-    <div className="flex flex-col gap-3">
-      {game.view.teams.map((t, i) => (
-        <div key={t.id} className="flex flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
-            <span className="min-w-0 flex-1 truncate text-[16px]">{t.name}{t.online ? "" : "（離線）"}</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {picks && !t.inBossPhase && pickButton(t.id)}
-            {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone from 修正. */}
-            <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在下面的「修正」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
-              {t.item ? "🧪 已有" : "🧪 給藥水"}
-            </PixelButton>
-            <PixelButton
-              className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
-              // The code shows on the page, where the host reads it out: the drawer closes for it.
-              onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && (send({ type: "HOST_HANDOFF", teamId: t.id }), setDrawer(false))}
-            >
-              交給新手機
-            </PixelButton>
-          </div>
-          {picks?.queued[t.id] && <div className="min-w-0 truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
-        </div>
-      ))}
-      {picks && game.view.teams.some((t) => t.inBossPhase) && (
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
-          {pickButton("boss")}
-        </div>
-      )}
+  // ⚙ 更多's 隊伍 (ui-simplify H2): one row per team with its character; these are the rarer tools under its ⋯.
+  const playingTeams = game?.phase === "playing" ? game.view.teams : [];
+  const teamSprite = (id: string) => {
+    const i = playingTeams.findIndex((t) => t.id === id);
+    return i < 0 ? null : <Sprite kind="hero" variant={lookOf(playingTeams[i], i)} cls={playingTeams[i].classId} scale={2} className="flex-none" />;
+  };
+  const teamTools = (id: string) => {
+    const t = playingTeams.find((x) => x.id === id);
+    if (!t) return null;
+    return (
+      <>
+        {picks && !t.inBossPhase && pickButton(t.id)}
+        {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🧪. */}
+        <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在同一列的 ⋯ 收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+          {t.item ? "🧪 已有" : "🧪 給藥水"}
+        </PixelButton>
+        <PixelButton
+          className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
+          // The code shows on the page, where the host reads it out: the drawer closes for it.
+          onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && (send({ type: "HOST_HANDOFF", teamId: t.id }), setDrawer(false))}
+        >
+          交給新手機
+        </PixelButton>
+        {picks?.queued[t.id] && <div className="min-w-0 basis-full truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
+      </>
+    );
+  };
+  const bossPick = picks && playingTeams.some((t) => t.inBossPhase) && (
+    <div className="flex items-center gap-2">
+      <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
+      {pickButton("boss")}
     </div>
   );
 
@@ -1197,17 +1206,17 @@ export default function HostPage() {
                     <div data-testid="host-next-label" className="text-[13px]" style={{ color: "#6b4a2a" }}>⏭ 下一題（揭曉完才出題）</div>
                   )}
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : phaseNext ? "新階段的第一題（轉場卡之後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
                       at the big screen from across the room (complexity-gate scope, /plan-eng-review). */}
-                  {game.question?.content.kind === "image" && (
+                  {game.question?.content.kind === "image" && !phaseNext && (
                     <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={120} maxHeight={90} className="mt-1" />
                   )}
                   {/* A 120px YouTube embed is below the player's minimum size and won't play — the
                       host watches the big screen instead. */}
-                  {game.question?.content.kind === "youtube" && (
+                  {game.question?.content.kind === "youtube" && !phaseNext && (
                     <div className="mt-1 inline-block bg-[var(--k)] px-2 py-[2px] text-[14px] text-[var(--cream)]">
                       {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
                     </div>
@@ -1262,7 +1271,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
               )}
               {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
@@ -1441,20 +1450,14 @@ export default function HostPage() {
                       {/* A prayed team is deciding, not stuck: the row stays as the way out, without the alarm. */}
                       {!prayedWrong && <div className="px-1 pt-2 text-center text-[14px] text-white">{turn.team.name}好像卡住了</div>}
                       <div className="px-1 pt-1 text-[14px] text-white">{prayedWrong ? "" : "隊伍卡住時，"}替{turn.team.name}選：</div>
-                      <div className={bossMiss ? "grid" : turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                      <div className={bossMiss ? "grid" : "grid grid-cols-2"}>
                         <PixelButton variant="retry" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${retryLabel}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                           <span className="whitespace-nowrap">{retryLabel}</span>
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                         </PixelButton>
                         {!bossMiss && (
-                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・${turn.inBoss ? "逃跑" : "逃跑・同房"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                            <span className="whitespace-nowrap">{turn.inBoss ? "逃跑" : "逃跑・同房"}</span>
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
-                          </PixelButton>
-                        )}
-                        {!turn.inBoss && (
-                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・逃跑・換房`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                            <span className="whitespace-nowrap">逃跑・換房</span>
+                          <PixelButton variant="flee" className="!min-h-[48px] text-[15px]" disabled={!canJudge} aria-label={`替${turn.team.name}選・逃跑`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                            <span className="whitespace-nowrap">逃跑</span>
                             <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
                           </PixelButton>
                         )}
@@ -1482,7 +1485,7 @@ export default function HostPage() {
                   {cleric === "wait" ? (
                     <>
                       <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">{prayedWrong ? `${turn.team.name}祈禱了！` : "答錯了！"}等{turn.team.name}選，或替他們選：</div>
-                      <div className={turn.inBoss ? "grid grid-cols-3" : "grid grid-cols-2"}>
+                      <div className="grid grid-cols-3">
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
                             祈禱
@@ -1493,16 +1496,10 @@ export default function HostPage() {
                           {retryLabel}
                           <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.retry}</span>
                         </PixelButton>
-                        <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                          {turn.inBoss ? "逃跑" : "逃跑・同房"}
-                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.flee}</span>
+                        <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                          逃跑
+                          <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.switch}</span>
                         </PixelButton>
-                        {!turn.inBoss && (
-                          <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                            <span className="whitespace-nowrap">逃跑・換房</span>
-                            <span className="px-key" aria-hidden="true">{HOST_KEYS.wait.switch}</span>
-                          </PixelButton>
-                        )}
                       </div>
                     </>
                   ) : buzz && game.question?.fields ? (
@@ -1531,21 +1528,15 @@ export default function HostPage() {
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.before.wrong}</span>
                     </PixelButton>
                   ) : (
-                  <div className={turn.inBoss ? "grid grid-cols-2" : "grid grid-cols-3"}>
+                  <div className="grid grid-cols-2">
                     <PixelButton variant="retry" className="text-[16px]" disabled={!canJudge || held} aria-label={`答錯・${turn.inBoss ? "下輪換題" : "下輪再答"}`} onClick={() => judge(turn.team!.id, turn.questionId!, false, "retry")}>
                       {turn.inBoss ? "答錯・下輪換題" : <TwoLine top="答錯・" bottom="下輪再答" />}
                       <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.retry}</span>
                     </PixelButton>
-                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label={turn.inBoss ? "答錯・逃跑" : "答錯・逃跑・同房"} onClick={() => judge(turn.team!.id, turn.questionId!, false, "flee")}>
-                      {turn.inBoss ? "答錯・逃跑" : <TwoLine top="答錯・" bottom="逃跑・同房" />}
-                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.flee}</span>
+                    <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
+                      答錯・逃跑
+                      <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
                     </PixelButton>
-                    {!turn.inBoss && (
-                      <PixelButton variant="flee" className="text-[16px]" disabled={!canJudge || held} aria-label="答錯・逃跑・換房" onClick={() => judge(turn.team!.id, turn.questionId!, false, "switch")}>
-                        <TwoLine top="答錯・" bottom="逃跑・換房" />
-                        <span className="px-key" aria-hidden="true">{HOST_KEYS.plain.switch}</span>
-                      </PixelButton>
-                    )}
                   </div>
                   )}
                   </>
@@ -1591,7 +1582,7 @@ export default function HostPage() {
                   <div className="flex flex-wrap items-center gap-x-2 text-[13px]">
                     {t.classId && <span title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
                     {t.fork && <span data-testid="host-team-fork">🚪 叉路</span>}
-                    {t.sneakArmed && <span title={`偷襲準備好了：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
+                    {t.sneakArmed && <span title={t.sneakCrit ? `完美偷襲：這題答對${scoreName(game.cuisine)} ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `偷襲就位：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`}>🗡️</span>}
                     {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                     {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                     {t.item && <span title="有一瓶幸運藥水">🧪</span>}
@@ -1687,7 +1678,9 @@ export default function HostPage() {
           onClose={() => setDrawer(false)}
           send={send}
           ai={aiPanel}
-          teams={teamTools || null}
+          teamTools={teamTools}
+          teamSprite={teamSprite}
+          bossPick={bossPick || null}
           pacing={pacingSwitch}
           lobby={lobbyTools || null}
           narration={
@@ -1763,7 +1756,7 @@ function TimingCalibration({ rows, measured, latency, disabled, send }: { rows: 
   );
 }
 
-/** A judge button's label on two lines, the prefix small, so a three-button row never breaks inside 「逃跑・換房」. */
+/** A judge button's label on two lines, the prefix small, so a narrow button never breaks inside its label. */
 // Its two block lines read as "答錯・ 下輪再答" to screen readers, so each button using it carries an aria-label.
 function TwoLine({ top, bottom }: { top: string; bottom: string }) {
   return (
@@ -1777,7 +1770,7 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
  * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
  * the clip stop at its end. */
-function MediaControls({ questionId, media, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
+function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK_S }, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; range?: { min: number; max: number }; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const [picked, setPicked] = useState<{ questionId: string; seq: number; at: number } | null>(null);
@@ -1785,7 +1778,8 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
     send({ type: "HOST_MEDIA", questionId, action });
     setPicked(null);
   };
-  const at = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0;
+  // Inside the timeline: a clip with no seek yet plays from its start, not 0:00.
+  const at = Math.min(range.max, Math.max(range.min, picked?.questionId === questionId && picked.seq === (media?.seq ?? 0) ? picked.at : media?.questionId === questionId ? media.seek ?? 0 : 0));
   // Only a value the host moved since the last command: a stray tap must not seek (and clear a timing round's taps).
   const moved = picked?.questionId === questionId && picked.seq === (media?.seq ?? 0);
   const seek = (value: string) => {
@@ -1803,8 +1797,8 @@ function MediaControls({ questionId, media, disabled, send, liveOpen = false, in
       {!instagram && (
         <label className="mt-2 block text-[14px]">
           <span>選擇播放段落：{formatClipTime(at)}</span>
-          {/* shortcut: the host page does not know the clip's bounds or the video's length, so 10 minutes; the room clamps a question clip's seek to it. */}
-          <input type="range" aria-label="選擇播放段落" min={0} max={600} step={1} value={at} disabled={disabled}
+          {/* The room sends the clip's bounds before the reveal and the video's length the big screen reported (seekRange). */}
+          <input type="range" aria-label="選擇播放段落" min={range.min} max={range.max} step={1} value={at} disabled={disabled}
             onChange={(e) => setPicked({ questionId, seq: media?.seq ?? 0, at: Number(e.currentTarget.value) })}
             onPointerUp={(e) => seek(e.currentTarget.value)}
             // Only the keys that move a range: 1, Enter or Space released here must not seek (and clear a timing round's taps).
