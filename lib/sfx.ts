@@ -161,7 +161,7 @@ export const CLERIC_PRAYER: SfxNote[] = [n(0, 0.6, "C5", "triangle"), n(0, 0.6, 
 /** The thief's sneak: a fast low swish, then two dry clicks (not flee's long swoop). */
 export const THIEF_SNEAK: SfxNote[] = [slide(0, 0.08, "B5", "B3"), n(0.14, 0.03, "E6"), n(0.2, 0.03, "B6")];
 
-/** The chef's （神廚 +N） on the dish card: two little pops. */
+/** The chef's （提鮮 +N） on the dish card: two little pops. */
 export const CHEF_SIZZLE: SfxNote[] = [n(0, 0.05, "C6", "triangle"), n(0.07, 0.05, "G6", "triangle")];
 
 /** The fog reveal (immersion.md PR3): a door creaks open, falling and wobbling, a game cue like the class moments. */

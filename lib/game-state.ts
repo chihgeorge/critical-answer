@@ -58,7 +58,7 @@ export const CLASS_SKILLS: Record<ClassId, string> = {
   cleric: "祈禱",
   warrior: "衝鋒",
   thief: "偷襲",
-  chef: "神廚",
+  chef: "提鮮",
 };
 
 export const CLASS_ICONS: Record<ClassId, string> = {

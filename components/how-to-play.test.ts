@@ -7,7 +7,7 @@ it("has the owner's 8 pages, boss fill-ins skip persuasion, and the flee is the 
   expect(INTRO_PAGE_TEXT).toHaveLength(INTRO_PAGES);
   expect(INTRO_PAGE_TEXT[2].script).toContain("首領房不擲說服");
   // The class page names the owner's skill names (2026-11-19), and no on-screen text uses the 🎲 emoji.
-  for (const skill of ["洞悉", "祈禱", "衝鋒", "偷襲", "神廚"]) expect(INTRO_PAGE_TEXT[6].script).toContain(skill);
+  for (const skill of ["洞悉", "祈禱", "衝鋒", "偷襲", "提鮮"]) expect(INTRO_PAGE_TEXT[6].script).toContain(skill);
   expect(INTRO_PAGE_TEXT.map((p) => p.big + p.owl).join("")).not.toContain("🎲");
   expect(INTRO_PAGE_TEXT[4].script).toContain("最後一擊不擲");
   expect(INTRO_PAGE_TEXT[7].script).toContain("逃跑：換一隻怪，換簡單題");

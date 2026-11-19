@@ -40,7 +40,7 @@ const CLASS_HINTS: Record<ClassId, string> = {
   cleric: "祈禱：答錯可以當場再答一次",
   warrior: "衝鋒：不會的題，擲骰代替作答",
   thief: "偷襲：先擲偷襲骰，成功的話答對加碼",
-  chef: "神廚：料理骰加成更多，不用按",
+  chef: "提鮮：料理骰加成更多，不用按",
 };
 
 /** The lobby's class picker (D10=A): one row per class, then 不選. */
@@ -1439,7 +1439,7 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
         <LabelChip>❓ 神秘房</LabelChip>
         <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
         <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
-        {reveal.chefBonus ? <div className="text-[15px]">（神廚 {signed(reveal.chefBonus)}）</div> : null}
+        {reveal.chefBonus ? <div className="text-[15px]">（提鮮 {signed(reveal.chefBonus)}）</div> : null}
       </Panel>
       <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
     </div>
