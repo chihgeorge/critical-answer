@@ -11,7 +11,7 @@ import { join } from "node:path";
 
 type Art = typeof import("../lib/pixel-art.ts") & typeof import("../lib/monster-catalog.ts") & typeof import("../lib/sprite-kind.ts");
 type Kind = import("../lib/sprite-kind.ts").SpriteKind;
-type Cell = { kind: Kind; scale: number; glow?: "rays" | "soft"; bites?: number; label: string; sub?: string };
+type Cell = { kind: Kind; scale: number; glow?: boolean; bites?: number; label: string; sub?: string };
 type Sheet = { file: string; title: string; cols: number; cellW: number; cellH: number; bg?: string; cells: Cell[] };
 
 /** Suggested legendary names (a natural 20), for the owner to pick from; the catalog is another lane's. */
@@ -94,8 +94,8 @@ function page(PA: Art, sheet: Sheet) {
   const grid = el(`display:grid;grid-template-columns:repeat(${sheet.cols},${sheet.cellW}px)`);
   for (const c of sheet.cells) {
     const stage = el(`position:relative;height:${sheet.cellH - 64}px`);
-    if (c.glow === "rays") stage.append(sprite(c, "legend-rays"));
-    if (c.glow === "soft") {
+    // The owner's pick for a natural 20: a soft warm glow behind the dish, CSS only (the stage will do the same).
+    if (c.glow) {
       const d = 60 * c.scale;
       stage.append(el(`position:absolute;left:50%;bottom:${-d / 4}px;width:${d}px;height:${d}px;transform:translateX(-50%);background:radial-gradient(circle,#ffd23ecc 0%,#ffb04a77 38%,#0000 70%)`));
     }
@@ -110,7 +110,7 @@ const legend = (kind: Kind) => `${kind}-legend` as Kind;
 const pairs = (scale: (k: Kind) => number): Cell[] =>
   dishes.flatMap(({ kind, name }) => [
     { kind, scale: scale(kind), label: name, sub: "2–19" },
-    { kind: legend(kind), scale: scale(kind), label: LEGEND_NAME[kind], sub: "20 傳說" },
+    { kind: legend(kind), scale: scale(kind), glow: true, label: LEGEND_NAME[kind], sub: "20 傳說" },
   ]);
 const few: Kind[] = ["dish-jelly", "dish-wings", "dish-pumpkin-soup", "dish-roast-chicken"];
 const burntRow = (scale: (k: Kind) => number): Cell[] => [
@@ -118,14 +118,7 @@ const burntRow = (scale: (k: Kind) => number): Cell[] => [
   { kind: "dish-rotten", scale: scale("dish-rotten"), label: "黑暗料理", sub: "寶箱事件（對照）" },
   ...few.map((kind) => ({ kind, scale: scale(kind), label: dishes.find((d) => d.kind === kind)!.name, sub: "2–19" })),
 ];
-const styleRow = (kind: Kind, scale: number): Cell[] => [
-  { kind, scale, label: "原版", sub: kind },
-  { kind: legend(kind), scale, glow: "rays", label: "A 像素光芒", sub: "背後一張會閃的光芒圖" },
-  { kind: legend(kind), scale, glow: "soft", label: "B 柔光暈", sub: "背後 CSS 漸層光" },
-  { kind: legend(kind), scale, label: "C 只有菜", sub: "金盤＋星光＋加料" },
-];
 const sheets: Sheet[] = [
-  { file: "q1-legend-style.png", title: "傳說料理（骰 20）的風格：A / B / C", cols: 4, cellW: 340, cellH: 280, cells: [...(["dish-jelly", "dish-pumpkin-soup", "dish-roast-chicken"] as Kind[]).flatMap((k) => styleRow(k, PA.dishScale(k))), ...styleRow("dish-jelly", 2)] },
   { file: "burnt.png", title: "骰 1：焦黑殘渣（上：大螢幕比例；中：手機比例；下：被吃掉的過程）", cols: 6, cellW: 260, cellH: 230, cells: [...burntRow(PA.dishScale), ...burntRow(() => 2), ...[0, 1, 2, 3, 4].map((bites) => ({ kind: "dish-burnt" as Kind, scale: PA.dishScale("dish-burnt"), bites, label: bites === 4 ? "空盤" : `咬 ${bites} 口` }))] },
   { file: "legend-stage.png", title: "每道菜：一般（2–19）與傳說（20），大螢幕比例", cols: 6, cellW: 300, cellH: 250, cells: pairs(PA.dishScale) },
   { file: "legend-phone.png", title: "每道菜：一般與傳說，手機比例（×2，淺色底）", cols: 10, cellW: 170, cellH: 150, bg: "#fff4dc", cells: pairs(() => 2) },

@@ -10,8 +10,8 @@ export type SpriteKind = "slime" | "slime-lost" | "slime-king" | "ghost" | "ghos
   | "owl" | "hero" | "crown" | "heart" | "torch" | "campfire" | "door" | "cloud" | "zz"
   // Cooking (docs/designs/monster-cuisine.md, cooking R6/R7): the pot, its smoke, and one dish per monster sprite.
   | "pot" | "smoke" | DishKind
-  // The chef's d20: a natural 20 serves the dish's legendary version (over the rays), a 1 serves the burnt remains.
-  | `${DishKind}-legend` | "legend-rays" | "dish-burnt"
+  // The chef's d20: a natural 20 serves the dish's legendary version, a 1 serves the burnt remains.
+  | `${DishKind}-legend` | "dish-burnt"
   // Event rooms (docs/designs/event-rooms.md): what stands in the arch instead of a monster.
   | "chest" | "chest-open" | "dish-rotten" | "spring" | "idol" | "fairy" | "fortune-teller" | "lot"
   // A repeat appearance's hat (docs/designs/monster-catalog.md §3).

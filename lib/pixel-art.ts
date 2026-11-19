@@ -186,7 +186,6 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   "chest-open": [26, 26],
   "dish-rotten": [34, 30],
   "dish-burnt": [34, 28],
-  "legend-rays": [64, 40],
   spring: [36, 26],
   idol: [24, 36],
   fairy: [24, 22],
@@ -2424,21 +2423,6 @@ function dishBurnt(cv: HTMLCanvasElement) {
   P.flush();
 }
 
-/** The fan of light behind a legendary dish, standing on the floor. `frame` 0/1 swaps the lit rays (DESIGN.md: steps(2), like the torch). */
-function legendRays(cv: HTMLCanvasElement, frame: number) {
-  const P = new Px(cv, 64, 40);
-  for (let y = 0; y < 40; y++)
-    for (let x = 0; x < 64; x++) {
-      const dx = (x + 0.5 - 32) / 32;
-      const dy = (40 - y - 0.5) / 40;
-      const r = Math.hypot(dx, dy);
-      const lit = Math.floor((Math.atan2(dy, dx) / Math.PI) * 17 + frame) % 2 === 0;
-      if (r > 1 || (r >= 0.3 && !lit)) continue;
-      P.set(x, y, r < 0.3 ? GOLD_PLATE_HI : r < 0.6 ? GOLD_PLATE : GOLD_DARK);
-    }
-  P.flush();
-}
-
 /** 回復泉水: a stone basin brimming with glowing water. */
 function spring(cv: HTMLCanvasElement) {
   const P = new Px(cv, 36, 26);
@@ -2600,7 +2584,6 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   "chest-open": (cv) => chest(cv, true),
   "dish-rotten": (cv) => dishRotten(cv),
   "dish-burnt": (cv) => dishBurnt(cv),
-  "legend-rays": (cv, v) => legendRays(cv, v),
   spring: (cv) => spring(cv),
   idol: (cv, _v, b) => idol(cv, b),
   fairy: (cv, _v, b) => fairy(cv, b),
