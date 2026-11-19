@@ -109,6 +109,11 @@ export interface RoomSnapshot {
   bankChoice?: { id: string; name: string };
   /** The host's speaker latency for timing questions, ms 0–1000 (timing-tap.md). Missing (or damaged) means 0. */
   tapLatency?: number;
+  /** A passed check's card was on (#364): the team and question it was for. Missing (or damaged) means none. */
+  checkBeat?: { teamId: string; questionId: string };
+  /** A boss-entry dish was on (#364): its narration, the team that walked in, and whether 最後衝刺 started with it.
+   * restore() adds the entrance line the dish held back. Missing (or damaged) means none. */
+  bossEntry?: { eventId: number; teamId: string; sprint?: true };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -221,6 +226,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw.answerSeconds !== undefined ? { answerSeconds: isAnswerSeconds(raw.answerSeconds) ? raw.answerSeconds : 0, answerClock, clipEnded: isString(raw.clipEnded) ? raw.clipEnded : null } : {}),
       ...(raw.memoryDone !== undefined ? { memoryDone } : {}),
       ...(raw.memoryShow !== undefined ? { memoryShow } : {}),
+      checkBeat: isObject(raw.checkBeat) && isString(raw.checkBeat.teamId) && isString(raw.checkBeat.questionId) ? { teamId: raw.checkBeat.teamId, questionId: raw.checkBeat.questionId } : undefined,
+      bossEntry: isObject(raw.bossEntry) && Number.isInteger(raw.bossEntry.eventId) && isString(raw.bossEntry.teamId) ? { eventId: raw.bossEntry.eventId as number, teamId: raw.bossEntry.teamId, ...(raw.bossEntry.sprint === true ? { sprint: true as const } : {}) } : undefined,
       game: withUses as GameState | null,
       lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.

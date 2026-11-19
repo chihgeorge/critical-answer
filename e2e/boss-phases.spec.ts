@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { advanceAwards, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -52,7 +52,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
 
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();
@@ -112,7 +112,7 @@ test("a phase that runs out of questions moves on to the next one", async ({ bro
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();

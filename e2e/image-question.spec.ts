@@ -292,8 +292,8 @@ async function startTwoTeams(browser: import("@playwright/test").Browser, reques
   return { host, a: phones[0], b: phones[1] };
 }
 
-// Value: protects=on our own turn the picture sits right under the ribbon, before our team card; fails_when=the media slot or the cards stop swapping sides with the turn; why_new=no spec compares media and card positions; seam=none; no_claim=node reuse (each turn shows another question id, so QuestionMedia's key remounts it anyway)
-test("media question: on our own turn the picture comes before our team card, and after it while waiting", async ({ browser, request }) => {
+// Value: protects=the picture sits right under the ribbon, before the one-line team card, on our turn and while waiting; fails_when=the media slot drops below the card; why_new=no spec compares media and card positions; seam=none; no_claim=node reuse (each turn shows another question id, so QuestionMedia's key remounts it anyway)
+test("media question: the picture comes before the team card, on our own turn and while waiting", async ({ browser, request }) => {
   const uploaded = await request.post(`${WORKER}/api/bank/image`, { headers: { ...HEADERS, "Content-Type": "image/png" }, data: TINY_PNG });
   const { key } = await uploaded.json();
   const image = (id: string) => ({ kind: "text", id, content: { kind: "image", value: key }, answer: "松鼠" });
@@ -310,13 +310,13 @@ test("media question: on our own turn the picture comes before our team card, an
   await expect(img(b)).toBeAttached();
   await expect(a.getByRole("heading")).toHaveCount(0); // a picture question has no text strip
   expect(await top(slot(a))).toBeLessThan(await top(card(a, "甲隊")));
-  expect(await top(slot(b))).toBeGreaterThan(await top(card(b, "乙隊")));
+  expect(await top(slot(b))).toBeLessThan(await top(card(b, "乙隊")));
 
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(b.getByText("輪到我們了！")).toBeVisible();
   await expect(a.getByText("輪到：乙隊")).toBeVisible();
   await rollCheck(b);
-  expect(await top(slot(a))).toBeGreaterThan(await top(card(a, "甲隊")));
+  expect(await top(slot(a))).toBeLessThan(await top(card(a, "甲隊")));
   expect(await top(slot(b))).toBeLessThan(await top(card(b, "乙隊")));
 });
 

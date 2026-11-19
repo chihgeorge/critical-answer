@@ -616,6 +616,8 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const before = room.game!.teams.find((t) => t.id === turn)!.reward;
     judge();
     expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    // The boss stays on stage through the beat, not the default slime (#401).
+    expect(lastBroadcast(room).stageMonster).toMatchObject(lastBroadcast(room).view.bossLook);
     vi.advanceTimersByTime(2000);
     const roll = lastBroadcast(room).pendingRoll;
     expect(roll).toMatchObject({ teamId: turn, kind: "kill", values: [11, 11, 11, 11], value: 44 }); // rng 0.5: each d20 is 11
@@ -967,6 +969,30 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     expect(revealOf(room)).toMatchObject({ questionId: "r0-q1" });
   });
 
+  // Value: protects=a host 改分 during an unserved dish shows the score as set (#364 follow-up); fails_when=the stage
+  // still subtracts the dish's gain from a reward the host has since set, showing it short (or below 0)
+  it("a HOST_SET_SCORE before 上菜 shows the set score, not the set score less the dish", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    expect(room.game!.teams[0].reward).toBeGreaterThan(0);
+    expect(lastBroadcast(room).view.teams[0].reward).toBe(0); // the control: the gain waits for the dish
+    send(room, hostConn, { type: "HOST_SET_SCORE", teamId: ids[0], score: 3 });
+    expect(room.game!.teams[0].reward).toBe(3);
+    expect(lastBroadcast(room).view.teams[0].reward).toBe(3);
+    send(room, hostConn, { type: "HOST_SERVE", eventId: seqOf(room) });
+    expect(lastBroadcast(room).view.teams[0].reward).toBe(3);
+  });
+
+  it("a HOST_SET_SCORE back to the judged total before 上菜 still shows the set score", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
+    const judged = room.game!.teams[0].reward;
+    send(room, hostConn, { type: "HOST_SET_SCORE", teamId: ids[0], score: judged + 2 });
+    send(room, hostConn, { type: "HOST_SET_SCORE", teamId: ids[0], score: judged });
+    expect(room.game!.teams[0].reward).toBe(judged);
+    expect(lastBroadcast(room).view.teams[0].reward).toBe(judged);
+  });
+
   it("rejects a judgment while a reveal is up, so a second host device can't skip past it (D7)", () => {
     const { room, hostConn, ids } = startedGame(1);
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
@@ -1069,9 +1095,11 @@ describe("TEAM_SELECT_OPTION", () => {
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const { room, hostConn, ids, lockAndReveal } = critGame();
       const seq = seqOf(room);
+      const asked = lastBroadcast(room).question.monster;
       lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
-      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "crit-intro", pendingRoll: null });
+      // The beat sends no question, but keeps the room's monster on stage (#401).
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "crit-intro", pendingRoll: null, question: null, stageMonster: asked });
       vi.advanceTimersByTime(2000);
       const held = lastBroadcast(room);
       expect(held.pendingLock).toBeNull();
@@ -1165,9 +1193,9 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=a crit die that kills the boss pays half the hit reward and keeps the boss-kill sound (dnd design E2);
-    // fails_when=setCue drops the boss-kill exception (cue "crit") or the kill skips the crit bonus; why_new=game-state tests
+    // fails_when=the kill's beat drops boss-kill, the landed dice play it a second time, or the kill skips the crit bonus; why_new=game-state tests
     // cover the reward only, cue tests cover room hits only; seam=none; no_claim=the sound itself (cue name only)
-    it("a 20 that kills the boss pays half the hit reward on top and keeps the boss-kill cue", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    it("a 20 that kills the boss pays half the hit reward on top and plays the boss-kill cue once", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const { room, ids, lockAndReveal, states } = critGame();
       const g = room.game!;
@@ -1186,8 +1214,11 @@ describe("TEAM_SELECT_OPTION", () => {
       // An unrated boss question's 15 + half of it 8 + the 4d20 at the same rng, four 20s = 80 (not raised by the crit).
       expect(room.game!.teams[0].reward).toBe(103);
       expect(room.game!.phase).toBe("finished");
-      // The kill's dice roll with their own cue, then the kill keeps its boss-kill cue.
-      expect(states().at(-1)).toMatchObject({ cue: "boss-kill", cueSeq: seq + 4 });
+      // The defeat sound plays once, at the kill's beat; the dice roll with their own cue and the kill adds none (#364).
+      const cues = new Map<number, string>();
+      for (const m of states()) if (m.cueSeq > seq && !cues.has(m.cueSeq)) cues.set(m.cueSeq, m.cue);
+      expect([...cues.values()].filter((c) => c === "boss-kill")).toHaveLength(1);
+      expect(states().at(-1)).toMatchObject({ cue: "roll", cueSeq: seq + 3 });
     });
 
     // Value: protects=a crit that kills still scores when the phone drops during the crit beat; fails_when=resolveRoll

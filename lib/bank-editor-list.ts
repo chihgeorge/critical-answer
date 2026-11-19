@@ -88,7 +88,7 @@ export function moveRefusal(bank: Bank, q: BankQuestion, to: Location): string |
 }
 
 /** `q` as it fits group `to`: a pool question has no difficulty of its own (parseBank refuses one), and a pool question
- * moving to the boss keeps its pool's difficulty as its own (the default 5 is stored as none). */
+ * moving to the boss keeps its pool's difficulty as its own (the default, DEFAULT_BOSS_DIFFICULTY, is stored as none). */
 function placed(q: BankQuestion, from: Location, to: Location): BankQuestion {
   const next = { ...q };
   delete next.difficulty;

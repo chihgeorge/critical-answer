@@ -79,6 +79,9 @@ describe("boss phases in the room", () => {
     expect(reveal).toMatchObject({ phase: "playing", cue: "boss-hit", reveal: { questionId: "p1-a" } });
     expect(reveal.view).toMatchObject({ bossHp: 0, bossMaxHp: 1, bossPhase: 1, bossKilledBy: null });
     expect(reveal.phaseCard).toBeUndefined();
+    // Value: protects=the host page's ⏭ preview names the new phase, not the question just answered (#328 m5);
+    // fails_when=the reveal's STATE no longer says the card is due; seam=none; no_claim=the host page's wording
+    expect(reveal.phaseCardDue).toBe(true);
     expect(msgs(g.io.broadcast.mock.calls).some((m) => m.type === "GAME_OVER")).toBe(false);
 
     g.next();
@@ -86,6 +89,7 @@ describe("boss phases in the room", () => {
     expect(card).toMatchObject({ phaseCard: { monster: { name: "深淵小黑龍", sprite: "dragon", hue: 0 } }, question: null, reveal: null, cue: "boss-phase", eventId: reveal.eventId + 1, bossPhaseInfo: PHASE2 });
     expect(card.phaseCard.monster).not.toHaveProperty("dish"); // served on the kill, not before (monster-cuisine.md)
     expect(card.view).toMatchObject({ bossHp: 2, bossMaxHp: 2, bossPhase: 2 });
+    expect(card.phaseCardDue).toBeUndefined();
 
     // Nobody answers a question that is not on screen yet.
     g.judge(true);

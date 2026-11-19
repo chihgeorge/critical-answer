@@ -55,7 +55,7 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
   await expect(phone.getByTestId("roster")).toContainText("甲隊");
   const other = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await other.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(phone.getByTestId("roster")).toContainText("乙隊");
+  await expect(other.getByTestId("roster")).toContainText("乙隊");
 
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
