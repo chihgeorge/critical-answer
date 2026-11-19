@@ -48,7 +48,7 @@ function ClassPicker({ current, send }: { current?: ClassId; send: (m: ClientMes
   return (
     <Panel tone="lav" className="flex flex-col gap-2 px-[10px] py-[10px]">
       <div className="text-[18px]">
-        選一個職業<span className="ml-2 text-[14px]">技能一場 {ABILITY_USES} 次，擲骰規則看玩法說明</span>
+        選一個職業<span className="ml-2 text-[14px]">一場 {ABILITY_USES} 次・擲骰看玩法說明</span>
       </div>
       {CLASS_IDS.map((id) => {
         const picked = current === id;

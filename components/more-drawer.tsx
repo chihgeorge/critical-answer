@@ -25,6 +25,9 @@ export function MoreDrawer({
   onClose,
   send,
   ai,
+  teamTools,
+  teamSprite,
+  bossPick,
   bossable,
   bossThreshold = BOSS_THRESHOLD,
   playing,
@@ -39,7 +42,6 @@ export function MoreDrawer({
   error,
   tapLatency,
   calibrate,
-  teams,
   pacing,
   narration,
   lobby,
@@ -51,8 +53,12 @@ export function MoreDrawer({
   send: (msg: ClientMessage) => void;
   /** The AI key and limit settings. */
   ai: ReactNode;
-  /** 隊伍: each team's 指定下一題 / 🧪 給藥水 / 交給新手機, and the boss's pick, while a game plays. */
-  teams?: ReactNode;
+  /** A team's rarer tools (指定下一題 / 🧪 給藥水 / 交給新手機), under its ⋯ in 隊伍, while a game plays. */
+  teamTools?: (teamId: string) => ReactNode;
+  /** A team's character, at the start of its row in 隊伍. */
+  teamSprite?: (teamId: string) => ReactNode;
+  /** 首領房下一題's line and its pick, under the team rows. */
+  bossPick?: ReactNode;
   /** 手動停頓's switch (manual-pacing.md). */
   pacing?: ReactNode;
   /** The narration panel (下一句這樣說, edits), while a game plays. */
@@ -88,6 +94,14 @@ export function MoreDrawer({
   /** 🎯 校正喇叭 (tap-calibrate.md), in the lobby only: shown under 開局準備. */
   calibrate?: ReactNode;
 }) {
+  // One section open at a time (ui-simplify H1): the teams in a game, the setup in the lobby.
+  const [open, setOpen] = useState<string | null>(fixable.length > 0 ? "teams" : lobby || calibrate ? "setup" : null);
+  const [toolsFor, setToolsFor] = useState<string | null>(null);
+  const section = (key: string, title: string, status: ReactNode, body: ReactNode) => (
+    <Section key={key} id={key} title={title} status={status} open={open === key} onToggle={() => setOpen(open === key ? null : key)}>
+      {body}
+    </Section>
+  );
   // 送王房 cannot be undone, so the first tap only arms it for 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   // 修正 acts on every press: a double tap before the next STATE would apply twice (FIX_COOLDOWN_MS per button).
@@ -123,67 +137,113 @@ export function MoreDrawer({
               關閉
             </PixelButton>
           </div>
-          {teams && (
-            <>
-              <Heading>隊伍</Heading>
-              <section>{teams}</section>
-            </>
-          )}
-          {fixable.length > 0 && <Heading>修正・改判</Heading>}
-          {fixable.length > 0 && (
-            <section data-testid="host-fix" className="flex flex-col gap-2">
-              <div className="text-[15px]">修正（判錯時用）：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。</div>
-              {error && <div role="alert" className="px-2 py-1 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</div>}
-              {fixable.map((t) => {
-                const fix = (f: HostFix) => fixAllowed(`${t.id}:${f}`) && send({ type: "HOST_FIX", teamId: t.id, fix: f });
-                const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
-                const max = t.abilityCap;
-                return (
-                  <div key={t.id} className="flex flex-wrap items-center gap-2">
-                    <span className="min-w-0 flex-1 basis-full truncate text-[16px] sm:basis-0">{t.name}</span>
-                    <span className="text-[14px]">{scoreLabel} <span className="px-num text-[14px]">{t.reward}</span></span>
-                    <PixelButton aria-label={`${t.name}扣 ${FIX_SCORE_STEP} 分`} disabled={t.reward <= 0} onClick={() => fix("score-")} className={small}>−{FIX_SCORE_STEP}</PixelButton>
-                    <form
-                      className="flex items-center gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        if (!settable(t.id, t.reward) || !fixAllowed(`${t.id}:set`)) return;
-                        const score = Number(typedFor(t.id, t.reward));
-                        setSent((s) => ({ ...s, [t.id]: score }));
-                        send({ type: "HOST_SET_SCORE", teamId: t.id, score });
-                      }}
-                    >
-                      <input
-                        aria-label={`${t.name}的分數`}
-                        inputMode="numeric"
-                        maxLength={4}
-                        placeholder={String(t.reward)}
-                        value={typedFor(t.id, t.reward)}
-                        onChange={(e) => {
-                          const v = e.target.value.trim();
-                          setTyped((s) => ({ ...s, [t.id]: v }));
-                          setSent((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== t.id)));
-                        }}
-                        className="min-h-[44px] w-[4.5em] border-2 border-black bg-white px-2 text-[16px]"
-                      />
-                      <PixelButton type="submit" aria-label={`設定${t.name}的分數`} disabled={!settable(t.id, t.reward)} className={small}>設定</PixelButton>
-                    </form>
-                    <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
-                    {max !== undefined && t.classId && (
-                      <>
-                        <span className="text-[14px]">{CLASS_ICONS[t.classId]}{t.abilityUses}/{max}</span>
-                        <PixelButton aria-label={`${t.name}能力少 1 次`} disabled={t.abilityUses <= 0} onClick={() => fix("ability-")} className={small}>−1</PixelButton>
-                        <PixelButton aria-label={`${t.name}能力多 1 次`} disabled={t.abilityUses >= max} onClick={() => fix("ability+")} className={small}>+1</PixelButton>
-                      </>
-                    )}
-                    {t.item && (
-                      <PixelButton aria-label={`收回${t.name}的藥水`} onClick={() => fix("potion-")} className={small}>收回🧪</PixelButton>
-                    )}
-                  </div>
-                );
-              })}
-              <div data-testid="host-rejudge" className="mt-2 flex flex-col gap-2">
-                <div className="text-[15px]">改判（已判過的題目）</div>
+          {/* Always in view (ui-simplify H1): the big screens' sound and the pacing, one row each. */}
+          <section className="flex flex-col gap-2">
+            <div className="flex flex-wrap gap-2">
+              {AUDIO_SWITCHES.map(({ key, label }) => (
+                <PixelButton
+                  key={key}
+                  role="switch"
+                  aria-checked={screenAudio[key]}
+                  variant={screenAudio[key] ? undefined : "flee"}
+                  onClick={() => send({ type: "HOST_SCREEN_AUDIO", key, on: !screenAudio[key] })}
+                  className="!m-0 min-h-[44px] !px-3 !py-2 text-[15px]"
+                >
+                  {`${label}：${screenAudio[key] ? "開" : "關"}`}
+                </PixelButton>
+              ))}
+            </div>
+            <div className="text-[13px]">每台大螢幕都跟著這裡；🎵 關掉時判分音效和環境音也一起關，主持人加料一直都在。</div>
+            {pacing && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[15px]">節奏</span>
+                {pacing}
+                <span className="text-[13px]">手動：每一步都停下來，等你按「▶ 下一步」</span>
+              </div>
+            )}
+          </section>
+          {fixable.length > 0 &&
+            section(
+              "teams",
+              "隊伍",
+              `${fixable.length} 隊`,
+              <div data-testid="host-fix" className="flex flex-col gap-2">
+                {error && <div role="alert" className="px-2 py-1 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</div>}
+                {fixable.map((t) => {
+                  const fix = (f: HostFix) => fixAllowed(`${t.id}:${f}`) && send({ type: "HOST_FIX", teamId: t.id, fix: f });
+                  const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
+                  const max = t.abilityCap;
+                  const more = toolsFor === t.id;
+                  return (
+                    <div key={t.id} className="flex flex-col gap-2 border-b border-[var(--k)]/20 pb-2">
+                      <div className="flex items-center gap-2">
+                        {teamSprite?.(t.id)}
+                        <span className="min-w-0 flex-1 truncate text-[16px]">
+                          {t.name}
+                          {t.online ? "" : "（離線）"}
+                        </span>
+                        <span className="text-[14px]">
+                          {scoreLabel} <span className="px-num text-[14px]">{t.reward}</span>
+                        </span>
+                        {max !== undefined && t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]}{t.abilityUses}/{max}</span>}
+                        <PixelButton aria-label={`${t.name}扣 ${FIX_SCORE_STEP} 分`} disabled={t.reward <= 0} onClick={() => fix("score-")} className={small}>−{FIX_SCORE_STEP}</PixelButton>
+                        <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
+                        <PixelButton aria-label={`${t.name}的更多工具`} aria-expanded={more} onClick={() => setToolsFor(more ? null : t.id)} className={small} style={{ background: more ? "var(--k)" : "#fff", color: more ? "#fff" : undefined }}>
+                          ⋯
+                        </PixelButton>
+                      </div>
+                      {more && (
+                        <div className="flex flex-wrap items-center gap-2 pl-2">
+                          {teamTools?.(t.id)}
+                          <form
+                            className="flex items-center gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              if (!settable(t.id, t.reward) || !fixAllowed(`${t.id}:set`)) return;
+                              const score = Number(typedFor(t.id, t.reward));
+                              setSent((s) => ({ ...s, [t.id]: score }));
+                              send({ type: "HOST_SET_SCORE", teamId: t.id, score });
+                            }}
+                          >
+                            <input
+                              aria-label={`${t.name}的分數`}
+                              inputMode="numeric"
+                              maxLength={4}
+                              placeholder={String(t.reward)}
+                              value={typedFor(t.id, t.reward)}
+                              onChange={(e) => {
+                                const v = e.target.value.trim();
+                                setTyped((s) => ({ ...s, [t.id]: v }));
+                                setSent((s) => Object.fromEntries(Object.entries(s).filter(([k]) => k !== t.id)));
+                              }}
+                              className="min-h-[44px] w-[4.5em] border-2 border-black bg-white px-2 text-[16px]"
+                            />
+                            <PixelButton type="submit" aria-label={`設定${t.name}的分數`} disabled={!settable(t.id, t.reward)} className={small}>設定</PixelButton>
+                          </form>
+                          {max !== undefined && t.classId && (
+                            <>
+                              <PixelButton aria-label={`${t.name}能力少 1 次`} disabled={t.abilityUses <= 0} onClick={() => fix("ability-")} className={small}>−1</PixelButton>
+                              <PixelButton aria-label={`${t.name}能力多 1 次`} disabled={t.abilityUses >= max} onClick={() => fix("ability+")} className={small}>+1</PixelButton>
+                            </>
+                          )}
+                          {t.item && (
+                            <PixelButton aria-label={`收回${t.name}的藥水`} onClick={() => fix("potion-")} className={small}>收回🧪</PixelButton>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {bossPick}
+                <div className="text-[13px]">−5／+5、設定分數（⋯ 裡）是判錯時用的修正：大螢幕不會有動畫或旁白，只會換成新的數字；每一下都記在對局紀錄裡。⋯ 裡還有指定下一題、給藥水、交給新手機、技能次數。</div>
+              </div>,
+            )}
+          {fixable.length > 0 &&
+            section(
+              "rejudge",
+              "改判已判過的題目",
+              `${judged.length} 題`,
+              <div data-testid="host-rejudge" className="flex flex-col gap-2">
                 <div className="text-[13px]">{`只改${scoreLabel ?? "獎勵分"}，不改答對數和進度。`}</div>
                 {judged.length === 0 ? (
                   <div className="text-[14px]">還沒有判過的題目</div>
@@ -218,51 +278,26 @@ export function MoreDrawer({
                     })}
                   </div>
                 )}
-              </div>
-            </section>
-          )}
-          {(lobby || calibrate) && (
-            <>
-              <Heading>開局準備</Heading>
-              {lobby && <section className="flex flex-col gap-4">{lobby}</section>}
-              {calibrate && <section>{calibrate}</section>}
-            </>
-          )}
-          {pacing && (
-            <>
-              <Heading>節奏</Heading>
-              <section className="flex flex-col gap-2">
-                {pacing}
-                <div className="text-[13px]">手動：每一步都停下來，等你按「▶ 下一步」</div>
-              </section>
-            </>
-          )}
-          {narration && (
-            <>
-              <Heading>地城主旁白</Heading>
-              <section>{narration}</section>
-            </>
-          )}
-          <Heading>大螢幕</Heading>
-          {screen && <section>{screen}</section>}
-          <section className="flex flex-col gap-2">
-            <div className="text-[15px]">大螢幕聲音（每台大螢幕都跟著這裡）：🎵 關掉時判分音效和環境音也一起關；主持人加料一直都在。</div>
-            <div className="flex flex-wrap gap-2">
-              {AUDIO_SWITCHES.map(({ key, label }) => (
-                <PixelButton
-                  key={key}
-                  role="switch"
-                  aria-checked={screenAudio[key]}
-                  variant={screenAudio[key] ? undefined : "flee"}
-                  onClick={() => send({ type: "HOST_SCREEN_AUDIO", key, on: !screenAudio[key] })}
-                  className="!m-0 min-h-[44px] !px-4 !py-2 text-[16px]"
-                >
-                  {`${label}：${screenAudio[key] ? "開" : "關"}`}
-                </PixelButton>
-              ))}
-            </div>
-          </section>
-          <Heading>其他</Heading>
+              </div>,
+            )}
+          {(lobby || calibrate) &&
+            section(
+              "setup",
+              "開局準備",
+              "",
+              <div className="flex flex-col gap-4">
+                {lobby}
+                {calibrate}
+              </div>,
+            )}
+          {/* The narration panel folds itself (its own 地城主旁白 toggle with a status line). */}
+          {narration && <section>{narration}</section>}
+          {screen && section("screen", "大螢幕連結", "", screen)}
+          {section(
+            "other",
+            "其他",
+            antiCheat ? "抓包與神諭 開" : "",
+            <div className="flex flex-col gap-4">
           {antiCheat !== undefined && (
             <section className="flex flex-col gap-2">
               <div className="text-[15px]">發現有人用手機問 AI？打開後每隊可以公開問 {ORACLE_USES} 次神諭（答對減半），也可以抓包別隊 {CATCH_USES} 次，由你裁決。關掉時還沒裁決的抓包取消、退回次數。</div>
@@ -359,13 +394,30 @@ export function MoreDrawer({
               </div>
             </section>
           )}
+            </div>,
+          )}
         </div>
       </Panel>
     </div>
   );
 }
 
-/** A drawer group's title: the drawer is long, so the host scans these. */
-function Heading({ children }: { children: ReactNode }) {
-  return <h3 className="border-b-2 border-[var(--k)] pb-[2px] text-[17px]">{children}</h3>;
+/** One folding drawer group (ui-simplify H1): a title row that says the group's state, its body only while open. */
+function Section({ id, title, status, open, onToggle, children }: { id: string; title: string; status: ReactNode; open: boolean; onToggle: () => void; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <button
+        type="button"
+        data-testid={`more-section-${id}`}
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex items-center gap-2 border-b-2 border-[var(--k)] pb-[2px] text-left text-[17px]"
+      >
+        <span aria-hidden>{open ? "▾" : "▸"}</span>
+        <span className="flex-1">{title}</span>
+        {status && <span className="text-[14px]">{status}</span>}
+      </button>
+      {open && children}
+    </section>
+  );
 }

@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, startGame, rollCheck, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 
 closeLeftoverContexts();
 
@@ -45,7 +45,7 @@ test.describe("a fill-in answer with a first character", () => {
   // the boss room, or a screen lacks the hint; no_claim=hint_shown refusals (unit tests).
   test("mage: in the boss room, a fill-in cast needs no check and shows the first character on the phone, the host page and the TV", async ({ browser }) => {
     const { host, screen, team } = await mageRoom(browser);
-    await host.getByRole("button", { name: "⚙ 更多" }).click();
+    await openMore(host, "other");
     await host.getByRole("button", { name: "送王房" }).click();
     await host.getByRole("button", { name: "確定送？" }).click();
     await host.getByRole("button", { name: "關閉" }).click();

@@ -61,7 +61,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // Host claims control, then starts once both teams are in.
   await expect(host.getByText("乙隊")).toBeVisible();
   // AI narration is off until a host pastes a key, so tests never call the real API.
-  await openMore(host);
+  await openMore(host, "other");
   await expect(host.getByText("AI 旁白", { exact: true })).toBeVisible();
   await closeMore(host);
   await startGame(host);
@@ -135,7 +135,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(host.getByText("（離線）")).toHaveCount(0, { timeout: 10000 });
 
   // The host's drawer. (Editing a narration line: narration-tts.spec.ts's host narration panel test.)
-  await host.getByRole("button", { name: /更多/ }).click();
+  await openMore(host, "other");
   // The drawer keeps only the host-device QR (the one that hands over control), not a second join QR.
   await expect(host.getByText("用另一台裝置主持")).toBeVisible();
   await expect(host.getByText("玩家掃描加入")).toHaveCount(0);
