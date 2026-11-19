@@ -383,3 +383,23 @@ describe("HOST_START bossThreshold", () => {
     expect(peek(second.room).view.bossThreshold).toBe(12);
   });
 });
+
+// 首領題隨機順序 rides HOST_START too. Value: protects=the host's pick reaches game.config and a restored room;
+// fails_when=the flag is dropped, accepts a non-boolean, or a default-off game stores it.
+describe("HOST_START bossShuffle", () => {
+  it("takes only a boolean and stores only on", () => {
+    expect(parseClientMessage({ type: "HOST_START", bossShuffle: true })).toMatchObject({ bossShuffle: true });
+    expect(parseClientMessage({ type: "HOST_START", bossShuffle: false })).not.toHaveProperty("bossShuffle");
+    expect(parseClientMessage({ type: "HOST_START", bossShuffle: "yes" })).toBeNull();
+    expect(started().room.game!.config).not.toHaveProperty("bossShuffle");
+  });
+
+  it("reaches game.config and survives a restart", async () => {
+    const g = started({ bossShuffle: true });
+    expect(g.room.game!.config.bossShuffle).toBe(true);
+    send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: "x", optionIndex: 0 }); // any message saves
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.config.bossShuffle).toBe(true);
+  });
+});
