@@ -1284,8 +1284,45 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).undoWrong).toMatchObject({ teamId: ids[0], questionId: "r0-t1" });
+      const bKey = checkKey(room.game!.teams.find((t) => t.id === ids[1])!.currentQuestionId, ids[1]);
+      expect(room.game!.checks?.[bKey]).toMatchObject({ value: 3 });
       send(room, hostConn, { type: "HOST_UNDO_WRONG", teamId: ids[0], questionId: "r0-t1", eventId: seqOf(room) });
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-t1" });
+      // The second team saw its die land: the undo keeps that check, so it never rolls again.
+      expect(room.game!.checks?.[bKey]).toMatchObject({ value: 3 });
+    });
+
+    // Value: protects=改判答對 waits out the next team's passed-check card (red-team review); fails_when=the undo judges
+    // during the beat, its die replaces the beat's "lock" timer and stageBeat is never cleared (the room pauses for good).
+    it("holds 改判答對 while the next team's passed-check card shows, and opens it once the card ends", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids } = checkGame(2, 18);
+      vi.advanceTimersByTime(10_000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-success");
+      expect(lastBroadcast(room).undoWrong).toBeFalsy();
+      send(room, hostConn, { type: "HOST_UNDO_WRONG", teamId: ids[0], questionId: "r0-t1", eventId: seqOf(room) });
+      expect(lastSentTo(hostConn)).toMatchObject({ detail: "no_undo" });
+      vi.advanceTimersByTime(10_000);
+      expect(lastBroadcast(room).stageBeat).toBeUndefined();
+      expect(lastBroadcast(room).undoWrong).toMatchObject({ teamId: ids[0] });
+    });
+
+    // Value: protects=a restored natural 20 waits for its own team's turn only (adversarial review); fails_when=autoCheck
+    // gates every team on lostCrit, so another team's fill-in hides its question with no die and no host fallback.
+    it("rolls another team's check while a restored natural 20 waits for its own team", () => {
+      vi.useFakeTimers();
+      const { room, ids } = checkGame(2, 3);
+      vi.advanceTimersByTime(2000);
+      // The first team's check is a 20 whose win a restart lost; its turn passes before it applies.
+      const key = checkKey("r0-t1", ids[0]);
+      room.game = advanceTurn({ ...room.game!, checks: { ...room.game!.checks, [key]: { ...room.game!.checks![key], value: 20 } } });
+      const r = room as unknown as { lostCrit: { teamId: string; questionId: string } | null; broadcastState(): void };
+      r.lostCrit = { teamId: ids[0], questionId: "r0-t1" };
+      r.broadcastState();
+      expect(r.lostCrit).toMatchObject({ teamId: ids[0] });
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
     });
 
     it("rolls once per question: a wrong answer's retry keeps the check, rolling no second die", () => {

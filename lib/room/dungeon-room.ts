@@ -3794,10 +3794,19 @@ export class DungeonRoom {
   private undoneGame(undo: NonNullable<DungeonRoom["undo"]>, now: GameState): GameState {
     const live = new Map(now.teams.map((t) => [t.id, t]));
     const carry = !undo.verdict;
+    // A check another team rolled since (autoCheck on the turn the 答錯 handed over) stays rolled, with its 20s and 1s:
+    // the team has seen it, so the undo must not let it roll again.
+    const rolled = new Map(now.teams.filter((t) => t.id !== undo.teamId).flatMap((t) => {
+      const key = checkKey(currentQuestionIdOf(now, t.id), t.id);
+      return now.checks?.[key] && !undo.prev.checks?.[key] ? [[t.id, key] as const] : [];
+    }));
+    const checks = rolled.size ? { ...undo.prev.checks, ...Object.fromEntries([...rolled.values()].map((k) => [k, now.checks![k]])) } : undo.prev.checks;
     return {
       ...undo.prev,
+      ...(checks ? { checks } : {}),
       teams: undo.prev.teams.map((t) => {
         const n = live.get(t.id);
+        if (n && rolled.has(t.id)) t = { ...t, natural20s: n.natural20s, natural1s: n.natural1s };
         // A tap is kept only on the question it was made on.
         const tapped = t.id !== undo.teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
         // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
@@ -3811,7 +3820,8 @@ export class DungeonRoom {
 
   private undoHeld(): boolean {
     // A finished game is logged and narrated: an undo would reopen it under a ranking already told.
-    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
+    // A stage beat (the next team's passed-check card) owns the "lock" pace slot: a judgment now would strand it.
+    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive() || !!this.stageBeat;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -5217,8 +5227,10 @@ export class DungeonRoom {
    * rolled: the caller then sends the STATE that carries the die. */
   private autoCheck(): boolean {
     const game = this.game;
-    if (game?.phase !== "playing" || this.lostCrit || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
+    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
     const teamId = currentTurnTeamId(game);
+    // A restored natural 20 (lostCrit) judges its own team's turn; another team's check need not wait for it.
+    if (this.lostCrit?.teamId === teamId) return false;
     const team = game.teams.find((t) => t.id === teamId);
     // The boss room has no check (#382), and a fork holds no question to roll on.
     if (!teamId || !team || team.inBoss || atFork(team)) return false;
@@ -5228,7 +5240,8 @@ export class DungeonRoom {
     if (q?.kind !== "text" || game.checks?.[checkKey(questionId, teamId)] || team.typedAnswer !== undefined) return false;
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
-    this.game = recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer);
+    // Not a move: an open 改判答對 stays open (undoneGame keeps this check).
+    this.keepUndoOpen(recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer));
     return true;
   }
 

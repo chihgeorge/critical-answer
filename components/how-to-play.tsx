@@ -179,7 +179,7 @@ function Picture({ page }: { page: number }) {
   if (page === 6)
     return (
       <div className="flex flex-col items-center gap-3 text-[20px]">
-        <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--lav)", border: "4px solid var(--k)" }}>幸運骰備好了！</div>
+        <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--lav)", border: "4px solid var(--k)" }}>🍀 幸運骰備好了！</div>
         <div className="flex items-center gap-4">
           {face(6, "dim")}
           {face(17, "kept")}
