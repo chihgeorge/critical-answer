@@ -388,7 +388,7 @@ export const CAUGHT_VARIANTS = [
   "🚨 抓包成立！{team}換題，{caught}領賞！",
   "🚨 {caught}眼尖！{team}這題作廢，換題！",
 ];
-/** 逃跑・換房: the team ran from {monster} into {to}, its new monster in the same room. */
+/** 逃跑: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
   "{team}逃進隔壁房，迎面是{to}！",
   "{team}甩開{monster}，撞上了{to}。",

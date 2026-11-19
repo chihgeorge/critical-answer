@@ -6,7 +6,7 @@
 //   letter-count hint cracks WEAK of the unknown fill-ins, a whole answer or order all of them.
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
-//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room picks 逃跑・同房 or 逃跑・換房 half and half.
+//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room meets a new monster (逃跑).
 // - The boss has two phases: a turn-based one (HP1 hearts), then a buzzer phase (HP2) with no abilities.
 // - A team knows a question or not, for good (KNOW by difficulty; fill-in ×TEXTK). A first-letter hint cracks HINT of the
 //   unknown fill-ins. Unknown multipleChoice guesses among the options left; an unknown fill-in flees.
@@ -218,7 +218,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
     if (cleric && G.canPray(g, id)) g = G.prayerRoll(G.pray(g, id), id, potionRoll());
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
-    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
+    g = G.answerQuestion(g, id, q, false, flee ? "switch" : "retry", R).game;
   }
   return g;
 }

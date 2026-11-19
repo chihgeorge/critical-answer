@@ -299,7 +299,7 @@ describe("parseClientMessage", () => {
   it("HOST_JUDGE: accepts valid, rejects missing, wrong-type, oversize and bad fleeChoice", () => {
     const ok = { type: "HOST_JUDGE", teamId: ID, questionId: "r0-q1", correct: true };
     expect(parseClientMessage(ok)).toMatchObject(ok);
-    expect(parseClientMessage({ ...ok, fleeChoice: "flee" })).toMatchObject({ fleeChoice: "flee" });
+    expect(parseClientMessage({ ...ok, fleeChoice: "flee" })).toMatchObject({ fleeChoice: "switch" });
     expect(parseClientMessage({ ...ok, teamId: undefined })).toBeNull();
     expect(parseClientMessage({ ...ok, correct: "true" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: "q".repeat(65) })).toBeNull();
@@ -335,12 +335,13 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "TEAM_LOCK_OPTION" })).toBeNull();
   });
 
-  it("TEAM_WRONG_CHOICE and HOST_JUDGE accept retry, flee (逃跑・同房) or switch (逃跑・換房)", () => {
-    const ok = { type: "TEAM_WRONG_CHOICE", questionId: "r0-q1", choice: "flee" };
+  it("TEAM_WRONG_CHOICE and HOST_JUDGE accept retry or switch (the one 逃跑); a stale page's flee (逃跑・同房) becomes switch", () => {
+    const ok = { type: "TEAM_WRONG_CHOICE", questionId: "r0-q1", choice: "switch" };
     expect(parseClientMessage(ok)).toEqual(ok);
     expect(parseClientMessage({ ...ok, choice: "retry" })).toEqual({ ...ok, choice: "retry" });
-    expect(parseClientMessage({ ...ok, choice: "switch" })).toEqual({ ...ok, choice: "switch" });
+    expect(parseClientMessage({ ...ok, choice: "flee" })).toEqual(ok);
     expect(parseClientMessage({ type: "HOST_JUDGE", teamId: "t", questionId: "q", correct: false, fleeChoice: "switch" })).toMatchObject({ fleeChoice: "switch" });
+    expect(parseClientMessage({ type: "HOST_JUDGE", teamId: "t", questionId: "q", correct: false, fleeChoice: "flee" })).toMatchObject({ fleeChoice: "switch" });
     expect(parseClientMessage({ ...ok, choice: "correct" })).toBeNull();
     expect(parseClientMessage({ ...ok, questionId: 1 })).toBeNull();
   });

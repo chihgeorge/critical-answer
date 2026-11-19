@@ -42,7 +42,7 @@ describe("scripted lines", () => {
   });
 
   // pregate-literal: MAX_MODEL_LINE=22 the scripted pools keep their own 22-character rule
-  it("逃跑・換房 gets its own lines, each at most 22 characters and naming the new monster", () => {
+  it("逃跑 gets its own lines, each at most 22 characters and naming the new monster", () => {
     expect(new Set(FLEE_SWITCH_VARIANTS).size).toBe(FLEE_SWITCH_VARIANTS.length);
     for (const t of FLEE_SWITCH_VARIANTS) {
       expect(t).toContain("{to}");

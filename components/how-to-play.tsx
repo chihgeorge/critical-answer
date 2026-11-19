@@ -41,9 +41,9 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
   },
   {
     topic: "答錯怎麼辦",
-    big: "答錯可以下輪再答，或逃跑換一題簡單一點的",
-    owl: "答錯別慌！可以下輪再答，或逃跑換題，怪物還在原地等你。",
-    script: "答錯了可以選下輪再答：先換下一隊，下一輪再答同一題；或逃跑換一題簡單一點的。",
+    big: "答錯可以下輪再答，或逃跑換一隻怪、換簡單一點的題",
+    owl: "答錯別慌！可以下輪再答，或逃跑換一隻怪物。",
+    script: "答錯了可以選下輪再答：先換下一隊，下一輪再答同一題；或逃跑換一隻怪物，換一題簡單一點的。",
   },
   {
     topic: "怎麼贏",
@@ -152,7 +152,7 @@ function Picture({ page, cuisine }: { page: number; cuisine: boolean }) {
         <div className="text-[22px]" style={{ color: "var(--danger)" }}>✕ 答錯</div>
         <div className="flex gap-10 text-[16px]">
           <div className="flex flex-col items-center gap-1">{miniBtn("var(--warn)", "下輪再答", 130)}先換下一隊</div>
-          <div className="flex flex-col items-center gap-1">{miniBtn("var(--lav)", "逃跑", 130)}換一題簡單一點的</div>
+          <div className="flex flex-col items-center gap-1">{miniBtn("var(--lav)", "逃跑", 130)}換一隻怪，換簡單題</div>
         </div>
       </div>
     );
