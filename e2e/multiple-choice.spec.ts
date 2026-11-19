@@ -152,6 +152,9 @@ test("phone answering: the longest default question with four options still fits
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  // The four tiles collapse into one line after a wrong lock, so the next-step buttons fit (iPhone 13 QA, 2026-11-19).
+  await expect(team.getByTestId("my-wrong-pick")).toContainText("你們選的：B 〈Fantastic Baby〉");
+  await expect(team.getByRole("button", { name: "〈Power〉" })).toHaveCount(0);
   expect(await bottom(/下輪再答/)).toBeLessThanOrEqual(844);
   expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
