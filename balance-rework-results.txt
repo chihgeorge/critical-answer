@@ -62,3 +62,84 @@ a8_pot_ev.txt:dish chef-rolls/team 5.25 20s/team 0.294 team-with-20 25.8% game-w
 a8_nopot_df.txt:dish chef-rolls/team 5.39 20s/team 0.271 team-with-20 24.0% game-with-chef-20 36.3% | all-rolls/game 46.7 20s/game 2.34 game-with-any-20 90.6%
 f_F1_ev.txt:dish chef-rolls/team 6.57 20s/team 0.387 team-with-20 32.6% game-with-chef-20 32.6% | all-rolls/game 28.2 20s/game 1.41 game-with-any-20 76.3%
 f_F1_df.txt:dish chef-rolls/team 6.82 20s/team 0.376 team-with-20 31.7% game-with-chef-20 31.7% | all-rolls/game 29.3 20s/game 1.46 game-with-any-20 77.4%
+
+--- 2026-11-18 later: every team rolls the dish die (DISHALL). h/k/m/z = chef retune under the old multipliers; u/v/w = unified palette screening (10k); y_X / y_Y / y_Y2 = finalists (40k). See the doc for each config.
+h_135_df                           th=26.8 ch=28.0 cl=27.6 wa=28.1 ma=25.5 no=14.1 gap=2.6
+h_135_ev                           th=26.0 ch=28.0 cl=27.2 wa=28.1 ma=27.0 no=13.8 gap=2.1
+h_14_df                            th=26.1 ch=29.0 cl=28.3 wa=27.4 ma=26.0 no=13.2 gap=3.0
+h_14_ev                            th=25.8 ch=29.8 cl=26.1 wa=27.3 ma=27.0 no=13.9 gap=4.0
+h_cb4_df                           th=27.0 ch=26.4 cl=28.7 wa=27.7 ma=25.8 no=14.3 gap=2.9
+h_cb4_ev                           th=27.1 ch=26.0 cl=27.1 wa=27.9 ma=27.4 no=14.6 gap=1.9
+h_hi25_df                          th=26.9 ch=27.6 cl=28.4 wa=27.0 ma=25.9 no=14.4 gap=2.5
+h_hi25_ev                          th=25.5 ch=27.8 cl=26.9 wa=28.2 ma=27.5 no=14.1 gap=2.7
+h_lo09_df                          th=26.3 ch=26.9 cl=28.6 wa=28.2 ma=25.8 no=14.1 gap=2.8
+h_lo09_ev                          th=26.2 ch=26.9 cl=27.3 wa=27.6 ma=27.8 no=14.1 gap=1.6
+h_lo10_df                          th=26.6 ch=28.2 cl=27.5 wa=28.0 ma=26.3 no=13.4 gap=1.9
+h_lo10_ev                          th=26.1 ch=28.7 cl=27.1 wa=27.5 ma=26.5 no=14.0 gap=2.6
+h_potn2_df                         th=27.8 ch=26.5 cl=28.1 wa=27.9 ma=25.9 no=13.8 gap=2.2
+h_potn2_ev                         th=26.3 ch=26.3 cl=27.5 wa=27.4 ma=27.8 no=14.7 gap=1.5
+k_adv12_df                         th=26.9 ch=29.2 cl=27.6 wa=26.5 ma=25.6 no=14.2 gap=3.6
+k_adv12_ev                         th=25.1 ch=30.1 cl=27.1 wa=27.4 ma=26.5 no=13.7 gap=5.0
+k_adv_safe_df                      th=26.6 ch=24.8 cl=30.1 wa=28.1 ma=25.8 no=14.7 gap=5.3
+k_adv_safe_ev                      th=27.4 ch=24.6 cl=27.1 wa=27.8 ma=28.5 no=14.7 gap=3.9
+k_safe12_df                        th=26.7 ch=25.8 cl=28.9 wa=28.2 ma=26.3 no=14.3 gap=3.1
+k_safe12_ev                        th=27.0 ch=25.4 cl=27.0 wa=28.1 ma=27.9 no=14.8 gap=2.7
+k_steal05_df                       th=25.2 ch=30.8 cl=27.5 wa=27.7 ma=25.1 no=13.7 gap=5.7
+k_steal05_ev                       th=25.5 ch=30.2 cl=25.8 wa=28.2 ma=26.5 no=13.8 gap=4.7
+k_steal1_df                        th=24.2 ch=37.5 cl=25.0 wa=26.0 ma=24.1 no=13.0 gap=13.4
+k_steal1_ev                        th=24.6 ch=35.6 cl=25.3 wa=25.6 ma=25.4 no=13.2 gap=11.0
+m_adv115_df                        th=26.9 ch=28.4 cl=27.3 wa=28.1 ma=25.3 no=14.0 gap=3.1
+m_adv115_ev                        th=27.8 ch=26.7 cl=27.2 wa=27.8 ma=27.0 no=13.5 gap=1.1
+m_adv11_df                         th=27.1 ch=23.7 cl=28.9 wa=29.6 ma=26.2 no=14.3 gap=5.9
+m_adv11_ev                         th=27.1 ch=25.1 cl=27.5 wa=28.1 ma=28.1 no=14.1 gap=3.0
+m_safe125_df                       th=26.3 ch=28.3 cl=27.6 wa=27.1 ma=26.4 no=14.1 gap=2.0
+m_safe125_ev                       th=25.5 ch=27.7 cl=27.4 wa=27.7 ma=27.5 no=14.2 gap=2.2
+m_steal025_df                      th=27.3 ch=27.7 cl=28.9 wa=28.4 ma=24.4 no=13.4 gap=4.5
+m_steal025_ev                      th=25.6 ch=28.4 cl=27.0 wa=27.3 ma=27.0 no=14.6 gap=2.8
+z_lo09_df                          th=27.2 ch=26.6 cl=28.1 wa=28.3 ma=26.2 no=13.8 gap=2.1
+z_lo09_ev                          th=26.5 ch=27.3 cl=27.2 wa=27.4 ma=27.1 no=14.4 gap=0.9
+z_safe125_ev                       th=26.0 ch=28.4 cl=26.6 wa=27.9 ma=27.1 no=14.1 gap=2.4
+u0_df                              th=31.4 ch=19.8 cl=30.0 wa=28.0 ma=26.2 no=14.6 gap=11.6
+u0_ev                              th=30.8 ch=21.6 cl=26.9 wa=27.7 ma=27.9 no=15.0 gap=9.2
+u1_df                              th=29.7 ch=21.5 cl=28.6 wa=28.3 ma=27.2 no=14.6 gap=8.2
+u1_ev                              th=30.2 ch=22.1 cl=27.6 wa=28.4 ma=26.9 no=14.8 gap=8.1
+u2_df                              th=29.4 ch=22.7 cl=29.3 wa=27.8 ma=26.6 no=14.3 gap=6.7
+u2_ev                              th=28.4 ch=21.7 cl=27.4 wa=29.8 ma=28.0 no=14.7 gap=8.1
+u3_df                              th=29.5 ch=23.4 cl=28.3 wa=28.0 ma=26.4 no=14.3 gap=6.1
+u3_ev                              th=29.9 ch=22.2 cl=27.0 wa=28.9 ma=27.7 no=14.2 gap=7.7
+u4_df                              th=28.4 ch=26.3 cl=27.6 wa=27.6 ma=26.5 no=13.7 gap=2.1
+u4_ev                              th=29.2 ch=27.4 cl=25.8 wa=26.9 ma=26.7 no=14.2 gap=3.4
+u5_df                              th=29.6 ch=23.5 cl=28.3 wa=27.8 ma=26.6 no=14.2 gap=6.1
+u5_ev                              th=28.9 ch=23.8 cl=27.0 wa=28.1 ma=28.0 no=14.2 gap=5.1
+v1_df                              th=26.5 ch=26.6 cl=28.3 wa=28.1 ma=25.9 no=14.3 gap=2.4
+v1_ev                              th=27.6 ch=28.5 cl=26.0 wa=27.9 ma=26.3 no=13.7 gap=2.5
+v1_pg02_df                         th=25.9 ch=30.7 cl=27.1 wa=28.3 ma=24.9 no=13.0 gap=5.8
+v1_pg02_ev                         th=26.7 ch=32.6 cl=25.6 wa=27.6 ma=24.4 no=13.2 gap=8.2
+v1_pg0_df                          th=30.6 ch=21.4 cl=28.9 wa=27.6 ma=26.7 no=14.8 gap=9.2
+v1_pg0_ev                          th=30.2 ch=21.9 cl=27.4 wa=27.8 ma=28.1 no=14.7 gap=8.3
+v2_df                              th=27.4 ch=26.4 cl=28.3 wa=27.2 ma=26.4 no=14.1 gap=1.9
+v2_ev                              th=26.5 ch=28.9 cl=26.8 wa=26.5 ma=26.8 no=14.5 gap=2.4
+v3_uses2_df                        th=30.9 ch=26.0 cl=27.4 wa=27.7 ma=25.1 no=13.0 gap=5.8
+v3_uses2_ev                        th=28.0 ch=28.6 cl=25.9 wa=26.6 ma=26.4 no=14.2 gap=2.7
+w1_df                              th=28.2 ch=25.4 cl=28.1 wa=27.5 ma=26.5 no=14.3 gap=2.8
+w1_ev                              th=28.2 ch=24.9 cl=27.7 wa=27.5 ma=27.1 no=14.6 gap=3.3
+w2_df                              th=26.8 ch=25.9 cl=28.6 wa=27.8 ma=27.1 no=13.8 gap=2.7
+w2_ev                              th=26.4 ch=25.5 cl=27.6 wa=28.2 ma=27.8 no=14.5 gap=2.7
+w3_df                              th=26.2 ch=25.5 cl=28.9 wa=28.9 ma=26.5 no=13.9 gap=3.4
+w3_ev                              th=26.3 ch=24.4 cl=27.7 wa=28.5 ma=28.2 no=15.0 gap=4.1
+w3_pg02_df                         th=25.9 ch=25.5 cl=28.9 wa=29.2 ma=26.2 no=14.2 gap=3.7
+w3_pg02_ev                         th=26.2 ch=26.2 cl=27.2 wa=28.8 ma=27.2 no=14.3 gap=2.6
+w3_pg0_df                          th=26.2 ch=26.5 cl=29.1 wa=27.4 ma=26.4 no=14.4 gap=2.9
+w3_pg0_ev                          th=27.0 ch=23.9 cl=27.4 wa=27.6 ma=29.4 no=14.5 gap=5.5
+y_X_df                             th=27.3 ch=26.6 cl=28.6 wa=27.7 ma=25.7 no=14.1 gap=2.9
+y_X_ev                             th=28.1 ch=28.0 cl=26.1 wa=27.0 ma=26.8 no=14.0 gap=2.0
+y_Y2_df                            th=26.9 ch=26.1 cl=28.2 wa=27.9 ma=26.3 no=14.5 gap=2.1
+y_Y2_ev                            th=27.4 ch=25.8 cl=26.7 wa=28.0 ma=27.4 no=14.7 gap=2.2
+y_Y_df                             th=27.4 ch=25.9 cl=28.5 wa=27.9 ma=26.3 no=14.1 gap=2.6
+y_Y_ev                             th=27.2 ch=25.1 cl=27.3 wa=27.8 ma=27.8 no=14.8 gap=2.7
+y_X_df.txt:dish chef-rolls/team 6.94 20s/team 0.884 team-with-20 59.6% game-with-chef-20 59.6% | all-rolls/game 29.2 20s/game 1.46 game-with-any-20 77.4%
+y_X_ev.txt:dish chef-rolls/team 6.65 20s/team 1.146 team-with-20 67.8% game-with-chef-20 67.8% | all-rolls/game 28.2 20s/game 1.41 game-with-any-20 76.3%
+y_Y2_df.txt:dish chef-rolls/team 6.97 20s/team 0.410 team-with-20 34.2% game-with-chef-20 34.2% | all-rolls/game 29.4 20s/game 1.47 game-with-any-20 77.6%
+y_Y2_ev.txt:dish chef-rolls/team 6.68 20s/team 0.420 team-with-20 34.6% game-with-chef-20 34.6% | all-rolls/game 28.4 20s/game 1.42 game-with-any-20 76.5%
+y_Y_df.txt:dish chef-rolls/team 6.96 20s/team 0.390 team-with-20 32.9% game-with-chef-20 32.9% | all-rolls/game 29.4 20s/game 1.47 game-with-any-20 77.6%
+y_Y_ev.txt:dish chef-rolls/team 6.68 20s/team 0.394 team-with-20 32.8% game-with-chef-20 32.8% | all-rolls/game 28.4 20s/game 1.42 game-with-any-20 76.5%

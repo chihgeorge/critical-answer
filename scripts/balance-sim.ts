@@ -106,7 +106,7 @@ for (const k of Object.keys(G.CATCH_PAY)) if (process.env[k.toUpperCase()]) (G.C
 const FLEESAME = env("FLEESAME", 0);
 const TEAMS = env("TEAMS", 4), CHEFS = env("CHEFS", 0), DISHALL = process.env.DISHALL === "1";
 // What-if chef abilities: CHEFADV=1 the chef always rolls one more dish die and keeps the highest; CHEFSTEAL see settle.
-const CHEFADV = process.env.CHEFADV === "1", CHEFSTEAL = env("CHEFSTEAL", 0);
+const SNEAKLOSE = process.env.SNEAKLOSE === "1", CHEFADV = process.env.CHEFADV === "1", CHEFSTEAL = env("CHEFSTEAL", 0);
 // Dish-die counts of the game being played: every correct turn-based answer (a roll if everyone rolled), each chef team's rolls and 20s.
 let dishAll = 0;
 const chefRolls = new Map<string, [number, number]>();
@@ -239,7 +239,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
         else if (!sneakTried.has(key)) {
           sneakTried.add(key);
           const v = potionRoll();
-          if (v <= 1) g = G.spendAbility(g, id, "thief");
+          if (v <= 1 || (SNEAKLOSE && G.skillTier(v) === 1)) g = G.spendAbility(g, id, "thief"); // SNEAKLOSE=1: a 2–6 spends the use too
           else if (G.skillTier(v) >= 2) { g = G.armSneak(g, id); sneakDie.set(id, v); }
         }
       }
