@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.103.4.3] - 2026-11-19
+
+### Changed
+- Vercel deploys only `main` now (`vercel.json` `git.deploymentEnabled`): pull request branches no longer create preview deployments, so they cannot use up the daily deployment limit and block a production deploy.
+
 ## [0.103.4.2] - 2026-11-19
 
 ### Fixed
