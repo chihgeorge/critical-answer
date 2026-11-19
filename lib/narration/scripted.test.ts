@@ -841,12 +841,14 @@ describe("scripted: the dice lines by tier (class-dice-rework.md)", () => {
     expect(scripted.WARRIOR_TIER_VARIANTS[2].some((l) => legend.endsWith(l.replace("{team}", "紅隊").replace("{monster}", "史萊姆")))).toBe(false);
   });
 
-  it("the dish die picks its tier's pool on 1, 2–6 and 20, a chef's extra lines too, and joins the usual pool on 7–19", () => {
+  it("the dish die picks its tier's pool on 1, a chef's 2–6 and 20, a chef's extra lines too, and joins the usual pool on 7–19", () => {
     const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 10 } as const;
     const fills = (pool: readonly string[]) => pool.map((l) => l.replaceAll("{team}", "紅隊").replaceAll("{monster}", "史萊姆").replaceAll("{points}", "10"));
     const p = createScriptedProvider(() => 0);
     expect(fills([...scripted.DISH_TIER_VARIANTS[0], ...ROLL_VARIANTS.burnt.correct])).toContain(p.line({ ...correct, dish: 1, roll: { kind: "dish", value: 1 } }));
-    expect(fills(scripted.DISH_TIER_VARIANTS[1])).toContain(p.line({ ...correct, dish: 4 }));
+    expect(fills(scripted.DISH_TIER_VARIANTS[1])).toContain(p.line({ ...correct, classId: "chef", dish: 4 }));
+    // Another team's 2–6 is a plain serve: never the botched pool.
+    expect(fills(scripted.DISH_TIER_VARIANTS[1])).not.toContain(p.line({ ...correct, dish: 4 }));
     const chefLegend = new Set(Array.from({ length: 12 }, () => p.line({ ...correct, classId: "chef", dish: 20, roll: { kind: "dish", value: 20 } })));
     expect([...chefLegend]).toContain("食神降臨！紅隊這盤值兩倍。");
     const served = new Set(Array.from({ length: 40 }, () => p.line({ ...correct, dish: 12 })));
