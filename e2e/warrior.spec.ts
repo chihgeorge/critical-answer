@@ -29,7 +29,7 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await expect(team.getByText("戰士・剩 3 次")).toBeVisible();
 
   await team.getByRole("button", { name: /衝鋒/ }).click();
-  await expect(team.getByText(/擲骰中！看大螢幕/)).toBeVisible(); // no value: the big screen's die lands it first (#328)
+  await expect(team.getByText(/衝鋒擲骰中，看大螢幕/)).toBeVisible(); // no value: the big screen's die lands it first (#328)
   await expect(screen.getByTestId("roll-overlay")).toBeVisible();
   // The host waits the beat out: the room judges the roll (and the use is already spent).
   await expect(host.getByText("戰士隊擲出了骰子…")).toBeVisible();

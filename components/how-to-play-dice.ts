@@ -22,9 +22,9 @@ type PageText = { topic: string; big: string; owl: string; script: string };
 /** Page 3 (填空題): typing, the host's judging, and the persuasion check before it. */
 export const FILL_IN_PAGE: PageText = {
   topic: "填空題",
-  big: "先擲說服，再打字送出",
-  owl: "說服擲到 20 免答，擲到 1 只拿一半！",
-  script: "先擲說服：d20 加職業加值，過了怪物的檢定給第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
+  big: "先說服，再回答；說服成功有提示",
+  owl: "說服成功有提示！擲到 20 免答，擲到 1 只拿一半！",
+  script: "先說服，再回答。說服擲 d20 加職業加值，過了怪物的檢定就有提示：答案第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
 };
 
 /** Page 5 (答對後的料理骰). */
