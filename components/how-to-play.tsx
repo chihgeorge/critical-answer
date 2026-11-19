@@ -211,10 +211,10 @@ function Picture({ page }: { page: number }) {
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-[16px]">
-        {/* As wide as the slime (crown 20px × 5 ≈ slime 32px × 3), in a gold glow that pulses like the torches (px-glow; still under reduced motion). */}
-        <div className="relative flex h-[90px] items-end justify-center">
-          <div className="px-glow" style={{ width: 190, height: 190, left: "50%", top: "50%", marginLeft: -95, marginTop: -95, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
-          <Sprite kind="crown" scale={5} className={hop} style={{ position: "relative" }} />
+        {/* As wide as the slime (crown art 14px × 7 ≈ slime 32px × 3), centred in a gold glow that pulses like the torches (px-glow; still under reduced motion). */}
+        <div className="relative">
+          <div className="px-glow" style={{ width: 220, height: 220, left: "50%", top: "50%", marginLeft: -110, marginTop: -110, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
+          <Sprite kind="crown" scale={7} className={hop} style={{ position: "relative" }} />
         </div>
         <span>分數最高的隊伍贏</span>
       </div>
@@ -233,8 +233,8 @@ export function HowToPlay({ page }: { page: number }) {
           怎麼玩？ <span className="px-num text-[12px]">{page}/{INTRO_PAGES}</span>
         </LabelChip>
       </div>
-      <Panel className="absolute flex flex-col items-center justify-center gap-4 text-center" style={{ left: 60, right: 60, top: 60, height: 300, zIndex: 5 }}>
-        <TurnRibbon>{page === 1 ? "▼ 輪到：藍鯨隊" : text.topic}</TurnRibbon>
+      <Panel className="absolute flex flex-col items-center justify-center gap-2 text-center" style={{ left: 60, right: 60, top: 60, height: 320, zIndex: 5 }}>
+        <TurnRibbon>{page === 1 ? "輪到：藍鯨隊" : text.topic}</TurnRibbon>
         <Picture page={page} />
         <div style={{ fontSize: 34, lineHeight: 1.25 }}>{text.big}</div>
       </Panel>
