@@ -1,5 +1,5 @@
 // The big screen's room ambience and fog reveal (docs/designs/immersion.md PR3): which ambience plays, and when a
-// team opens a room nobody has seen yet. Pure: the screen page plays the sound and draws the clouds.
+// team opens a room nobody has seen yet. Pure: the screen page plays the sound and draws the dark cover.
 
 import { DEFAULT_SCREEN_AUDIO, parseScreenAudio, type ScreenAudio, type ServerMessage, type StateMessage } from "./protocol";
 import { describeTurn, revealStage } from "./turn-info";
@@ -10,10 +10,10 @@ export type Ambience = (typeof AMBIENCES)[number];
 
 /** The fog reveal waits this long after the STATE that opened the room, so the correct-answer cue plays first. */
 export const FOG_REVEAL_DELAY_MS = 600;
-/** How long the blowing clouds and the lit (or static) room stay, from the door sound. */
+/** How long the sliding cover and the lit (or static) room stay, from the door sound. */
 export const FOG_REVEAL_MS = 1200;
 
-/** A fog reveal on the map strip: clouds sit on the new room ("covered"), then blow off as the door creaks ("blow"),
+/** A fog reveal on the map strip: the dark cover sits on the new room ("covered"), then slides off as the door creaks ("blow"),
  * the room lit once (`lit`, one take from the flash budget) or brightened without motion. */
 export type FogReveal = { room: number; step: "covered" | "blow"; lit: boolean };
 

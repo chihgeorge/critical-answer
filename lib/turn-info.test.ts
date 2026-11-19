@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, floorLabel, hostAnswerShown, roomTheme, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { describeTurn, FALLBACK_MONSTER, floorLabel, hostAnswerShown, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -65,11 +65,6 @@ describe("describeTurn", () => {
   it("picks the scene by depth: stone, then moss, then deep from room 5 on", () => {
     const at = (roomIndex: number) => describeTurn(view({}, [{ roomIndex }]), null).theme;
     expect([0, 1, 2, 3, 4, 49].map(at)).toEqual(["stone", "stone", "moss", "moss", "deep", "deep"]);
-  });
-
-  it("the classic look alternates stone and moss and never goes deep", () => {
-    expect([0, 1, 2, 3, 4, 5].map((r) => roomTheme(r, true))).toEqual(["stone", "moss", "stone", "moss", "stone", "stone"]);
-    expect(roomTheme(null, true)).toBe("crimson");
   });
 
   it("labels the floor by depth, and the boss room without a number", () => {

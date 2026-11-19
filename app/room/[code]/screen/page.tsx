@@ -35,7 +35,7 @@ import { fitQuestionSize } from "@/lib/question-fit";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
-import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon, useClassicArt } from "@/components/pixel";
+import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { FogRevealContext, MapStrip } from "@/components/map-strip";
 import { McOption, optionLetter, type OptionLook } from "@/components/mc-option";
 import { Qr } from "@/components/qr";
@@ -75,14 +75,11 @@ const look = (t: { look?: number } | undefined, i: number) => TEAM_LOOKS[lookOf(
 /** The 384×216 player drawn at 0.75 without rebuilding it: the margins give back the space the transform frees. */
 const SHRUNK_PLAYER = { transform: "scale(0.75)", transformOrigin: "0 0", marginRight: -96, marginBottom: -54 } as const;
 
-function Torches({ at, classic }: { at: Exclude<SceneLights, false>; classic: boolean }) {
+function Torches({ at }: { at: Exclude<SceneLights, false> }) {
   const { xs, top, scale } = SCENE_TORCHES[at];
   const [w, h] = SPRITE_SIZE.torch;
   return (
     <>
-      {/* The old look's glow; the torch-lit scene bakes its light into the canvas instead. */}
-      {classic && <div className="px-glow px-tf1" style={{ left: -40, bottom: 120 }} />}
-      {classic && <div className="px-glow" style={{ right: -40, bottom: 120 }} />}
       {xs.map((x) => (
         <div key={x} className="absolute" style={{ left: x - (w * scale) / 2, top, width: w * scale, height: h * scale, zIndex: 3 }}>
           <Sprite kind="torch" variant={0} scale={scale} className="px-tf1 absolute inset-0" />
@@ -94,13 +91,12 @@ function Torches({ at, classic }: { at: Exclude<SceneLights, false>; classic: bo
 }
 
 /** A room's backdrop and its wall torches, from one value so the baked light and the flames always agree. `torches`
- * false: no torches and no torch light (the tiles hang there). The old look keeps its torches low with CSS glows. */
+ * false: no torches and no torch light (the tiles hang there). */
 function Room({ room, arch, torches = "low" }: { room: number | null; arch?: boolean | "fork"; torches?: SceneLights }) {
-  const classic = useClassicArt();
   return (
     <>
-      <SceneBackground theme={roomTheme(room, classic)} arch={arch} lights={classic ? false : torches} classic={classic} />
-      {torches && <Torches at={classic ? "low" : torches} classic={classic} />}
+      <SceneBackground theme={roomTheme(room)} arch={arch} lights={torches} />
+      {torches && <Torches at={torches} />}
     </>
   );
 }
@@ -332,7 +328,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // The room on stage: the answer's room through its reveal, else the boss room or the team's room. The backdrop and the
   // floor chip both come from it, so they never disagree at the reveal.
   const stageRoom = stage ? stage.room : bossScene ? null : turnInfo.room;
-  const classic = useClassicArt();
   // A team removed mid-reveal still leaves its dish line, without the name.
   const line = dish ? dishLine(dish, eater?.name ?? "", false) : "";
   const cook = useCookStep(dish && reveal.served ? `${eventId}` : null, () => say(["上菜！"]), () => (say([line]), onChef(dish?.dishBonus)), eater ? onEaten : undefined); // no 嗝 when the eater's team has left (no one is shown eating)
@@ -630,8 +625,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
 
   return (
     <>
-      {/* The torches hang high, between the panel and the tiles; the old look's low torches give way to the tiles (D1). */}
-      <Room room={stageRoom} torches={classic && (wall || sortWall) ? false : "high"} />
+      {/* The torches hang high, between the panel and the tiles. */}
+      <Room room={stageRoom} torches="high" />
       <Sparks />
       {wall && <WallOptions options={wall.options} gone={wall.gone} magic={wall.magic} lock={pendingLock} wrong={wrong} correct={wall.correct} teamName={wall.team} narrow={tileVideo} />}
       {sortWall && <SortWall tiles={sortWall} narrow={tileVideo} />}
@@ -658,7 +653,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           <span className="flex gap-2">
             <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
-            {!classic && stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
+            {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
@@ -840,7 +835,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
         </div>
       )}
-      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: classic ? "#0007" : "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
@@ -1128,7 +1123,6 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // A long epilogue shows one page at a time (≤ 3 rows, so the box stays under the steps); the host turns them.
   const shownEpilogue = epilogue && (epiloguePages(epilogue)[page] ?? epilogue);
   const turned = useRef(page);
-  const classic = useClassicArt();
   useEffect(() => {
     // Read out a page the host just turned to; a page already on show when this screen joined stays quiet, and a turn
     // during the places is read by onPodium.
@@ -1138,7 +1132,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   }, [page, ended, shownEpilogue, say]);
   return (
     <>
-      <SceneBackground theme="moss" arch={false} classic={classic} />
+      <SceneBackground theme="moss" arch={false} />
       {result && Array.from({ length: 26 }, (_, i) => (
         <i key={i} className="px-confetti" style={{ left: 20 + ((i * 37) % 920), background: CONFETTI[i % 6], animationDelay: `${-((i * 0.37) % 3.6)}s`, animationDuration: `${2.6 + ((i * 0.13) % 2)}s`, zIndex: 6 }} />
       ))}
@@ -1744,7 +1738,7 @@ export default function ScreenPage() {
   useEffect(() => {
     player().setAmbience(ambience);
   }, [ambience]);
-  // The fog reveal (immersion.md PR3): clouds sit on the room a team just opened, then blow off with the door's creak
+  // The fog reveal (immersion.md PR3): the dark cover sits on the room a team just opened, then slides off with the door's creak
   // once the correct-answer cue has played. A video, a buzz waiting on the host or a banner then skips it.
   const [fogReveal, setFogReveal] = useState<FogReveal | null>(null);
   const fogTimers = useRef<ReturnType<typeof setTimeout>[]>([]);

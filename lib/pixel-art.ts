@@ -175,7 +175,6 @@ export const SPRITE_SIZE: Record<SpriteKind, [number, number]> = {
   torch: [9, 14],
   campfire: [26, 22],
   door: [20, 26],
-  cloud: [18, 10],
   zz: [9, 9],
   pot: [40, 34],
   smoke: [40, 30],
@@ -685,8 +684,7 @@ function heart(cv: HTMLCanvasElement, on: boolean, pal = HEART_PAL) {
   P.flush();
 }
 
-// Live map (docs/designs/live-map.md): the boss room's closed door (D14), a fog cloud (D16) and an
-// offline team's "zz" (D11).
+// Live map (docs/designs/live-map.md): the boss room's closed door (D14) and an offline team's "zz" (D11).
 const DOOR = [
   "....rrrrrrrr....",
   "..rrRRRRRRRRrr..",
@@ -711,17 +709,10 @@ const DOOR = [
   "rrrrrrrrrrrrrrrr",
 ];
 const DOOR_PAL = { r: "#5a1a2a", R: "#7a2438", w: "#3c1020", s: "#5a5670", y: "#ffcf4a" };
-const CLOUD = ["....llll........", "..llwwwwll.lll..", ".lwwwwwwwwlwwwl.", "lwwwwwwwwwwwwwwl", "lwwwwwwwwwwwwwwl", ".llllllllllllll."];
 const ZZ = ["zzzz...", "..z....", ".z.....", "zzzz...", "...zzz.", "....z..", "...zzz."];
 function door(cv: HTMLCanvasElement) {
   const P = new Px(cv, 20, 26);
   P.grid(DOOR, DOOR_PAL, 2, 3);
-  P.outline(K);
-  P.flush();
-}
-function cloud(cv: HTMLCanvasElement) {
-  const P = new Px(cv, 18, 10);
-  P.grid(CLOUD, { w: "#e9defa", l: "#cdbdf0" }, 1, 2);
   P.outline(K);
   P.flush();
 }
@@ -2575,7 +2566,6 @@ const DRAW: Record<SpriteKind, (cv: HTMLCanvasElement, variant: number, blink: b
   torch: (cv, v) => torch(cv, v),
   campfire: (cv, v) => campfire(cv, v),
   door: (cv) => door(cv),
-  cloud: (cv) => cloud(cv),
   zz: (cv) => zz(cv),
   pot: (cv, v) => pot(cv, v),
   smoke: (cv) => smoke(cv),
@@ -2602,29 +2592,11 @@ export function drawSprite(cv: HTMLCanvasElement, kind: SpriteKind, variant = 0,
 
 /* ---------- scene backgrounds ---------- */
 
-/**
- * The revert switch for the torch-lit dungeon (docs/designs/dungeon-scene.md): `false` brings back the flat purple
- * scene, the stone/moss alternation and the cloud map from before v0.81 in one line. The big screen can also ask for
- * the old look without a deploy: open it with `?art=classic` (`classicArtRequested`).
- */
-export const DUNGEON_ART = true;
-
-/** The big screen asked for the old look (`/room/CODE/screen?art=classic#s=…`). Client-only: false on the server. */
-export function classicArtRequested(search: string): boolean {
-  return !DUNGEON_ART || new URLSearchParams(search).get("art") === "classic";
-}
-
 export type SceneTheme = "stone" | "moss" | "deep" | "crimson";
-
-const THEME = {
-  stone: { b: ["#5a4690", "#63509c", "#4f3d84"], m: "#33285e", hi: "#7a66b6", f: ["#7a5fa6", "#6a4f96"], fm: "#2f2352", arch: "#1b1236", rim: "#8a74c4" },
-  moss: { b: ["#3f6b58", "#487a64", "#385f4e"], m: "#233d34", hi: "#62957c", f: ["#6aa084", "#5b8e74"], fm: "#1e3a2f", arch: "#0f2219", rim: "#7fb59a" },
-  crimson: { b: ["#7a3560", "#86406c", "#6b2c54"], m: "#3c1530", hi: "#a85a8a", f: ["#a0507e", "#8e426e"], fm: "#3a1230", arch: "#1a0716", rim: "#c07aa4" },
-} as const;
 
 /**
  * The torch-lit palettes, one per depth (入口石牆, 苔蘚水道, 幽暗深淵, 首領房). `amb` is the light far from any torch:
- * 0.6 keeps the wall no darker than the old scene under the host's 🌑 (DIM_ALPHA 0.4, lib/scene-classic.test.ts); the boss
+ * 0.6 keeps the wall no darker than the old scene under the host's 🌑 (DIM_ALPHA 0.4, lib/scene.test.ts); the boss
  * room is the darkest by its palette. `cool` tints the light in the arch's mouth; `grow` is what grows at the wall's foot.
  */
 const ART = {
@@ -2655,80 +2627,12 @@ export type SceneLights = keyof typeof SCENE_TORCHES | false;
 export type SceneOptions = {
   /** Which torches to light (none: `false`). Pass the same value the screen's torch sprites use. */
   lights?: SceneLights;
-  /** The look from before the torch-lit dungeon (DUNGEON_ART, `?art=classic`). */
-  classic?: boolean;
 };
 
 /** Brick wall, tiled floor and the arch: one in the middle, none, or "fork"'s two doorways with the middle bricked up.
  * Seeded, so it never flickers between renders. */
 export function drawScene(cv: HTMLCanvasElement, name: SceneTheme, W = 160, H = 90, arch: boolean | "fork" = true, opts: SceneOptions = {}) {
-  if (opts.classic ?? !DUNGEON_ART) drawClassicScene(cv, name === "deep" ? "stone" : name, W, H, arch);
-  else drawLitScene(cv, name, W, H, arch, opts);
-}
-
-/** The flat scene from before v0.81: three-shade bricks, a dithered vignette, no light. */
-function drawClassicScene(cv: HTMLCanvasElement, name: Exclude<SceneTheme, "deep">, W: number, H: number, arch: boolean | "fork") {
-  const T = THEME[name];
-  const P = new Px(cv, W, H);
-  const fy = sceneFloor(H);
-  const bh = 7;
-  const bw = 14;
-  let s = 11;
-  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-  const cache: Record<string, string> = {};
-  for (let y = 0; y < fy; y++)
-    for (let x = 0; x < W; x++) {
-      const row = Math.floor(y / bh);
-      const off = ((row % 2) * bw) / 2;
-      const col = Math.floor((x + off) / bw);
-      const key = row + "," + col;
-      if (!(key in cache)) cache[key] = T.b[Math.floor(rnd() * 3)];
-      let c = cache[key];
-      if (y % bh === 0 || Math.floor(x + off) % bw === 0) c = T.m;
-      else if (y % bh === 1) c = T.hi;
-      P.set(x, y, c);
-    }
-  for (let y = fy; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const tx = Math.floor(x / 10);
-      const ty = Math.floor((y - fy) / 5);
-      P.set(x, y, (y - fy) % 5 === 4 ? T.fm : T.f[(tx + ty) % 2]);
-    }
-  const cx = W / 2;
-  const aw = W > 100 ? 22 : 11;
-  const ah = W > 100 ? 21 : 20;
-  if (W > 100 && arch === "fork") {
-    // The middle stays wall; each doorway is the door's own shape, a pixel wider and taller, in a 2-pixel rim.
-    const hw = FORK_ARCH.w / 2 + 1;
-    const top = fy - FORK_ARCH.h + 4;
-    for (const dx of [-FORK_ARCH.dx, FORK_ARCH.dx]) {
-      const x = cx + dx;
-      P.ell(x, top, hw + 2, 8, T.rim);
-      P.rect(x - hw - 2, top, hw * 2 + 4, fy - top, T.rim);
-      P.ell(x, top, hw, 6, T.arch);
-      P.rect(x - hw, top, hw * 2, fy - top, T.arch);
-    }
-  } else if (W > 100 && arch) {
-    P.ell(cx, fy - ah, aw + 2, 12, T.rim);
-    P.rect(cx - aw - 2, fy - ah, aw * 2 + 4, ah, T.rim);
-    P.ell(cx, fy - ah, aw, 10, T.arch);
-    P.rect(cx - aw, fy - ah, aw * 2, ah, T.arch);
-    for (let y = fy - ah - 10; y < fy; y++)
-      for (let x = cx - aw; x < cx + aw; x++)
-        if (P.a[y * W + x] === T.arch && (x + y) % 2 === 0 && y < fy - ah + 10) P.a[y * W + x] = "#241848";
-  }
-  for (let y = 0; y < H; y++)
-    for (let x = 0; x < W; x++) {
-      const dx = Math.abs(x - W / 2) / (W / 2);
-      const dy = Math.abs(y - H * 0.45) / (H * 0.55);
-      const d = Math.max(dx, dy);
-      if ((d > 0.78 && (x + y) % 2 === 0) || (d > 0.92 && x % 2 === 0)) {
-        const i = y * W + x;
-        const c = P.a[i];
-        if (c) P.a[i] = "#" + rgb(c).map((v) => Math.floor(v * 0.55).toString(16).padStart(2, "0")).join("");
-      }
-    }
-  P.flush();
+  drawLitScene(cv, name, W, H, arch, opts);
 }
 
 const IRON = { hi: "#9a96b4", mid: "#5a5670", dk: "#3b3550" } as const;
