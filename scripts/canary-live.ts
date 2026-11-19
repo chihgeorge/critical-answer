@@ -476,7 +476,7 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
   if (boss) {
     // 送王房 (⚙ 更多): CANARY-1, which joined first, plays the boss's questions on its turns from now on.
     await step("send-to-boss", async () => {
-      await host.getByRole("button", { name: /更多/ }).first().click();
+      await openOther(host);
       await host.getByRole("button", { name: "送王房" }).first().click();
       await host.getByRole("button", { name: "確定送？" }).click();
       await host.getByTestId("more-drawer").getByRole("button", { name: "關閉" }).first().click();
@@ -562,7 +562,7 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
       // A failed step may have left ⚙ 更多 open: start from a closed drawer.
       const drawer = host.getByTestId("more-drawer");
       if (await drawer.count()) await drawer.getByRole("button", { name: "關閉" }).first().click();
-      await host.getByRole("button", { name: /更多/ }).first().click();
+      await openOther(host);
       const end = host.getByRole("button", { name: "結束冒險" });
       await end.click();
       await host.getByRole("button", { name: "確定結束？" }).click();
@@ -601,4 +601,13 @@ if (process.argv[1]?.endsWith("canary-live.ts")) {
     console.log("CANARY BROKEN");
     process.exit(1);
   });
+}
+
+/** Opens ⚙ 更多 and unfolds its 其他 group (送王房, 結束冒險). The canary runs against whatever is deployed: a drawer
+ * from before the groups has no 其他 header, and everything is already in view there. */
+async function openOther(host: Page) {
+  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await host.getByTestId("more-drawer").waitFor(); // count() does not wait: an unrendered drawer would read as the old one
+  const other = host.getByTestId("more-section-other");
+  if ((await other.count()) && (await other.getAttribute("aria-expanded")) !== "true") await other.click();
 }

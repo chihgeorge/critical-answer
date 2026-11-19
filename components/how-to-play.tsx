@@ -56,6 +56,10 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
 /** 「第 n／7 頁：<topic>」, the phone's live status line (eng D7). */
 export const introStatus = (page: number) => `第 ${page}／${INTRO_PAGES} 頁：${INTRO_PAGE_TEXT[page - 1]?.topic ?? ""}`;
 
+/** The host page's double-tap guard key for intro page `page`: one key for 下一頁 on every page but the last, so quick
+ * page turns are never dropped (#328 m8); the last page's 開始冒險 still waits out the guard. */
+export const introPauseKey = (page: number) => (page >= INTRO_PAGES ? "intro-last" : "intro");
+
 /** 「○ ● ○ ○」: which page is up, for the eye only (the host and phone pages mark it aria-hidden). */
 export const introDots = (page: number) => Array.from({ length: INTRO_PAGES }, (_, i) => (i + 1 === page ? "●" : "○")).join(" ");
 

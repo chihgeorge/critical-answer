@@ -3198,6 +3198,17 @@ describe("adjacent teams' monsters (#366)", () => {
     }
   });
 
+  // Value: protects=a team back for 下輪再答 still faces the monster that asked it (#328 m3);
+  // fails_when=advanceTurn swaps the monster of a team whose question it already answered wrong; seam=none; no_claim=none
+  it("keeps the monster of a team coming back for 下輪再答", () => {
+    const g = monsters();
+    const t1 = g.teams[1];
+    const retrying = { ...g, teams: g.teams.map((t) => (t.id === "T1" ? { ...t, wrongOn: t.currentQuestionId } : t)) };
+    expect(advanceTurn(g).teams[1].swappedMonsterId).toBeDefined();
+    expect(advanceTurn(retrying).teams[1]).toEqual(retrying.teams[1]);
+    expect(t1.swappedMonsterId).toBeUndefined();
+  });
+
   it("swaps nothing after a turn that faced no monster (an event room)", () => {
     const g = monsters();
     expect(advanceTurn(g).teams[1].swappedMonsterId).toBeDefined();

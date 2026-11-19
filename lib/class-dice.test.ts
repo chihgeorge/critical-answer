@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { answerEffect, answerReader, clericEffect, critEffect, mageEffect, skillLine, warriorEffect } from "./class-dice";
+import { answerEffect, answerReader, clericEffect, critEffect, mageEffect, rollStatus, skillLine, warriorEffect } from "./class-dice";
 
 // Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰) and the right team reads the answer die;
 // fails_when=a tier boundary (1, 2–6, 7–19, 20) shows another tier's effect, or an unarmed thief reads the die; seam=none
@@ -35,5 +35,12 @@ describe("class dice words", () => {
     expect(answerReader({ classId: "thief", sneakArmed: true })).toBe("thief");
     expect(answerReader({ classId: "thief" })).toBeUndefined();
     expect(answerReader(undefined)).toBeUndefined();
+  });
+
+  // Value: protects=a phone never shows a die's value before the big screen's die lands (#328 m2);
+  // fails_when=rollStatus names a number again; seam=none; no_claim=the D20 sprite (page.tsx passes "?")
+  it("never names the value on the phone while the big screen rolls", () => {
+    for (const kind of ["crit", "check", "mage", "cleric", "answer", "warrior", undefined]) expect(rollStatus(kind)).not.toMatch(/\d/);
+    expect(rollStatus("kill")).toContain("4d20");
   });
 });

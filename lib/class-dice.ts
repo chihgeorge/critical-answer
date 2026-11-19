@@ -54,3 +54,14 @@ export function answerReader(team: { classId?: ClassId; sneakArmed?: true } | un
 export function skillLine(kind: "mage" | "cleric", name: string, value: number): string {
   return `${kind === "mage" ? "🔮" : "✝️"} ${name}${kind === "mage" ? "施法" : "祈禱"}擲出 ${value}，${TIER_LABELS[skillTier(value)]}！`;
 }
+
+/** What a roll in its beat says on the phone. Never the value: the big screen's die lands it first (#328 m2). */
+export function rollStatus(kind: string | undefined): string {
+  if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
+  if (kind === "crit") return "答對！擲暴擊骰中，看大螢幕 ▶";
+  if (kind === "check") return "說服檢定擲骰中，看大螢幕 ▶";
+  if (kind === "mage") return "🔮 施法擲骰中，看大螢幕 ▶";
+  if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
+  if (kind === "answer") return "答對！擲答對骰中，看大螢幕 ▶";
+  return "擲骰中！看大螢幕 ▶";
+}
