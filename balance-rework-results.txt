@@ -175,3 +175,7 @@ s5_y12_curcb_df                    th=27.9 ch=27.2 cl=28.2 wa=27.6 ma=24.9 no=14
 s5_y12_curcb_ev                    th=26.5 ch=27.7 cl=26.6 wa=28.1 ma=26.9 no=14.4 gap=1.6
 s6_y12_ch1_none_df                 th=27.5 ch=27.3 cl=28.6 wa=27.1 ma=25.4 no=14.2 gap=3.2
 s6_y12_ch1_none_ev                 th=27.0 ch=27.1 cl=27.0 wa=27.1 ma=26.8 no=14.8 gap=0.3
+s4_pg02_df                         th=27.1 ch=27.3 cl=28.5 wa=28.1 ma=26.1 no=12.9 gap=2.4
+s4_pg02_ev                         th=26.8 ch=27.1 cl=26.3 wa=29.4 ma=25.7 no=14.6 gap=3.7
+s4_pg0_df                          th=27.1 ch=26.1 cl=28.7 wa=28.3 ma=26.1 no=13.6 gap=2.6
+s4_pg0_ev                          th=27.5 ch=27.1 cl=26.3 wa=26.6 ma=28.3 no=14.2 gap=2.0
