@@ -13,7 +13,7 @@ Status: shipped in one PR (v0.81). Source: the 2026-11-16 art research (local-on
 | # | Decision | Why |
 |---|----------|-----|
 | 1 | Revert switch `DUNGEON_ART` in `lib/pixel-art.ts`, plus `?art=classic` on the big screen's URL (before the `#s=` key) | The event-week merge freeze blocks a redeploy; the event TV may crush the darks |
-| 2 | Ambient 0.6, never darker than the old wall under 🌑; tested in `lib/scene-classic.test.ts` | A measurable floor for the TV risk instead of a prose rule |
+| 2 | Ambient 0.6, never darker than the old wall under 🌑; tested in `lib/scene.test.ts` | A measurable floor for the TV risk instead of a prose rule |
 | 3 | The boss room is darkest by its palette, not a lower ambient | Keeps it above the 🌑 floor; red stays the boss's |
 | 4 | High torches through the question and its reveal (same `Playing` component) | No jump at the reveal |
 | 5 | The scene and floor chip both come from one `stageRoom` (dish room through its reveal, else boss, else the team's room) | They never disagree at the reveal |

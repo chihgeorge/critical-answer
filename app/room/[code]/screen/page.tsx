@@ -650,7 +650,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           <span className="flex gap-2">
             <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
-            {stageRoom !== null &&<span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
+            {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
           {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
           {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
@@ -1732,7 +1732,7 @@ export default function ScreenPage() {
   useEffect(() => {
     player().setAmbience(ambience);
   }, [ambience]);
-  // The fog reveal (immersion.md PR3): clouds sit on the room a team just opened, then blow off with the door's creak
+  // The fog reveal (immersion.md PR3): the dark cover sits on the room a team just opened, then slides off with the door's creak
   // once the correct-answer cue has played. A video, a buzz waiting on the host or a banner then skips it.
   const [fogReveal, setFogReveal] = useState<FogReveal | null>(null);
   const fogTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
