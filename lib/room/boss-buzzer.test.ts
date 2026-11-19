@@ -254,7 +254,8 @@ describe("buzzer boss phase in the room", () => {
       vi.useRealTimers();
     }
     expect(g.room.game!.phase).toBe("finished");
-    expect(g.state()).toMatchObject({ cue: "boss-kill" });
+    // The kill's beat played boss-kill; the 4d20 that land after it leave their own roll cue (#364).
+    expect(g.state()).toMatchObject({ cue: "roll" });
   });
 
   it("a buzzing phone that drops during the kill dice still takes the kill (onClose keeps a kill beat's team)", () => {
@@ -490,6 +491,7 @@ describe("buzzer boss phase in the room", () => {
     g.judge(IDS[1], true);
     // Both fields right: the defeated boss is announced before the kill's 4d20.
     expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    expect(g.state().stageMonster).toMatchObject(g.state().view.bossLook); // the boss stays on stage (#401)
   });
 
   it("a settled part-right answer that kills keeps its verdicts through the 4d20 beat (#369, kill-roll.md)", () => {

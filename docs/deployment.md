@@ -12,7 +12,7 @@
 
 ## 自動部署
 
-合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
+合併進 `main` 就會自動部署，兩邊都是平台自己的 Git 連動，GitHub 上不放任何部署用的 secret：Cloudflare Workers Builds 從 `main` 執行 `wrangler deploy`（房間伺服器），Vercel 從 `main` 部署前端。Vercel 不部署其他分支：[vercel.json](../vercel.json) 的 `git.deploymentEnabled` 關掉了 PR 的預覽部署，免得用完免費方案每天的部署次數（要重新打開，刪掉 `"**": false` 那一行）。Workers Builds 在 Cloudflare dashboard 設定（Workers & Pages → `critical-answer` → Settings → Build → 連 GitHub repo，production branch 選 `main`）。它不等 GitHub Actions 的檢查跑完，也不保證比 Vercel 先完成；如果這次改動要求 Worker 先上線（例如前端會讀新的協定欄位），合併前先在本機 `wrangler deploy`。`OWNER_KEY`、`ANTHROPIC_API_KEY` 存在 Worker 上，部署不會動到。
 
 ## 第一次部署到自己的帳號
 
@@ -57,13 +57,13 @@ Workers Builds 不等 CI，也不保證比 Vercel 先完成：前端要用新的
 
 ## 部署後檢查
 
-部署完跑 `npm run canary:live`，在線上版真的玩一局：用四個互不共用儲存的無頭 Chromium 分別當主持人、大螢幕和兩支手機。主持人從首頁「主持遊戲」開房間（不用站長金鑰），大螢幕用主持人頁的大螢幕網址打開，兩隊 `CANARY-1`、`CANARY-2` 加入並選廚師，主持人開始遊戲、全部代擲；輪到的隊伍照主持人頁的答案答對，確認大螢幕和另一支手機都看到正解，主持人上菜、按下一題，確認大螢幕換成下一隊，最後從「⚙ 更多」按「結束冒險」。每一步印 `STEP r<輪> <步驟> ok|FAIL ms=<毫秒>`，每個頁面印 `PAGE r<輪> <頁面> status=<狀態碼> ms=<載入毫秒> errs=[...]`（errs 是這頁的 console 錯誤和頁面錯誤），最後一行是 `CANARY HEALTHY` 或 `CANARY BROKEN`，不健康時結束碼不是 0。一輪大約 25 秒。
+部署完跑 `npm run canary:live`，在線上版真的玩一局：用四個互不共用儲存的無頭 Chromium 分別當主持人、大螢幕和兩支手機。主持人從首頁「主持遊戲」開房間（不用站長金鑰），大螢幕用主持人頁的大螢幕網址打開，兩隊 `CANARY-1`、`CANARY-2` 加入並選廚師，主持人開始遊戲、全部代擲；輪到的隊伍照主持人頁的答案答對，確認大螢幕和另一支手機都看到正解，主持人上菜、按下一題，確認大螢幕換成下一隊，最後從「⚙ 更多」的「其他」按「結束冒險」。每一步印 `STEP r<輪> <步驟> ok|FAIL ms=<毫秒>`，每個頁面印 `PAGE r<輪> <頁面> status=<狀態碼> ms=<載入毫秒> errs=[...]`（errs 是這頁的 console 錯誤和頁面錯誤），最後一行是 `CANARY HEALTHY` 或 `CANARY BROKEN`，不健康時結束碼不是 0。一輪大約 25 秒。
 
 不用自己跑：每個 `chore: release vX` commit 部署完，GitHub Actions 的 [.github/workflows/canary.yml](../.github/workflows/canary.yml) 會自動跑 `npm run -s canary:live -- --rounds 3`。Vercel 回報正式站部署成功時它開始，先等同一個 commit 的 Workers Builds 檢查成功（最多 15 分鐘），再玩三輪。其他 commit 不跑。一次只跑一個，輸出存成 artifact `canary-log`。失敗時這個 run 會失敗（GitHub 寄信通知），並在標籤 `canary` 的 issue 留言寫版本和失敗的行，沒有開著的就開一個新的。它不用任何密鑰。要手動再跑，到 Actions → Canary → Run workflow，會馬上測線上版，不等部署。
 
 - `--rounds N`：連玩 N 輪，每輪開新房間（預設 1）。
 - `--turns N`：每輪玩 N 個回合（預設 1）。第 2 回合起的步驟名稱加上 `-t<回合>`，例如 `answer-correctly-t3`；每多一回合，這一輪的時間上限多 60 秒。
-- `--boss`：開始遊戲後，主持人從「⚙ 更多」按「送王房」把 `CANARY-1` 送進首領房，之後它的回合都答首領題。
+- `--boss`：開始遊戲後，主持人從「⚙ 更多」的「其他」按「送王房」把 `CANARY-1` 送進首領房，之後它的回合都答首領題。
 - `--base URL` 或環境變數 `CANARY_BASE_URL`：改測預覽網址或本機（例如 `http://localhost:3000`），預設是線上版。
 - 環境變數 `CANARY_SHOTS=<資料夾>`：第一個失敗的步驟把四個頁面各截一張圖存進去。
 

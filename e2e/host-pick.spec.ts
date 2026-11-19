@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, nextQuestion, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, startGame, nextQuestion, openTeamTools, closeMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -28,7 +28,7 @@ test("the host picks a team's next question and it comes up after the team's cor
   await choice.click();
   await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
   // Every team's pick is in ⚙ 更多's 隊伍 too; the page keeps only the team up next (甲隊, the only one).
-  await openMore(host);
+  await openTeamTools(host, "甲隊");
   await expect(host.getByTestId("more-drawer")).toContainText(`下一題：${label}`);
   await closeMore(host);
 

@@ -2,6 +2,61 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.104.0.0] - 2026-11-19
+
+### Changed
+- Phones are shorter: the answer countdown sits at the right end of the 「輪到我們了！」 flag, the 「正在面對」 card is gone, and the team card is one line (character, name, ability uses, score).
+- A team that is not up sees the correct answer once, in one line, and its reaction buttons sit on the first screen; the narration box is gone from phones (narration plays on the big screen only).
+- The lobby class picker is one line per class (it points to the opening 玩法說明 for each class's dice rules), and the lobby shows only the phone's own team, with its character.
+- The host's 「⚙ 更多」 folds into groups, one open at a time; the sound switches and pacing stay at the top. 「隊伍」 is one row per team with its character, score and −5/+5, and a 「⋯」 for the rarer tools (指定下一題, 🧪 給藥水, 交給新手機, 設定分數, ability uses, 收回🧪).
+
+## [0.103.4.3] - 2026-11-19
+
+### Changed
+- Vercel deploys only `main` now (`vercel.json` `git.deploymentEnabled`): pull request branches no longer create preview deployments, so they cannot use up the daily deployment limit and block a production deploy.
+
+## [0.103.4.2] - 2026-11-19
+
+### Fixed
+- Phone, after a wrong multiple-choice lock: the four grey options collapse into one line 「你們選的：A … ✕ 答錯」, so 下輪再答, 祈禱 and both 逃跑 buttons fit on the first screen (a cleric's two flee buttons were cut off on an iPhone 13).
+
+## [0.103.4.1] - 2026-11-19
+
+### Fixed
+- The podium and the phones now show the team that killed the boss with its full score, boss dish included. Before, a finished game kept hiding the unserved boss dish, so first place could show fewer points than second until a reconnect after a room restart (#400).
+
+## [0.103.4.0] - 2026-11-19
+
+### Fixed
+- Phones no longer show a die's value before the big screen's die lands: they say 「擲暴擊骰中，看大螢幕」 and show a ? die (#328).
+- A team back for 下輪再答 still faces the monster that asked the question, instead of a new one picked to avoid the previous team's (#328).
+- When every team misses in a buzzer phase, the narrator says 「同一題再搶一次」, not 「同一首」, which only fits a song (#328).
+- At the end of a boss phase, the host page's ⏭ preview says the new phase comes next, instead of showing the question just answered (#328).
+- The host's 改判 list keeps a retried question's rows together and numbers questions in the order they were last judged, so the numbers only go down (#328).
+- Quick 下一頁 presses in the how-to-play pages are no longer dropped; only 開始冒險 on the last page keeps the double-tap guard (#328).
+
+## [0.103.3.3] - 2026-11-19
+
+### Fixed
+- The boss stays on the big screen through the beat after a right answer (「接下來擲暴擊骰」, 「接下來擲尾刀骰」), in the buzz phase too, instead of turning into a green slime named 「…」. A normal room's beat keeps its monster's name as well. The room now sends the monster on stage with each beat (#401).
+
+## [0.103.3.2] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) gains `HIDEDIE`, `CHEFFIX` and `LIB` to try rebalancing ideas for 隱藏暴擊骰 without editing lib. Tooling only; no game change.
+
+## [0.103.3.1] - 2026-11-19
+
+### Changed
+- The balance simulation (`scripts/balance-sim.ts`) follows the boss room's no-persuasion-check rule, and `HIDECRIT=1` models the lobby's 隱藏暴擊骰. Tooling only; no game change.
+
+## [0.103.3.0] - 2026-11-19
+
+### Fixed
+- A score the host sets (改分) while a dish waits for 上菜 shows as set, instead of short by the dish's 飽足感 (or below 0).
+- The boss-defeated sound plays once on the final blow, not again when the kill dice land.
+- A room restart during 「說服成功」 shows that card again before the question, and a restart during a boss-entry dish still has the narrator announce the team walking into the boss room.
+
 ## [0.103.2.0] - 2026-11-19
 
 ### Added

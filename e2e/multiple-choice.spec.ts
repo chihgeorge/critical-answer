@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -152,6 +152,9 @@ test("phone answering: the longest default question with four options still fits
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
+  // The four tiles collapse into one line after a wrong lock, so the next-step buttons fit on an iPhone 13.
+  await expect(team.getByTestId("my-wrong-pick")).toContainText(/^你們選的：[A-D] 〈Fantastic Baby〉✕ 答錯$/);
+  await expect(team.getByRole("button", { name: "〈Power〉" })).toHaveCount(0);
   expect(await bottom(/下輪再答/)).toBeLessThanOrEqual(844);
   expect(await bottom(/逃跑・換房/)).toBeLessThanOrEqual(844);
 });
@@ -423,7 +426,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
-  await host.getByRole("button", { name: /更多/ }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();

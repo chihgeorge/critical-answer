@@ -1,7 +1,7 @@
 // The host's tools for a day that goes wrong: 🩺 檢查題庫, the room's closing warning with 延長 1 小時, and ⚙ 更多's
 // 修正・改判 with the scoreboard they change (docs/hosting.md).
 import { test, expect, type WebSocketRoute } from "@playwright/test";
-import { startGame, rollCheck, openMore, serveDish, closeLeftoverContexts, textOnlyBank } from "./answer";
+import { startGame, rollCheck, openMore, openTeamTools, serveDish, closeLeftoverContexts, textOnlyBank } from "./answer";
 
 closeLeftoverContexts();
 textOnlyBank();
@@ -87,18 +87,21 @@ test("host fixes: 🩺 檢查題庫 answers in the lobby, then 修正 and 改判
   const before = Number(await shown.textContent());
   await fix.getByRole("button", { name: "修正隊加 5 分" }).click();
   await expect(shown).toHaveText(String(before + 5));
+  await openTeamTools(host, "修正隊"); // 設定分數 is under the row's ⋯
   await fix.getByLabel("修正隊的分數", { exact: true }).fill("42");
   await fix.getByRole("button", { name: "設定修正隊的分數" }).click();
   await expect(shown).toHaveText("42");
   await expect(reward).toHaveText("42");
 
-  // 改判: the one judged row flips from 答對 to 答錯, and its button now offers the way back.
+  // 改判 (its own section; 隊伍 folds): the one judged row flips from 答對 to 答錯, and its button now offers the way back.
+  await openMore(host, "rejudge");
   const rejudge = host.getByTestId("host-rejudge");
   await expect(rejudge).toContainText("第 1 題");
   await expect(rejudge).toContainText("修正隊 · 答對 +");
   await rejudge.getByRole("button", { name: /^第 1 題 修正隊 改成答錯（−\d+）$/ }).click();
   await expect(rejudge).toContainText("已改判（原本答對）");
   await expect(rejudge.getByRole("button", { name: /^第 1 題 修正隊 改成答對（/ })).toBeVisible();
+  await openMore(host, "teams");
   await expect(shown).not.toHaveText("42");
   await expect(reward).toHaveText((await shown.textContent())!);
 });

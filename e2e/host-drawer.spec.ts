@@ -21,7 +21,7 @@ test("the host downloads a transcript with the narration lines", async ({ browse
   await answerCorrectly(host);
   await expect(host.getByTestId("host-reveal")).toBeVisible();
 
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   // 導演筆記 and the narration edits left the drawer for the narration panel (host-narration-edit.md).
   await expect(host.getByText("導演筆記")).toHaveCount(0);
 
@@ -57,7 +57,7 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(team.getByText(/^1[05] 飽足感$/)).toBeVisible();
   await expect(host.getByText("1/15")).toBeVisible();
 
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定送？" }).click();
   await expect(host.getByRole("button", { name: /送王房|確定送/ })).toHaveCount(0);
@@ -77,7 +77,7 @@ test("the big-screen URL (in ⚙ 更多 once the game has started) opens the scr
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
   // After the start the link moves into ⚙ 更多, so the judge buttons stay near the top on a phone.
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "screen");
   // The full URL with the origin, so the host can type it into a TV (the origin is "" only in the server HTML).
   // The link carries the room's screen key (docs/designs/screen-video-key.md); the text shown does not: players can see the host's phone.
   const link = host.getByTestId("screen-link");

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, startGame, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, startGame, screenUrl, openTeamTools, closeMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -28,7 +28,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
 
   // 給…一瓶幸運藥水？ asks first (#267): 取消 gives nothing, so the button stays and the next press still asks.
   // The potion is in ⚙ 更多's 隊伍.
-  await openMore(host);
+  await openTeamTools(host, "藥水隊");
   const asked: string[] = [];
   host.once("dialog", (d) => void (asked.push(d.message()), d.dismiss()));
   await host.getByTestId("give-potion").click();
@@ -65,7 +65,7 @@ test("lucky potion: host gives it, the team drinks it, the crit rolls two dice a
   await expect(screen.getByTestId("potion-die")).toHaveCount(2);
   await expect(screen.getByTestId("roll-result")).toHaveText(/^取高：\d+/);
   await expect(overlay).toHaveCount(0, { timeout: 5000 });
-  await openMore(host);
+  await openTeamTools(host, "藥水隊");
   await expect(host.getByTestId("give-potion")).toHaveText("🧪 給藥水");
   await expect(screen.getByTestId("pawn-potion")).toHaveCount(0);
 });
