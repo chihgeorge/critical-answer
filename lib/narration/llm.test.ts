@@ -195,10 +195,12 @@ describe("prompt", () => {
     expect(buildPrompt({ type: "retry", team: "甲", monster: "史萊姆" }, []).user).toContain("下一輪再答同一題");
   });
 
-  // Value: protects=a prayed miss's prompt says the team answers again now (owner, 2026-11-09); fails_when=describeEvent ignores e.prayed
-  it("tells the model a cleric's prayer means answering again now, not next round", () => {
+  // Value: protects=a prayed miss's prompt keeps the turn and leaves 「再答」 to the prayer die's line (owner, 2026-11-09; #416);
+  // fails_when=describeEvent ignores e.prayed, or asks the model to say the answer-again line a second time
+  it("tells the model a cleric's prayer keeps the turn and not to repeat the prayer die's answer-again line", () => {
     const { user } = buildPrompt({ type: "retry", team: "甲", monster: "史萊姆", prayed: true }, []);
-    expect(user).toContain("馬上再答一次");
+    expect(user).toContain("祈禱骰已經宣布他們馬上再答");
+    expect(user).toContain("不要再說再答");
     expect(user).not.toContain("他們下一輪再答同一題");
     // In the boss room the prayer's new question is named too.
     expect(buildPrompt({ type: "retry", team: "甲", monster: "小黑龍", prayed: true, boss: true }, []).user).toContain("首領「小黑龍」換了一題");
