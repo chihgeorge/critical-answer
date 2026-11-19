@@ -95,9 +95,9 @@ export interface Award {
 }
 
 const outcomes = (t: TitleTeam, ...kinds: EventOutcome[]) => (t.events ?? []).filter((e) => kinds.includes(e)).length;
-/** How many fortunes, drawn by any team, gave this team `effect`. */
-const fortuneHits = (t: TitleTeam, teams: TitleTeam[], effect: string) =>
-  teams.reduce((n, d) => n + (d.fortunes ?? []).filter((f) => f.effect === effect && f.matchIds.includes(t.id)).length, 0);
+/** How many fortunes, drawn by any team, gave this team `effect` (any effect when omitted). */
+const fortuneHits = (t: TitleTeam, teams: TitleTeam[], effect?: string) =>
+  teams.reduce((n, d) => n + (d.fortunes ?? []).filter((f) => (!effect || f.effect === effect) && f.matchIds.includes(t.id)).length, 0);
 
 /** In award order, 🎲 last. `value` null: the team is not in the running (a count of 0). `fewest`: least wins. */
 const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, teams: TitleTeam[]) => number | null; reason: (n: number) => string; fewest?: true }[] = [
@@ -106,6 +106,8 @@ const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, t
   { id: "blessing", icon: "✨", title: "女神的寵兒", value: (t, teams) => outcomes(t, "blessing") + fortuneHits(t, teams, "blessing") || null, reason: (n) => `被祝福 ${n} 次` },
   // The old fortune teller's 凶 (bad) cursed too (saves from before the 3-scene deck), and so does a fortune's 詛咒.
   { id: "curse", icon: "💀", title: "詛咒磁鐵", value: (t, teams) => outcomes(t, "curse", "bad") + fortuneHits(t, teams, "curse") || null, reason: (n) => `被詛咒 ${n} 次` },
+  // Every fortune whose matchIds held the team, any of the six effects, even one that changed nothing (#287).
+  { id: "fate", icon: "🔮", title: "命運之子", value: (t, teams) => fortuneHits(t, teams) || null, reason: (n) => `被命運選中 ${n} 次` },
   { id: "rotten", icon: "🤢", title: "腐肉品嚐家", value: (t) => outcomes(t, "rotten") || null, reason: (n) => `吃到 ${n} 次腐肉` },
   { id: "flees", icon: "🏃", title: "逃跑大師", value: (t) => t.flees || null, reason: (n) => `逃跑 ${n} 次` },
   // 🍀 lucky dice used (docs/designs/lucky-potion.md E8).

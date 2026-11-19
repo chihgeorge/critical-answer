@@ -79,6 +79,22 @@ describe("awardTitles", () => {
     expect(awards.find((a) => a.id === "curse")).toMatchObject({ teamIds: ["甲", "乙", "丙"], reason: "被詛咒 1 次" });
   });
 
+  // Value: protects=#287: 🔮 counts every fortune that hit the team, any effect, drawn by anyone (the drawer only if hit);
+  // fails_when=only blessing/curse count, the drawer is credited for drawing, or an empty-handed potion is skipped; no_claim=the screen
+  it("🔮 goes to the team hit by the most fortunes, any effect, and ties share it", () => {
+    const awards = awardTitles([
+      team("甲", { fortunes: [{ effect: "tribute", matchIds: ["乙", "丙"] }, { effect: "potion", matchIds: ["甲", "乙"] }] }),
+      team("乙", { fortunes: [{ effect: "stun", matchIds: ["丙"] }, { effect: "relief", matchIds: ["乙"] }] }),
+      team("丙"),
+      team("丁", { fortunes: [{ effect: "blessing", matchIds: ["丙"] }] }),
+    ]);
+    expect(awards.find((a) => a.id === "fate")).toEqual({ id: "fate", icon: "🔮", title: "命運之子", teamIds: ["乙", "丙"], reason: "被命運選中 3 次" });
+    // The blessing still counts for ✨ too.
+    expect(awards.find((a) => a.id === "blessing")).toMatchObject({ teamIds: ["丙"] });
+    // Drawing a fortune that hit nobody, or a save without fortunes, gives no 🔮.
+    expect(awardTitles([team("甲", { fortunes: [{ effect: "curse", matchIds: [] }] }), team("乙")]).find((a) => a.id === "fate")).toBeUndefined();
+  });
+
   it("⚡ goes to the fewest turns, only for a team that answered its way in", () => {
     const awards = awardTitles([
       team("甲", { bossAt: { turns: 5, earned: true } }),
@@ -96,8 +112,8 @@ describe("awardTitles", () => {
   });
 
   it("awards in the table's order, 🎲 last", () => {
-    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
-    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🍀", "🍲", "⚡", "🎲"]);
+    const all = team("甲", { events: ["blessing", "curse", "rotten"], fortunes: [{ effect: "stun", matchIds: ["甲"] }], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
+    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🔮", "🤢", "🏃", "🍀", "🍲", "⚡", "🎲"]);
   });
 
   it("🍀 goes to the team that used the most lucky dice; none used gives no title", () => {
@@ -116,8 +132,8 @@ describe("awardLine, parseTitle and unemoji", () => {
 
   it("every title, a 20-character name and a 2-team tie all fit one row", () => {
     const long = "長".repeat(20);
-    for (const icon of ["🗺️", "✨", "💀", "🤢", "🏃", "🍲", "⚡", "🎲", "🌟", "🛡️"]) {
-      for (const title of ["女神的寵兒", "腐肉品嚐家", "堅持到最後的冒險者", "十個字的稱號十個字"]) {
+    for (const icon of ["🗺️", "✨", "💀", "🔮", "🤢", "🏃", "🍲", "⚡", "🎲", "🌟", "🛡️"]) {
+      for (const title of ["女神的寵兒", "命運之子", "腐肉品嚐家", "堅持到最後的冒險者", "十個字的稱號十個字"]) {
         for (const names of [[long], [long, long], [long, "乙", "丙", "丁", "戊", "己", "庚", "辛"], ["甲"]]) {
           expect(awardLine(icon, title, names).length).toBeLessThanOrEqual(MAX_AWARD_LINE);
         }
@@ -171,15 +187,15 @@ describe("revealBeats", () => {
     expect(lines(revealBeats(t, ["甲", "乙", "丙"], [], ["舊的大成功王", "三", "二", "一"]))).toEqual(["三", "二", "一"]);
   });
 
-  it("8 teams at worst: every data title to one team, then 7 consolations, is 16 title beats before the places", () => {
+  it("8 teams at worst: every data title to one team, then 7 consolations, is 17 title beats before the places", () => {
     const ids = ["甲", "乙", "丙", "丁", "戊", "己", "庚", "辛"];
-    const star = { id: "甲", name: "甲隊", reward: 1, events: ["blessing", "curse", "rotten"] as EventOutcome[], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true as const }, natural20s: 1 };
+    const star = { id: "甲", name: "甲隊", reward: 1, events: ["blessing", "curse", "rotten"] as EventOutcome[], fortunes: [{ effect: "potion", matchIds: ["甲"] }], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true as const }, natural20s: 1 };
     const t = [star, ...ids.slice(1).map((id) => ({ id, name: `${id}隊`, reward: 1 }))];
     const beats = revealBeats(t, ids, []);
-    expect(beats.filter((b) => b.kind === "award")).toHaveLength(16);
-    // 9 data titles (🍀 included) + 7 consolations, then the 3 places.
-    expect(beats).toHaveLength(19);
-    expect(revealMarks(beats).at(-1)).toBe(16 * 2500 + 3500 + 3500 + 4000);
+    expect(beats.filter((b) => b.kind === "award")).toHaveLength(17);
+    // 10 data titles (🍀 and 🔮 included) + 7 consolations, then the 3 places.
+    expect(beats).toHaveLength(20);
+    expect(revealMarks(beats).at(-1)).toBe(17 * 2500 + 3500 + 3500 + 4000);
   });
 
   it("calls third, second and first, nothing below third", () => {

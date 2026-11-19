@@ -19,7 +19,6 @@
 - [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測)（[#283](https://github.com/chihgeorge/critical-answer/issues/283)） — M
 - [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c)（[#285](https://github.com/chihgeorge/critical-answer/issues/285)） — M（人工約 1–2 天 / CC 約 1 小時），活動後
 - [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b)（[#286](https://github.com/chihgeorge/critical-answer/issues/286)） — L（人工約 1 週 / CC 約半天），活動後
-- [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響)（[#288](https://github.com/chihgeorge/critical-answer/issues/288)） — M，活動後
 - [抓包與神諭：首領房也能用](#抓包與神諭首領房也能用)（[#289](https://github.com/chihgeorge/critical-answer/issues/289)） — M，活動後
 - [活動後用對局紀錄對一次職業勝率](#活動後用對局紀錄對一次職業勝率)（[#292](https://github.com/chihgeorge/critical-answer/issues/292)） — S，活動後
@@ -167,18 +166,6 @@
 **Depends on:** 題庫格式升版。
 
 ---
-
-## 頒獎稱號「命運之子」
-
-**What:** 頒獎時多一個稱號「命運之子」，給被占卜師效果命中最多次的隊伍（`docs/designs/fortune-teller.md`）。
-
-**Why:** 占卜師的效果會命中很多隊；現在只有祝福和詛咒算進「女神的寵兒」「詛咒磁鐵」，幸運骰、進貢、救濟命中都沒有稱號。2026-11-10 決定活動後再做。
-
-**Context:**
-- `lib/podium.ts`（`TITLES`、`fortuneHits`）
-- `lib/game-state.ts`（`Team.fortunes`）
-
-**Effort/Priority:** S / P3
 
 ## 抓包與神諭：用平衡模擬看分數對勝率的影響
 
@@ -430,6 +417,10 @@
 ## Completed
 
 細節見 CHANGELOG.md 與 git 歷史。
+
+## 頒獎稱號「命運之子」
+
+- **頒獎多一個 🔮 命運之子** · 版號合併時定 · 給被占卜師效果選中最多次的隊伍，六種效果都算，同分一起拿（`lib/podium.ts`，#287）。
 
 ## 卡點題：自動校正喇叭延遲
 
