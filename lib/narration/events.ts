@@ -53,7 +53,7 @@ export type NarrationEvent =
    * `prayed`: a cleric prayed on this miss, so the team answers again now, keeping the turn (never "next round"). */
   // `penalty`: the points a warrior's 1 took away (the question's whole reward, never below 0; #305).
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; buzzSecond?: true; prayed?: true; warriorRoll?: number; penalty?: number }>>
-  /** `to`: 逃跑・換房 put this new monster in the team's room.
+  /** `to`: 逃跑 put this new monster in the team's room.
    * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */
   | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
