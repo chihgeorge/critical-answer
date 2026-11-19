@@ -3,7 +3,7 @@ import { textOnlyBank, startGame, rollCheck, closeLeftoverContexts } from "./ans
 
 closeLeftoverContexts();
 
-// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 下輪再答 / 逃跑・同房 / 逃跑・換房.
+// A cleric on a fill-in question (#106): the host's one 答錯 waits for 祈禱 / 下輪再答 / 逃跑.
 textOnlyBank();
 
 async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promise<void>) {
@@ -53,7 +53,7 @@ test("cleric: the phone prays after the host's 答錯 and the team answers again
   await expect(team.getByText("答錯了！要怎麼辦？")).toBeVisible();
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();
   await expect(host.getByRole("button", { name: "下輪再答", exact: true })).toBeVisible();
-  await expect(host.getByRole("button", { name: "逃跑・同房", exact: true })).toBeVisible();
+  await expect(host.getByRole("button", { name: "逃跑", exact: true })).toBeVisible();
   await team.getByRole("button", { name: /^祈禱/ }).click();
   await expect(box).toHaveValue("");
   await expect(team.getByRole("button", { name: "送出" })).toBeVisible();
@@ -151,7 +151,7 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   const { host, team, box } = await clericRoom(browser);
   const question = team.getByRole("heading", { level: 2 });
   const before = await question.textContent();
-  await team.getByRole("button", { name: /^逃跑・同房/ }).click();
+  await team.getByRole("button", { name: /^逃跑/ }).click();
   await expect(team.getByText("答錯了！要怎麼辦？")).toHaveCount(0);
   // Fleeing shows the left question's answer first (#366); 下一題 deals the new one.
   await host.getByRole("button", { name: "下一題", exact: true }).click();

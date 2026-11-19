@@ -1759,7 +1759,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
-    it("逃跑・換房 from the phone: same room, and the screen shows the new monster", () => {
+    it("逃跑 from the phone: same room, and the screen shows the new monster", () => {
       vi.useFakeTimers();
       const { room, hostConn, conns } = startedMcGame(1);
       const before = lastBroadcast(room).question.monster.id;
