@@ -1,6 +1,7 @@
 // The room side of ⚙ 更多's sound switches (docs/designs/immersion.md PR3): only a host page may set `screenAudio`; the
 // room saves it and sends it in LOBBY and STATE, so a big screen applies it on connect and on reconnect.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -14,7 +15,7 @@ const OFF = { music: true, voice: false, ambience: false };
 
 type Spy = ReturnType<typeof vi.fn>;
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: Spy };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const sent = (conn: Conn & { send: Spy }) => conn.send.mock.calls.map((c) => JSON.parse(c[0] as string));
 const last = (conn: Conn & { send: Spy }, type: string) => sent(conn).filter((m) => m.type === type).at(-1);
 

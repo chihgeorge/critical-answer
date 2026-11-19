@@ -1,5 +1,8 @@
 // Class balance: plays many 4-team games through lib/game-state.ts and prints each class's win share (fair is 25%),
 // average reward, ability uses left and turns. Run: node scripts/balance-sim.ts [games].
+// NOTE (class-dice rework, 2026-11-18): lib now plays the reworked dice itself (a dish die on every correct answer, the
+// sneak die when 偷襲 is pressed, a plain 4d20 kill). The knobs below model the old lib (REWORK and friends rebuild the
+// new rules on top of it), so their numbers need checking against the new lib before the next balance run.
 // Model (docs/designs/class-abilities.md, 「職業平衡（2026-11-13）」 and 「職業技能擲骰」):
 // - Class dice live in lib: the mage's skill die (mageCast) and the cleric's prayer die (prayerRoll) roll here; the warrior's
 //   roll is warriorRoll; the chef and an armed thief read the crit die, or on a fill-in an answer die rolled here. A
@@ -214,7 +217,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       return d20();
     };
     const answerDie = () => REWORK ? (team().classId === "chef" ? dishRoll() : team().sneakArmed ? sneakDie.get(id) : undefined) : (NODIE ? (team().classId === "chef" && CHEFFIX ? CHEFFIX : undefined) : team().classId === "chef" || team().sneakArmed ? d20() : undefined);
-    const rightText = () => settle(G.answerQuestion(g, id, q, true, "retry", R, undefined, undefined, undefined, false, answerDie()), true);
+    const rightText = () => settle(G.answerQuestion(g, id, q, true, "retry", R, answerDie()), true);
     // The boss room rolls no persuasion check (#382; the room refuses one there, lib does not).
     if (text && !inBoss && !g.checks?.[G.checkKey(q, id)]) {
       const v = potionRoll();
@@ -251,7 +254,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
         if (target) { g = G.spendAbility(g, id, "mage"); g = G.mageCast(g, id, q, target, potionRoll(), R); }
       }
       if (t.classId === "thief" && !t.sneakArmed && abilityOk(THIEF_MIN) && knows()) {
-        if (!REWORK) g = G.armSneak(g, id);
+        if (!REWORK) g = G.sneakRoll(G.startSneak(g, id), id, G.SKILL_SUCCESS).game;
         else if (!sneakTried.has(key)) {
           sneakTried.add(key);
           const v = potionRoll();
@@ -259,13 +262,13 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
           // SNEAK1FLAT=x (what-if): a 1 costs x of this question's reward at once (never below 0), right or wrong.
           if (v <= 1 && SNEAK1FLAT) { const fine = Math.round((inBoss ? d * 5 : d * 10) * SNEAK1FLAT); g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: Math.max(0, x.reward - fine) } : x)) }; }
           if (v <= 1 || (SNEAKLOSE && G.skillTier(v) === 1)) g = G.spendAbility(g, id, "thief"); // SNEAKLOSE=1: a 2–6 spends the use too
-          else if (G.skillTier(v) >= 2) { g = G.armSneak(g, id); sneakDie.set(id, v); }
+          else if (G.skillTier(v) >= 2) { g = G.sneakRoll(G.startSneak(g, id), id, v).game; sneakDie.set(id, v); }
         }
       }
       // The warrior rolls when stuck, and on multipleChoice only when the roll beats a guess.
       if (t.classId === "warrior" && abilityOk(WAR_MIN) && !knows() && (text || (21 - G.WARRIOR_TARGET) / 20 > 1 / (opts - gone().length))) {
         const v = REWORK ? potionRoll() : d20();
-        settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R, !text), v >= G.WARRIOR_TARGET);
+        settle(G.warriorRoll(G.spendAbility(g, id, "warrior"), id, q, v, R), v >= G.WARRIOR_TARGET);
         continue;
       }
     }
@@ -277,7 +280,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       const crit = HIDECRIT ? undefined : knows() ? potionRoll() : d20();
       // What-if under HIDECRIT: HIDEDIE=1 rolls the chef's / armed thief's answer die anyway; CHEFFIX=v gives the chef a fixed die v.
       const die = REWORK ? answerDie() : !HIDECRIT ? undefined : HIDEDIE ? answerDie() : CHEFFIX && t.classId === "chef" ? CHEFFIX : undefined;
-      settle(G.answerQuestion(g, id, q, true, "retry", R, crit, undefined, undefined, false, die), true);
+      settle(G.answerQuestion(g, id, q, true, "retry", R, die ?? crit), true);
       continue;
     }
     const cleric = t.classId === "cleric" && team().abilityUses > 0;

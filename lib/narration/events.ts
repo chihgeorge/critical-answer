@@ -29,9 +29,10 @@ type WithNext<T> = T & { next?: NextTurn; hostLine?: string; hostLineVerbatim?: 
 /** `classId`: the acting team's class, so the weapons and spells in the line fit it. Left out for a team with no class. */
 type ByClass<T> = T & { classId?: ClassId };
 
-/** `roll`: the die behind this hit landed on a natural 20 (a critical hit) or a 1 (a fumble that still hit).
- * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits). */
-type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number };
+/** `roll`: a natural 20 or 1 behind this hit (RollMark: the dish die, a class die's 20 or the persuasion check).
+ * `warriorRoll`: a warrior rolled instead of answering, and its d20 landed here (WARRIOR_TARGET or more hits).
+ * `dish`: the dish die behind this hit (class-dice-rework.md), for its tier's line. */
+type WithRoll<T> = T & { roll?: RollMark; warriorRoll?: number; dish?: number };
 
 export type NarrationEvent =
   /** `initiative`: `teams` is the turn order the teams just rolled (lib/initiative.ts). */
@@ -135,7 +136,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
   const t = prev.teams.find((x) => x.id === outcome.teamId);
   const team = t?.name ?? "冒險者";
   const cls = t?.classId ? { classId: t.classId } : {};
-  const roll = "roll" in outcome && outcome.roll ? { roll: outcome.roll } : {};
+  const roll = { ...("roll" in outcome && outcome.roll ? { roll: outcome.roll } : {}), ...("dishDie" in outcome && outcome.dishDie !== undefined ? { dish: outcome.dishDie } : {}) };
   switch (outcome.type) {
     case "correct-room-advance": {
       // A team already in the boss room answers correct-boss-hit, never this, so entersBoss fires once per team.

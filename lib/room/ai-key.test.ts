@@ -1,6 +1,7 @@
 // Host-owned AI keys and the per-room narration budget (issue #102). Every fetch here is a fake:
 // these tests prove what the room sends and when, not that a real Anthropic key works.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { BANK } from "../question-bank-data";
@@ -70,7 +71,7 @@ function setup(
     room.onConnect(host);
     room.onMessage(JSON.stringify({ type: "HOST_CLAIM", token: TOKEN }), host);
   }
-  const send = (msg: object, conn: Conn = host) => room.onMessage(JSON.stringify(msg), conn);
+  const send = (msg: object, conn: Conn = host) => sendSettled(room, conn, msg);
   const sent = (conn: Conn & { send: ReturnType<typeof vi.fn> } = host) => conn.send.mock.calls.map((c) => JSON.parse(c[0]));
   const status = () => sent().findLast((m) => m.type === "HOST_AI_STATUS");
   const narrationCalls = () => calls.filter((c) => c.url.includes("/v1/messages"));

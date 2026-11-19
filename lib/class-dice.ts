@@ -1,7 +1,7 @@
-// The words for the class dice (docs/designs/class-abilities.md 「職業技能擲骰」): what each tier of a skill or answer die
-// does, for the big screen's roll, the phones and the narrator. Pure and bank-free, so a client may import it.
+// The words for the class dice and the dish die (docs/designs/class-dice-rework.md): what each tier of a die does, for
+// the big screen's roll, the phones and the narrator. Pure and bank-free, so a client may import it.
 
-import { CHEF_MULTIPLIERS, TIER_LABELS, WARRIOR_HIT_SHARE, skillTier, type ClassId } from "./game-state";
+import { SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, dishMultiplier, skillTier } from "./game-state";
 
 /** The question a mage casts on, as the screens know it. */
 export type CastOn = "multipleChoice" | "text" | "sort";
@@ -12,8 +12,6 @@ const MAGE: Record<CastOn, readonly [string, string, string, string]> = {
   sort: ["法術沒效，次數照扣", "沒看到東西，次數退回", "告訴你第 1 個", "整個順序都給你！"],
 };
 const CLERIC = ["祈禱沒回應，次數照扣", "沒有回應……次數照扣", "神聽到了！再答一次", "神蹟！再答一次，次數不扣"] as const;
-const THIEF = ["偷襲失手，沒有加成", "偷襲沒成功，次數退回", "偷襲成功！獎勵 ×1.5", "偷襲大成功！獎勵 ×2"] as const;
-const pct = (m: number) => `×${m}`;
 
 /** What the mage's skill die `value` does on `on`. */
 export function mageEffect(on: CastOn, value: number): string {
@@ -25,18 +23,36 @@ export function clericEffect(value: number): string {
   return CLERIC[skillTier(value)];
 }
 
-/** What the answer die `value` (a crit die or a fill-in's answer die) does for a chef or an armed thief; null for anyone
- * else, whom it does nothing for. */
-export function answerEffect(reader: "chef" | "thief" | undefined, value: number): string | null {
-  if (reader === "thief") return THIEF[skillTier(value)];
-  if (reader === "chef") return `🍳 料理 ${pct(CHEF_MULTIPLIERS[skillTier(value)])}`;
-  return null;
+/** What the thief's sneak die `value` does, rolled as 偷襲 is pressed; `penalty`: what a 1 takes. */
+export function sneakEffect(value: number, penalty = 0): string {
+  const t = skillTier(value);
+  return t === 0
+    ? `被發現了（−${penalty} 分）`
+    : t === 1
+      ? "沒抓到時機"
+      : t === 2
+        ? `答對 ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`
+        : `答對 ×${SNEAK_CRIT_MULTIPLIER}、首領 −3`;
 }
 
-/** The crit die always hits; only a natural 20 changes the base reward and boss damage. */
-export function critEffect(value: number, boss = false): string {
-  const tier = value === 1 ? "大失敗" : value <= 6 ? "小失敗" : value === 20 ? "大成功" : "小成功";
-  return `${value} ${tier}：${value === 20 ? `獎勵多一半${boss ? "、首領多扣 1 顆愛心" : ""}` : "照常答對，獎勵不變"}`;
+/** What the dish die `value` does to a correct answer's reward, for a chef or anyone else. */
+export function dishEffect(value: number, chef: boolean): string {
+  const t = skillTier(value);
+  const m = dishMultiplier(chef, value);
+  return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "失手了，獎勵不變" : t === 2 ? (chef ? `上菜！廚師 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
+}
+
+/** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1). */
+export function dishPhoneLine(value: number, bonus: number, chef: boolean): string {
+  const t = skillTier(value);
+  const signed = `${bonus >= 0 ? "+" : "−"}${Math.abs(bonus)}`;
+  return t === 0
+    ? `🍳 料理骰 1：焦黑殘渣 ${signed}`
+    : t === 1
+      ? `🍳 料理骰 ${value}：半生不熟`
+      : t === 2
+        ? `🍳 料理骰 ${value}：上菜${chef && bonus ? `（廚師 ${signed}）` : ""}`
+        : `🍳 料理骰 20：傳說級料理 ${signed}`;
 }
 
 /** The warrior's roll for the answer: 1 wrong and loses the question's reward, 2–6 wrong, 7–19 right for 80%, 20 double. */
@@ -45,23 +61,13 @@ export function warriorEffect(value: number): string {
   return t === 0 ? "1 大失敗……答錯，扣掉這題的獎勵" : t === 1 ? `${value}，差一點……答錯` : t === 2 ? `${value} 命中！拿 ${WARRIOR_HIT_SHARE * 10} 成` : "20 大成功！雙倍";
 }
 
-/** Who reads a team's answer die: a chef always, a thief only with 偷襲 armed. */
-export function answerReader(team: { classId?: ClassId; sneakArmed?: true } | undefined): "chef" | "thief" | undefined {
-  return team?.classId === "chef" ? "chef" : team?.sneakArmed ? "thief" : undefined;
-}
-
-/** The narrator's line once a mage's or cleric's die lands. */
-export function skillLine(kind: "mage" | "cleric", name: string, value: number): string {
-  return `${kind === "mage" ? "🔮" : "✝️"} ${name}${kind === "mage" ? "施法" : "祈禱"}擲出 ${value}，${TIER_LABELS[skillTier(value)]}！`;
-}
-
 /** What a roll in its beat says on the phone. Never the value: the big screen's die lands it first (#328 m2). */
 export function rollStatus(kind: string | undefined): string {
   if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
-  if (kind === "crit") return "答對！擲暴擊骰中，看大螢幕 ▶";
+  if (kind === "dish") return "答對！擲料理骰中，看大螢幕 ▶";
   if (kind === "check") return "說服檢定擲骰中，看大螢幕 ▶";
   if (kind === "mage") return "🔮 施法擲骰中，看大螢幕 ▶";
   if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
-  if (kind === "answer") return "答對！擲答對骰中，看大螢幕 ▶";
+  if (kind === "thief") return "🗡️ 偷襲擲骰中，看大螢幕 ▶";
   return "擲骰中！看大螢幕 ▶";
 }

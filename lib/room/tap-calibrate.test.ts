@@ -1,6 +1,7 @@
 // 🎯 校正喇叭 (docs/designs/tap-calibrate.md): in the lobby one sound-ready big screen beeps, the joined phones tap
 // along, and the host pages get the suggested latency; only the host's 套用 (HOST_TAP_LATENCY) writes it.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -50,7 +51,7 @@ function setup() {
     epilogueDelayMs: 0,
     now: () => now,
   });
-  const send = (c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+  const send = (c: Conn, msg: object) => sendSettled(room, c, msg);
   const host = conn("host");
   room.onConnect(host);
   send(host, { type: "HOST_CLAIM", token: TOKEN });

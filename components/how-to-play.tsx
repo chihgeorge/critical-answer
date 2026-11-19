@@ -1,10 +1,10 @@
 "use client";
 
 // The how-to-play slideshow (docs/designs/how-to-play.md D4–D11): INTRO_PAGES pages on the big screen, turned by the host.
-// Page 2 teaches the persuasion check and the crit die, page 3 when each class rolls; their dice text is in how-to-play-dice.ts.
+// Page 2 teaches the persuasion check and the dish die, page 3 when each class rolls; their dice text is in how-to-play-dice.ts.
 import type { ReactNode } from "react";
 import { DialogueBox, LabelChip, Panel, Sprite, TurnRibbon } from "@/components/pixel";
-import { CHECK_EXAMPLE, CRIT_FACES, DICE_PAGES, DICE_ROWS, DICE_TABLE_HEAD } from "@/components/how-to-play-dice";
+import { CHECK_EXAMPLE, DISH_FACES, DICE_PAGES, DICE_ROWS, DICE_TABLE_HEAD } from "@/components/how-to-play-dice";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS } from "@/lib/game-state";
 import { INTRO_PAGES } from "@/lib/protocol";
 
@@ -94,9 +94,9 @@ function Picture({ page }: { page: number }) {
           </div>
         </div>
         <div className="flex gap-6 text-[18px]">
-          {CRIT_FACES.map(([n, t], i) => (
+          {DISH_FACES.map(([n, t], i) => (
             <div key={n} className="flex flex-col items-center gap-1">
-              <div className="px-num text-[20px]" style={{ background: i === CRIT_FACES.length - 1 ? "var(--turn)" : "var(--cream)", border: "3px solid var(--k)", padding: "6px 12px" }}>🎲 {n}</div>
+              <div className="px-num text-[20px]" style={{ background: i === DISH_FACES.length - 1 ? "var(--turn)" : "var(--cream)", border: "3px solid var(--k)", padding: "6px 12px" }}>🎲 {n}</div>
               {t}
             </div>
           ))}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { TIER_LABELS, WARRIOR_TARGET, skillTier } from "@/lib/game-state";
-import { answerEffect, clericEffect, critEffect, mageEffect, warriorEffect, type CastOn } from "@/lib/class-dice";
+import { clericEffect, dishEffect, mageEffect, sneakEffect, warriorEffect, type CastOn } from "@/lib/class-dice";
 import { LabelChip } from "@/components/pixel";
 import { killRollText } from "@/lib/kill-roll";
 import { ROW_NAMES } from "@/lib/podium";
@@ -33,13 +33,13 @@ export function D20({ value, size, tone }: { value: number | string; size: numbe
 const TUMBLE_MS = 1200;
 
 /** The big screen's 2 s over a roll (class-abilities.md D12=A): the scene dims, a big d20 tumbles and lands on the
- * room's `value`. `kind`: a warrior's roll for the answer, the crit die after a correct answer (20 is a critical hit, 1 a
- * fumble, still a hit), a persuasion check, or a class die (class dice): a mage's skill die on `castOn`, a cleric's prayer
- * die, or a fill-in's answer die. `reader`: the chef or armed thief a crit or answer die is read for; `rejudge`: the host's
- * 改成答對. Every class die, and a crit die with a reader, lands red on 1–6, plain on 7–19 and gold on 20. Keyed by the caller per roll, so every roll
- * tumbles again. `values`: a 🧪 potion's two dice (lucky-potion.md D10), tumbling and landing together; `value` is the
- * higher, and a tie shows both as kept. */
-export function RollOverlay({ teamName, value, values, kind = "warrior", critable = false, boss = false, bonus = 0, dc = 0, castOn = "multipleChoice", reader, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "crit" | "check" | "mage" | "cleric" | "answer"; critable?: boolean; boss?: boolean; bonus?: number; dc?: number; castOn?: CastOn; reader?: "chef" | "thief"; rejudge?: boolean }) {
+ * room's `value`. `kind`: a warrior's roll for the answer, the dish die after a correct answer (class-dice-rework.md;
+ * `chef`: read with the chef's multipliers), a persuasion check, or a class die: a mage's skill die on `castOn`, a
+ * cleric's prayer die, or the thief's sneak die (`penalty`: what its 1 takes). `rejudge`: the dish die is the host's
+ * 改成答對. Every die but the check lands red on 1–6 (a warrior's too), plain on 7–19 and gold on 20. Keyed by the caller
+ * per roll, so every roll tumbles again. `values`: a 🧪 potion's two dice (lucky-potion.md D10), tumbling and landing
+ * together; `value` is the higher, and a tie shows both as kept. */
+export function RollOverlay({ teamName, value, values, kind = "warrior", bonus = 0, dc = 0, castOn = "multipleChoice", chef = false, penalty = 0, rejudge = false }: { teamName: string; value: number; values?: number[]; kind?: "warrior" | "dish" | "check" | "mage" | "cleric" | "thief"; bonus?: number; dc?: number; castOn?: CastOn; chef?: boolean; penalty?: number; rejudge?: boolean }) {
   // Start covered: the winning face and tier must not flash before the tumble effect mounts.
   const [face, setFace] = useState<number | null>(1);
   useEffect(() => {
@@ -59,42 +59,40 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
     };
   }, []);
   const landed = face === null;
-  const crit = kind === "crit";
   const check = kind === "check";
   // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 halves.
-  // A crit die a chef or armed thief reads is coloured and tiered like a fill-in's answer die (#346).
-  const classDie = kind === "mage" || kind === "cleric" || kind === "answer" || (kind === "crit" && !!reader);
-  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : classDie ? skillTier(value) >= 2 : crit ? value !== 1 : value >= WARRIOR_TARGET;
-  const tier = `${value} ${crit ? (value === 1 ? "大失敗" : value <= 6 ? "小失敗" : value === 20 ? "大成功" : "小成功") : TIER_LABELS[skillTier(value)]}`;
-  const read = answerEffect(reader, value);
-  const result = classDie
-    ? kind === "mage"
+  const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : kind === "warrior" ? value >= WARRIOR_TARGET : skillTier(value) >= 2;
+  const tier = `${value} ${TIER_LABELS[skillTier(value)]}`;
+  const result =
+    kind === "mage"
       ? `${tier}：${mageEffect(castOn, value)}`
       : kind === "cleric"
         ? `${tier}：${clericEffect(value)}`
-        : `${tier}：${crit && reader === "chef" && value === 20 ? "獎勵多一半，" : ""}${read ?? "答對！"}${crit && boss && value === 20 ? "、首領多扣 1 顆愛心" : ""}`
-    : check
-    ? value === 20
-      ? "20！說服成功，免答"
-      : value === 1
-        ? "1……說服失敗，答對只拿一半"
-        : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} 擲骰檢定 ${dc}${hit ? " 過了！" : " 沒過"}`
-    : crit
-    ? critEffect(value, boss)
-    : warriorEffect(value);
-  const chip = classDie && !crit
-    ? kind === "mage"
+        : kind === "thief"
+          ? `${tier}：${sneakEffect(value, penalty)}`
+          : kind === "dish"
+            ? `${tier}：${dishEffect(value, chef)}`
+            : check
+              ? value === 20
+                ? "20！說服成功，免答"
+                : value === 1
+                  ? "1……說服失敗，答對只拿一半"
+                  : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} 擲骰檢定 ${dc}${hit ? " 過了！" : " 沒過"}`
+              : warriorEffect(value);
+  const chip =
+    kind === "mage"
       ? `🔮 ${teamName} 施法！擲技能骰`
       : kind === "cleric"
         ? `✝️ ${teamName} 祈禱！擲技能骰`
-        : rejudge
-          ? `↩ ${teamName} 改判答對！擲答對骰`
-          : `✨ ${teamName} 答對！擲答對骰`
-    : check
-      ? `🗣️ ${teamName} 說服：d20 + ${bonus}，擲骰檢定 ${dc}`
-      : crit
-        ? `✨ ${teamName} 答對！擲暴擊骰`
-        : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就算答對`;
+        : kind === "thief"
+          ? `🗡️ ${teamName} 偷襲！擲偷襲骰`
+          : kind === "dish"
+            ? rejudge
+              ? `↩ ${teamName} 改判答對！擲料理骰`
+              : `🍳 ${teamName} 答對！擲料理骰`
+            : check
+              ? `🗣️ ${teamName} 說服：d20 + ${bonus}，擲骰檢定 ${dc}`
+              : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就算答對`;
   const potion = values && values.length > 1 ? values : null;
   return (
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
@@ -122,7 +120,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", critabl
         style={{
           visibility: landed ? "visible" : "hidden",
           ...(landed && !hit ? { background: "var(--danger)", color: "#fff" } : {}),
-          ...(landed && (crit || check || critable || classDie || kind === "warrior") && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
+          ...(landed && value === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : {}),
         }}
       >
         {potion ? `取高：${value}　${result}` : result}
@@ -136,7 +134,7 @@ const KILL_STAGGER_MS = 500;
 
 /** The big screen over a boss kill's 4d20 (docs/designs/kill-roll.md): four dice tumble and land one by one while the
  * total adds up. The room judges the kill when its 4 s beat ends, so phones and the podium show the new total only after. */
-export function KillRollOverlay({ teamName, values, value }: { teamName: string; values: number[]; value: number }) {
+export function KillRollOverlay({ teamName, values }: { teamName: string; values: number[] }) {
   // Reduced motion: every die shows its value at once. Only drawn from a live STATE, so never on the server.
   const still = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const [landed, setLanded] = useState(() => (still() ? values.length : 0));
@@ -152,7 +150,7 @@ export function KillRollOverlay({ teamName, values, value }: { teamName: string;
     };
     // Every STATE brings a new values array with the same dice: the caller keys this overlay per roll instead.
   }, [values.length]);
-  const { chip, result, done } = killRollText(values, value, landed);
+  const { chip, result, done } = killRollText(values, landed);
   return (
     <div data-testid="roll-overlay" data-kind="kill" className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>
       <div className="text-[18px]">

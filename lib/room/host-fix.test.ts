@@ -1,6 +1,7 @@
 // ⚙ 更多's 修正 (docs/hosting.md): the host corrects a team's reward, ability uses or held potion by hand. Host only,
 // clamped server-side, no line on the big screen, and every press kept in the team's game log and the transcript.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -18,7 +19,7 @@ const bank = () =>
   });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage() {

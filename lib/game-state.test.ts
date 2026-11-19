@@ -39,8 +39,10 @@ import {
   skillTier,
   type MageTarget,
   firstMeaningfulChar,
-  armSneak,
-  chefShare,
+  startSneak,
+  sneakRoll,
+  dishShare,
+  dishMultiplier,
   judgmentPoints,
   pray,
   canPray,
@@ -92,6 +94,9 @@ function deck(count: number, baseDifficulty: 1 | 2 | 3 | 4 | 5 = 1, size = 8): [
 
 /** Always picks the first available question, so deals are predictable: q1, q2, q3... */
 const first = () => 0;
+
+/** 偷襲 pressed, then its sneak die lands on `value` (class-dice-rework.md): 7–19 arms it, 20 arms it as a crit. */
+const armSneak = (g: GameState, teamId: string, value = 12) => sneakRoll(startSneak(g, teamId), teamId, value).game;
 
 /** The mage spends a use and casts with skill die `value` (7–19 a success, class dice) on a multipleChoice question. */
 function mageEliminate(g: GameState, teamId: string, q: string, correctIndex: number, optionCount: number, rng: () => number, value = 12): GameState {
@@ -500,7 +505,7 @@ describe("boss combat", () => {
     expect(hit(1, 3)).toMatchObject({ bossHpRemaining: 4, reward: 5 });
     expect(hit(2, 3)).toMatchObject({ bossHpRemaining: 3, reward: 10 });
     expect(hit(3, 3)).toMatchObject({ bossHpRemaining: 2, reward: 15 });
-    expect(hit(1, 3, 20)).toMatchObject({ bossHpRemaining: 3, reward: 8 }); // a crit adds its 1 HP; (15 + 8) × ⅓ → 8
+    expect(hit(1, 3, 20)).toMatchObject({ bossHpRemaining: 4, reward: 8 }); // a dish die's 20 adds no HP: 15 × ⅓ = 5, ×1.5 → 8
     // The killing blow's 4d20 is not scaled (E1): 1/2 of the 15-point hit plus the whole kill bonus.
     const low = { ...game, boss: { ...game.boss, hp: 1 } };
     const kill = answerQuestion(low, "T0", low.boss.currentQuestionId, true, "retry", first, undefined, [5, 5, 5, 5], { right: 1, total: 2 }).outcome;
@@ -1555,7 +1560,7 @@ describe("warriorRoll (docs/designs/class-abilities.md)", () => {
 
   it("the final blow scores the kill dice the room already showed (kill-roll.md)", () => {
     const g = makeGame({ warrior: true, bossThreshold: 0, bossMaxHp: 1, teamCount: 1 });
-    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, false, [9, 14, 3, 17]); // pregate-literal: WARRIOR_TARGET=9 a kill die, not the target
+    const { outcome } = warriorRoll(g, "T0", g.boss.currentQuestionId, WARRIOR_TARGET, first, undefined, [9, 14, 3, 17]); // pregate-literal: WARRIOR_TARGET=9 a kill die, not the target
     expect(outcome).toMatchObject({ type: "correct-boss-hit", bossKilled: true, killBonus: 43 });
   });
 
@@ -1605,7 +1610,7 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     const g = armSneak(classGame(["thief", undefined]), "T0");
     expect(g.teams[0]).toMatchObject({ sneakArmed: true, abilityUses: 2 });
     expect(getSpectatorView(g).teams[0].sneakArmed).toBe(true);
-    expect(() => armSneak(g, "T0")).toThrow(/sneak_armed/);
+    expect(() => armSneak(g, "T0")).toThrow(/sneak_used/);
     const { game, outcome } = answerQuestion(g, "T0", currentQ(g, "T0"), true);
     expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(game.teams[0]).toMatchObject({ score: 1, reward: 15, abilityUses: 2 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
@@ -1631,51 +1636,54 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     // An unrated boss question hits for 15: ×1.5 = 22.5 rounds to 23.
     expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 1, reward: 23 });
     const kill = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first);
-    // rollBossKillDice(first) sums to 4 (4d20 all ones), ×1.5 = 6; the bar never goes below 0.
-    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 6, reward: 29 });
-    // The room's shown dice get the same 1.5× (kill-roll.md): 43 × 1.5 = 64.5 rounds to 65.
+    // rollBossKillDice(first) sums to 4 (4d20 all ones), never multiplied (class-dice-rework.md); the bar never goes below 0.
+    // The question's 15 × 1.5 = 22.5 → 23, plus the 4.
+    expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 27 });
     const shown = answerQuestion(armSneak(hit.game, "T0"), "T0", hit.game.boss.currentQuestionId, true, "retry", first, undefined, [9, 14, 3, 17]);
-    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 65, reward: 88 });
+    expect(shown.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 66 });
   });
 
-  // Value: protects=the chef reads the answer die (class dice): ×0.1 / ×0.8 / ×1.3 / ×2 of the whole gain, rounded half up;
-  // fails_when=a tier pays the wrong share, a gain with no die changes, or the kill's 4d20 is multiplied.
-  it("chefShare reads the answer die's tier and is 0 with no die or no gain", () => {
-    expect([1, 4, 12, 20].map((v) => chefShare(10, v))).toEqual([-9, -2, 3, 10]);
-    expect(chefShare(5, 12)).toBe(2); // 6.5 rounds half up to 7
-    expect(chefShare(10, undefined)).toBe(0);
-    expect(chefShare(0, 20)).toBe(0);
+  // Value: protects=the dish die's multipliers (class-dice-rework.md): everyone ×0.1 / ×1 / ×1 / ×1.5, a chef ×0.1 / ×1 /
+  // ×1.2 / ×2, of the whole gain, rounded half up; fails_when=a tier pays the wrong share, or a gain with no die changes.
+  it("dishShare reads the dish die's tier, a chef's own on 7–19 and 20, and is 0 with no die or no gain", () => {
+    expect([1, 4, 12, 20].map((v) => dishShare(10, v, false))).toEqual([-9, 0, 0, 5]);
+    expect([1, 4, 12, 20].map((v) => dishShare(10, v, true))).toEqual([-9, 0, 2, 10]);
+    expect([1, 6, 7, 19, 20].map((v) => dishMultiplier(true, v))).toEqual([0.1, 1, 1.2, 1.2, 2]);
+    expect(dishShare(5, 12, true)).toBe(1); // 6 → +1
+    expect(dishShare(5, 20, false)).toBe(3); // 7.5 rounds half up to 8
+    expect(dishShare(10, undefined, true)).toBe(0);
+    expect(dishShare(0, 20, false)).toBe(0);
   });
 
-  it("the chef's room answer pays its die's share; other teams get no chefBonus", () => {
+  it("the chef's room answer pays its dish die's share; another team's 12 changes nothing", () => {
     const g = classGame(["chef", undefined]);
     const q = currentQ(g, "T0");
     const { game, outcome } = answerQuestion(g, "T0", q, true, "retry", first, 12);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 13, chefBonus: 3 });
-    expect(game.teams[0]).toMatchObject({ score: 1, reward: 13, abilityUses: 0 });
-    expect(answerQuestion(g, "T0", q, true, "retry", first, 4).outcome).toMatchObject({ reward: 8, chefBonus: -2 });
-    expect(answerQuestion(g, "T0", q, true, "retry", first, 1).outcome).toMatchObject({ reward: 1, chefBonus: -9 });
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 12, dishBonus: 2, dishDie: 12 });
+    expect(game.teams[0]).toMatchObject({ score: 1, reward: 12, abilityUses: 0 });
+    expect(answerQuestion(g, "T0", q, true, "retry", first, 4).outcome).toMatchObject({ reward: 10 });
+    expect(answerQuestion(g, "T0", q, true, "retry", first, 1).outcome).toMatchObject({ reward: 1, dishBonus: -9 });
     const other = answerQuestion(game, "T1", currentQ(game, "T1"), true, "retry", first, 12);
-    expect(other.outcome).toMatchObject({ reward: 10 });
-    expect(other.outcome).not.toHaveProperty("chefBonus");
+    expect(other.outcome).toMatchObject({ reward: 10, dishDie: 12 });
+    expect(other.outcome).not.toHaveProperty("dishBonus");
+    expect(answerQuestion(game, "T1", currentQ(game, "T1"), true, "retry", first, 20).outcome).toMatchObject({ reward: 15, dishBonus: 5, roll: { kind: "dish", value: 20 } });
   });
 
-  it("the chef's share goes on the boss hit but not on the kill's 4d20", () => {
+  it("the dish die goes on the boss hit but not on the kill's 4d20", () => {
     const g = classGame(["chef"], 0, 2);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 12);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 20, chefBonus: 5 });
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", reward: 18, dishBonus: 3 });
     const kill = answerQuestion(hit.game, "T0", hit.game.boss.currentQuestionId, true, "retry", first, 12, [9, 14, 3, 17]);
-    // An unrated boss question's 15 × 1.3 = 19.5 → 20, plus the 4d20's 43 as rolled.
-    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 63, chefBonus: 5 });
-    expect(kill.game.teams[0].reward).toBe(83);
+    // An unrated boss question's 15 × 1.2 = 18, plus the 4d20's 43 as rolled.
+    expect(kill.outcome).toMatchObject({ bossKilled: true, killBonus: 43, reward: 61, dishBonus: 3 });
+    expect(kill.game.teams[0].reward).toBe(79);
   });
 
-  it("the chef's 20 doubles a crit's whole gain, and a wrong answer pays it nothing", () => {
+  it("the chef's 20 doubles the whole gain, and a wrong answer pays it nothing", () => {
     const g = classGame(["chef", undefined]);
-    // 10 + a crit's 5 = 15, doubled.
-    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 30, chefBonus: 15, roll: { kind: "crit", value: 20 } });
+    expect(answerQuestion(g, "T0", currentQ(g, "T0"), true, "retry", first, 20).outcome).toMatchObject({ reward: 20, dishBonus: 10, roll: { kind: "dish", value: 20 } });
     const wrong = answerQuestion(g, "T0", currentQ(g, "T0"), false, "retry");
-    expect(wrong.outcome).not.toHaveProperty("chefBonus");
+    expect(wrong.outcome).not.toHaveProperty("dishBonus");
     expect(wrong.game.teams[0].reward).toBe(0);
   });
 
@@ -1692,34 +1700,30 @@ describe("mage, cleric and thief (class-abilities.md PR 2)", () => {
     expect(game.mageCasts).toEqual({});
   });
 
-  // Value: protects=a chef's 改成答對 on a multipleChoice or sort question pays like a live correct answer, crit included
-  // (#342: a 20 = 3N); fails_when=the crit half is skipped, or a fill-in (no crit die) gets it.
-  it("a chef's 改成答對 on a crit question adds the crit's half on a 20, as live", () => {
+  // Value: protects=a chef's 改成答對 pays like a live correct answer through the dish die rolled then (class-dice-rework.md);
+  // fails_when=the die is skipped, or a tier pays another tier's multiple.
+  it("a chef's 改成答對 needs its dish die and pays by its tier, as live", () => {
     const g0 = classGame(["chef", undefined]);
     const q = currentQ(g0, "T0");
-    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, reads: "chef" }] };
-    const paid = (die: number, crit: boolean) => hostRejudge(g, 0, "T0", q, true, die, crit).teams[0].reward - g.teams[0].reward;
-    expect([1, 4, 12, 20].map((d) => paid(d, true))).toEqual([1, 8, 13, 30]);
-    expect(paid(20, false)).toBe(20);
+    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, dish: { chef: true } }] };
+    const paid = (die: number) => hostRejudge(g, 0, "T0", q, true, die).teams[0].reward - g.teams[0].reward;
+    expect(() => hostRejudge(g, 0, "T0", q, true)).toThrow(/die_needed/);
+    expect([1, 4, 12, 20].map(paid)).toEqual([1, 10, 12, 20]);
     const live = answerQuestion(g0, "T0", q, true, "retry", first, 20).game.teams[0].reward - g0.teams[0].reward;
-    expect(paid(20, true)).toBe(live);
+    expect(paid(20)).toBe(live);
   });
 
-  // Value: protects=an armed thief's 改成答對 pays its sneak by the die rolled then, and moves only the score (owner,
-  // 2026-11-17; hosting.md); fails_when=the die is skipped, a tier pays the wrong multiple, or a 2–6 gives a use back.
-  it("a thief's 改成答對 needs its die, pays the sneak by tier and gives no use back", () => {
+  // Value: protects=an armed thief's 改成答對 pays its sneak, then the dish die rolled then, and moves only the score (owner,
+  // 2026-11-17; hosting.md); fails_when=the sneak is lost, the dish die is skipped, or a use comes back.
+  it("an armed thief's 改成答對 pays the sneak's multiple, then the dish die's, and gives no use back", () => {
     const g0 = classGame(["thief", undefined]);
     const q = currentQ(g0, "T0");
-    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, reads: "thief" }] };
+    const g: GameState = { ...g0, judgments: [{ teamId: "T0", questionId: q, correct: false, points: 10, dish: { sneak: 1.5 } }] };
     const base = g.teams[0];
-    expect(() => hostRejudge(g, 0, "T0", q, true)).toThrow(/die_needed/);
-    for (const [die, paid] of [[1, 10], [4, 10], [12, 15], [20, 20]]) {
+    for (const [die, paid] of [[1, 2], [4, 15], [12, 15], [20, 23]]) {
       const t = hostRejudge(g, 0, "T0", q, true, die).teams[0];
       expect(t).toMatchObject({ reward: base.reward + paid, abilityUses: base.abilityUses });
     }
-    // A 20 pays as live, sneak ×1.5 plus the crit's half, each rounded: 8 + 3 on an odd 5.
-    const odd: GameState = { ...g, judgments: [{ ...g.judgments![0], points: 5 }] };
-    expect(hostRejudge(odd, 0, "T0", q, true, 20).teams[0].reward).toBe(base.reward + 11);
   });
 
   it("the mage removes 2 wrong options, never the right one, and clears a pick on a removed option", () => {
@@ -1959,15 +1963,23 @@ describe("class dice: every tier per class", () => {
     expect(() => prayerRoll(recordWrongLock(g, "T0", q0(g), 0), "T0", 12)).toThrow(/no_prayer/);
   });
 
-  it("thief's die on an armed sneak: 1 no sneak, 2–6 no sneak and the use back, 7–19 ×1.5, 20 sneak and crit", () => {
-    const g = armSneak(game(["thief", undefined]), "T0");
-    const right = (v: number) => answerQuestion(g, "T0", q0(g), true, "retry", first, v);
+  // Value: protects=the sneak die's tiers (class-dice-rework.md): 1 caught (a tenth of the question's reward now, floor 0),
+  // 2–6 nothing, 7–19 ×1.5, 20 ×2 and a crit; every tier spends the use, once per question; fails_when=a tier pays or
+  // takes the wrong amount, a 2–6 gives the use back, or a second press on the question rolls again.
+  it("thief's sneak die: 1 caught for a tenth, 2–6 nothing, 7–19 ×1.5, 20 ×2 and a crit, the use spent on each", () => {
+    const g0 = game(["thief", undefined]);
+    const rich = { ...g0, teams: g0.teams.map((t) => (t.id === "T0" ? { ...t, reward: 30 } : t)) };
+    const sneak = (v: number) => sneakRoll(startSneak(rich, "T0"), "T0", v);
+    expect(sneak(1)).toMatchObject({ penalty: 1 });
+    expect(sneak(1).game.teams[0]).toMatchObject({ reward: 29, abilityUses: 2, sneakTry: { questionId: q0(g0), value: 1, penalty: 1 } });
+    expect(sneakRoll(startSneak(g0, "T0"), "T0", 1).game.teams[0].reward).toBe(0); // floor 0
+    const right = (v: number) => answerQuestion(sneak(v).game, "T0", q0(g0), true, "retry", first, 10);
     expect([1, 4, 12, 20].map((v) => (right(v).outcome as { reward: number }).reward)).toEqual([10, 10, 15, 20]);
-    expect([1, 4, 12, 20].map((v) => right(v).game.teams[0].abilityUses)).toEqual([2, 3, 2, 2]);
+    expect([1, 4, 12, 20].map((v) => right(v).game.teams[0].abilityUses)).toEqual([2, 2, 2, 2]);
     expect(right(20).outcome).toMatchObject({ roll: { kind: "crit", value: 20 } });
-    // A fill-in reads the answer die instead, with no crit of its own.
-    const fill = (v: number) => answerQuestion(g, "T0", q0(g), true, "retry", first, undefined, undefined, undefined, false, v).outcome;
-    expect([4, 12].map((v) => (fill(v) as { reward: number }).reward)).toEqual([10, 15]);
+    for (const v of [1, 4, 12]) expect(() => startSneak(sneak(v).game, "T0")).toThrow(/sneak_used/);
+    // A wrong answer pays no sneak bonus.
+    expect(answerQuestion(sneak(12).game, "T0", q0(g0), false, "retry").game.teams[0].reward).toBe(30);
   });
 
   it("warrior's die: 1 wrong and the whole reward taken, 2–6 retry, 7–19 80%, 20 double", () => {
@@ -1986,9 +1998,11 @@ describe("class dice: every tier per class", () => {
     const prayed = pray(recordWrongLock(c, "T0", q0(c), 0), "T0");
     expect([1, 12, 20].map((v) => naturals(prayerRoll(prayed, "T0", v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
     const chef = game(["chef", undefined]);
-    const die = (v: number) => answerQuestion(chef, "T0", q0(chef), true, "retry", first, undefined, undefined, undefined, false, v).game;
+    const die = (v: number) => answerQuestion(chef, "T0", q0(chef), true, "retry", first, v).game;
     expect([1, 12, 20].map((v) => naturals(die(v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
-    const ledger: GameState = { ...chef, judgments: [{ teamId: "T0", questionId: q0(chef), correct: false, points: 10, reads: "chef" }] };
+    const thief = game(["thief", undefined]);
+    expect([1, 12, 20].map((v) => naturals(sneakRoll(startSneak(thief, "T0"), "T0", v).game))).toEqual([[0, 1], [0, 0], [1, 0]]);
+    const ledger: GameState = { ...chef, judgments: [{ teamId: "T0", questionId: q0(chef), correct: false, points: 10, dish: { chef: true } }] };
     expect([1, 12, 20].map((v) => naturals(hostRejudge(ledger, 0, "T0", q0(chef), true, v)))).toEqual([[0, 1], [0, 0], [1, 0]]);
   });
 });
@@ -2123,52 +2137,58 @@ describe("dishes (docs/designs/monster-cuisine.md)", () => {
   });
 });
 
-// Value: protects=the crit die's rules (dnd design R4, R5, R2): a 20 adds half the base reward and one boss heart, a 1
-// changes nothing; fails_when=the bonus multiplies with the sneak, rounds wrong, raises the 4d20 or touches progress points
-describe("the crit die (dnd design R4, R5)", () => {
+// Value: protects=the dish die's rules (class-dice-rework.md): a 20 ×1.5, a 1 ×0.1, on the whole gain after the sneak, no
+// boss heart, never on the 4d20; fails_when=the share rounds wrong, adds a heart, raises the 4d20 or touches progress points
+describe("the dish die (class-dice-rework.md)", () => {
   function critGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3, rooms = makeRooms(3, 1)): GameState { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const teams = classes.map((c, i) => ({ id: `T${i}`, name: `Team ${i}`, ...(c ? { classId: c } : {}) }));
     return createGame(teams, rooms, poolsWith(1, ["q1", "q2", "q3", "q4"]), ["boss-q1", "boss-q2", "boss-q3"], { bossThreshold }, bossMaxHp, first);
   }
   const q0 = (g: GameState) => g.teams[0].currentQuestionId;
 
-  it("a room 20 adds half the base reward, marks the outcome and keeps progress points", () => {
+  it("a room 20 serves the legend for ×1.5, marks the outcome and keeps progress points", () => {
     const g = critGame([undefined]);
     const { game, outcome } = answerQuestion(g, "T0", q0(g), true, "retry", first, 20);
-    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15, roll: { kind: "crit", value: 20 } }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(outcome).toMatchObject({ type: "correct-room-advance", pointsAwarded: 1, reward: 15, dishBonus: 5, dishDie: 20, roll: { kind: "dish", value: 20 } }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(game.teams[0]).toMatchObject({ score: 1, reward: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
   });
 
-  it("a 1 is only a show: the same reward, marked as a fumble; other values leave no mark", () => {
+  it("a 1 burns it to a tenth, marked; 2–19 leave the reward and no mark", () => {
     const g = critGame([undefined]);
-    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 1).outcome).toMatchObject({ reward: 10, roll: { kind: "crit", value: 1 } });
-    const plain = answerQuestion(g, "T0", q0(g), true, "retry", first, 13).outcome;
-    expect(plain).toMatchObject({ reward: 10 });
-    expect("roll" in plain && plain.roll).toBeFalsy();
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 1).outcome).toMatchObject({ reward: 1, dishBonus: -9, roll: { kind: "dish", value: 1 } });
+    for (const v of [2, 6, 13]) {
+      const plain = answerQuestion(g, "T0", q0(g), true, "retry", first, v).outcome;
+      expect(plain).toMatchObject({ reward: 10, dishDie: v });
+      expect("roll" in plain && plain.roll).toBeFalsy();
+    }
   });
 
-  it("a sneak and a 20 add up from the base reward, not multiplied (reward × 1.5 + half)", () => {
+  it("a sneak's 7–19 and the dish die's 20 multiply, rounded once each (10 × 1.5 × 1.5 → 23)", () => {
     const g = armSneak(critGame(["thief"]), "T0");
-    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 20 });
+    expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 23 });
+    const crit = armSneak(critGame(["thief"]), "T0", 20);
+    expect(answerQuestion(crit, "T0", q0(crit), true, "retry", first, 10).outcome).toMatchObject({ reward: 20, roll: { kind: "crit", value: 20 } });
   });
 
-  it("half a reward rounds with Math.round (25 → 13)", () => {
+  it("a legend on 25 rounds with Math.round (37.5 → 38)", () => {
     const g = critGame([undefined], 15, 3, [{ baseDifficulty: 1, reward: 25 }, ...makeRooms(2, 1)]); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     expect(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).outcome).toMatchObject({ reward: 38 });
   });
 
-  it("a boss 20 takes one more heart and adds half the hit reward; with a sneak it takes 3", () => {
+  it("a boss 20 takes no extra heart; a sneak takes 2, its 20 takes 3", () => {
     const g = critGame([undefined], 0, 5);
     const hit = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 3, reward: 23, roll: { kind: "crit", value: 20 } }); // an unrated boss question: 15 + 8
+    expect(hit.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 4, reward: 23, roll: { kind: "dish", value: 20 } }); // an unrated boss question: 15 × 1.5
     const sneaky = armSneak(critGame(["thief"], 0, 5), "T0");
-    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 20).outcome).toMatchObject({ bossHpRemaining: 2, reward: 31 }); // 15 × 1.5 → 23, + 8
+    expect(answerQuestion(sneaky, "T0", sneaky.boss.currentQuestionId, true, "retry", first, 10).outcome).toMatchObject({ bossHpRemaining: 3, reward: 23 }); // 15 × 1.5
+    const crit = armSneak(critGame(["thief"], 0, 5), "T0", 20);
+    expect(answerQuestion(crit, "T0", crit.boss.currentQuestionId, true, "retry", first, 10).outcome).toMatchObject({ bossHpRemaining: 2, reward: 30 }); // 15 × 2
   });
 
-  it("a 20 on the boss's last heart kills it, and the 4d20 is not raised by the crit", () => {
+  it("the kill's 4d20 is never raised by the dish die", () => {
     const g = critGame([undefined], 0, 1);
     const kill = answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20);
-    // rollBossKillDice(first) sums to 4 (4d20 all ones): 15 + 8 + 4.
+    // rollBossKillDice(first) sums to 4 (4d20 all ones): 15 × 1.5 → 23, + 4.
     expect(kill.outcome).toMatchObject({ type: "correct-boss-hit", bossHpRemaining: 0, bossKilled: true, killBonus: 4, reward: 27 });
     expect(kill.game.phase).toBe("finished");
   });
@@ -2179,11 +2199,11 @@ describe("the crit die (dnd design R4, R5)", () => {
     expect(outcome).toEqual({ type: "incorrect-retry", teamId: "T0" });
   });
 
-  it("a warrior's 20 pays double and is marked a crit on any question, never with the crit's half on top", () => {
+  it("a warrior's 20 pays double and is marked a crit; its hit's dish die goes on top", () => {
     const g = spendAbility(critGame(["warrior"]), "T0", "warrior");
-    expect(warriorRoll(g, "T0", q0(g), 20, first, true).outcome).toMatchObject({ reward: 20, roll: { kind: "crit", value: 20 } });
     expect(warriorRoll(g, "T0", q0(g), 20, first).outcome).toMatchObject({ reward: 20, roll: { kind: "crit", value: 20 } });
-    const hit = warriorRoll(g, "T0", q0(g), 19, first, true).outcome;
+    expect(warriorRoll(g, "T0", q0(g), 20, first, 20).outcome).toMatchObject({ reward: 30, roll: { kind: "dish", value: 20 } });
+    const hit = warriorRoll(g, "T0", q0(g), 19, first, 10).outcome;
     expect(hit).toMatchObject({ reward: 8 });
     expect("roll" in hit && hit.roll).toBeFalsy();
   });
@@ -2198,17 +2218,17 @@ describe("natural 20s (podium-reveal.md D5)", () => {
   const n20 = (g: GameState) => g.teams[0].natural20s;
   const q0 = (g: GameState) => g.teams[0].currentQuestionId;
 
-  it("a crit die of 20 counts; a 19 or a wrong answer's die does not", () => {
+  it("a dish die of 20 counts; a 19 or a wrong answer's die does not", () => {
     const g = solo();
     expect(n20(answerQuestion(g, "T0", q0(g), true, "retry", first, 20).game)).toBe(1);
     expect(n20(answerQuestion(g, "T0", q0(g), true, "retry", first, 19).game)).toBeUndefined();
     expect(n20(answerQuestion(g, "T0", q0(g), false, "retry", first, 20).game)).toBeUndefined();
   });
 
-  it("a warrior's 20 counts once, critable or not", () => {
+  it("a warrior's 20 counts once, and its hit's dish die's 20 too", () => {
     const g = spendAbility(solo("warrior"), "T0", "warrior");
-    expect(n20(warriorRoll(g, "T0", q0(g), 20, first, true).game)).toBe(1);
     expect(n20(warriorRoll(g, "T0", q0(g), 20, first).game)).toBe(1);
+    expect(n20(warriorRoll(g, "T0", q0(g), 20, first, 20).game)).toBe(2);
   });
 
   it("a persuasion check of 20 counts", () => {
@@ -2217,7 +2237,7 @@ describe("natural 20s (podium-reveal.md D5)", () => {
     expect(n20(recordCheck(g, "T0", q0(g), 19, "萬家福"))).toBeUndefined();
   });
 
-  it("each 20 in the kill's 4d20 counts, on top of the crit die", () => {
+  it("each 20 in the kill's 4d20 counts, on top of the dish die", () => {
     const g = solo(undefined, 0, 1);
     expect(n20(answerQuestion(g, "T0", g.boss.currentQuestionId, true, "retry", first, 20, [20, 3, 20, 20]).game)).toBe(4);
   });
@@ -2232,7 +2252,7 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
   const t0 = (g: GameState) => g.teams[0];
   const q0 = (g: GameState) => g.teams[0].currentQuestionId;
 
-  it("counts a natural 1 on the crit die, a check and each of the kill's 4d20", () => {
+  it("counts a natural 1 on the dish die, a check and each of the kill's 4d20", () => {
     const g = solo();
     expect(t0(answerQuestion(g, "T0", q0(g), true, "retry", first, 1).game).natural1s).toBe(1);
     expect(t0(answerQuestion(g, "T0", q0(g), false, "retry", first, 1).game).natural1s).toBeUndefined();
@@ -2241,9 +2261,8 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
     expect(t0(answerQuestion(boss, "T0", boss.boss.currentQuestionId, true, "retry", first, 5, [1, 1, 20, 4]).game)).toMatchObject({ natural1s: 2, natural20s: 1 });
   });
 
-  it("a warrior's 1 counts once, on a multipleChoice question too (E7)", () => {
+  it("a warrior's 1 counts once (E7)", () => {
     const g = spendAbility(solo("warrior"), "T0", "warrior");
-    expect(t0(warriorRoll(g, "T0", q0(g), 1, first, true).game).natural1s).toBe(1);
     expect(t0(warriorRoll(g, "T0", q0(g), 1, first).game).natural1s).toBe(1);
   });
 
@@ -2276,8 +2295,8 @@ describe("the persuasion check (dnd design R6, R8)", () => {
   const check = (g: GameState, value: number, answer = "萬家福") => recordCheck(g, "T0", q0(g), value, answer);
   const rec = (g: GameState) => g.checks?.[checkKey(q0(g), "T0")];
 
-  it("pins the 2026-11-13 class balance (docs/designs/class-abilities.md)", () => {
-    expect(CHECK_BONUS).toEqual({ mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 });
+  it("pins the class-dice rework balance (docs/designs/class-dice-rework.md)", () => {
+    expect(CHECK_BONUS).toEqual({ mage: 6, thief: 3, cleric: 2, chef: 4, none: 1, warrior: 0 });
     expect(WARRIOR_TARGET).toBe(7);
     expect([1, 6, 7, 19, 20].map(warriorShare)).toEqual([0, 0, 0.8, 0.8, 2]);
     expect([1, 2, 6, 7, 19, 20].map(skillTier)).toEqual([0, 1, 1, 2, 2, 3]);

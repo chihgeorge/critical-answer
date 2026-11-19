@@ -3,7 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   addLateTeam,
   answerQuestion,
-  armSneak,
+  sneakRoll,
+  startSneak,
   askOracle,
   cancelCatch,
   CATCH_PAY,
@@ -215,7 +216,7 @@ describe("🚨 成立 (upholdCatch)", () => {
 
   it("never takes the accused below 0, uses up an armed sneak, and is not re-dealt while unrevealed questions remain", () => {
     let g = on(["thief"]);
-    g = armSneak(g, "a");
+    g = sneakRoll(startSneak(g, "a"), "a", 12).game; // a 7+: armed
     const id = q(g);
     const after = upholdCatch(fileCatch(g, "b", id), first).game;
     expect(team(after, "a")).toMatchObject({ reward: 0, sneakArmed: undefined, abilityUses: 2 });

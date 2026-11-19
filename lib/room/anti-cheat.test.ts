@@ -1,6 +1,7 @@
 // 抓包與神諭 in the room (docs/designs/anti-ai-cheating.md): the switch, the answering window, catch_pending, the
 // rulings, the countdown, 改判答對, the trust boundary and a restart with a catch open.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -20,7 +21,7 @@ const MCS = ["m1", "m2", "m3", "m4", "m5", "m6"].map(mc);
 const TEXTS = ["t1", "t2", "t3", "t4", "t5", "t6"].map(text);
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn & { send: ReturnType<typeof vi.fn> };
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 
 function memoryStorage() {

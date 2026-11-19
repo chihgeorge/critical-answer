@@ -1,6 +1,7 @@
 // STATE.hostAway (host-offline banner): once the last host page has been gone for HOST_AWAY_GRACE_MS during a game, the
 // big screen and the phones show 主持人重新連線中. A quick reconnect shows nothing; the host's HOST_CLAIM clears it.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom, HOST_AWAY_GRACE_MS } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -12,7 +13,7 @@ const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 
 function memoryStorage(): RoomStorage {
   const data = new Map<string, unknown>();
