@@ -7,7 +7,7 @@ import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, JudgedEntry, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { CATCH_USES, CLASS_ICONS, FIX_SCORE_MAX, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
-import { laterCorrect, questionOrdinals, rejudgeButton } from "@/lib/host-rejudge";
+import { laterCorrect, questionOrdinals, rejudgeButton, rejudgeRows } from "@/lib/host-rejudge";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
 
@@ -189,7 +189,7 @@ export function MoreDrawer({
                   <div className="text-[14px]">還沒有判過的題目</div>
                 ) : (
                   <div className="flex max-h-[40vh] flex-col gap-2 overflow-y-auto">
-                    {[...judged].reverse().map((j) => {
+                    {rejudgeRows(judged).map((j) => {
                       const label = questionLabel(j.questionId);
                       const was = j.flipped ? (j.correct ? "答錯" : "答對") : null;
                       const button = rejudgeButton(judged, j, rewardOf(j.teamId), undoWrong);

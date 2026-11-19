@@ -26,6 +26,7 @@ import { McOption } from "@/components/mc-option";
 import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
+import { rollStatus } from "@/lib/class-dice";
 import { visibleInitiativeRoll } from "@/lib/initiative";
 import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
@@ -130,17 +131,6 @@ function PotionButton({ game, teamId, questionId, die, send }: { game: StateMess
 /** Which die a potion drunk now doubles: the next one this team rolls (class dice). */
 const POTION_DIE = { crit: "答對時的暴擊骰擲兩次取高", check: "說服檢定擲兩次取高", mage: "法師技能骰擲兩次取高", cleric: "祈禱骰擲兩次取高" } as const;
 
-/** What a roll in its beat says on the phone; the big screen shows it. */
-function rollStatus(kind: string | undefined, value: number): string {
-  if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
-  if (kind === "crit") return `答對！暴擊骰擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "check") return `說服檢定擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "mage") return `🔮 施法擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "cleric") return `✝️ 祈禱擲出 ${value}，看大螢幕 ▶`;
-  if (kind === "answer") return `答對！答對骰擲出 ${value}，看大螢幕 ▶`;
-  return value === 20 ? "擲出 20 大成功！看大螢幕 ▶" : `擲出 ${value}！看大螢幕 ▶`; // a warrior's 20 is a crit on any question
-}
-
 /** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
  * (E2: until the team's next turn). */
 function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
@@ -171,9 +161,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   if (roll) {
     body = (
       <div className="px-bar mt-1 flex items-center gap-3" role="status">
-        {/* A kill's 4d20 has four dice: the big screen shows them (kill-roll.md). */}
-        <D20 value={roll.kind === "kill" ? "?" : roll.value} size={54} />
-        <span className="text-[20px]">{rollStatus(roll.kind, roll.value)}</span>
+        {/* The value lands on the big screen first (#328 m2); a kill's 4d20 has four dice there too (kill-roll.md). */}
+        <D20 value="?" size={54} />
+        <span className="text-[20px]">{rollStatus(roll.kind)}</span>
       </div>
     );
   } else if (me?.classId === "thief" && me.sneakArmed) {

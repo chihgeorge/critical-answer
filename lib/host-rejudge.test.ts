@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { laterCorrect, questionOrdinals, rejudgeButton, rejudgeChange, undoRow } from "./host-rejudge";
+import { laterCorrect, questionOrdinals, rejudgeButton, rejudgeChange, rejudgeRows, undoRow } from "./host-rejudge";
 
 const e = (index: number, teamId: string, questionId: string, correct: boolean) => ({ index, teamId, questionId, correct, points: 10 });
 
 describe("改判 list helpers", () => {
-  it("numbers questions by first judgment, shared across teams", () => {
+  it("numbers questions by last judgment, shared across teams", () => {
     const n = questionOrdinals([{ questionId: "q7" }, { questionId: "q7" }, { questionId: "q2" }, { questionId: "q7" }]);
-    expect([...n]).toEqual([["q7", 1], ["q2", 2]]);
+    expect([...n]).toEqual([["q2", 1], ["q7", 2]]);
+  });
+
+  // Value: protects=a question retried after 下輪再答 sits once in order, its two rows together (#328 m6);
+  // fails_when=the list goes back to plain newest-first with first-judgment numbers; seam=none; no_claim=the drawer's markup
+  it("lists rows newest question first, a retried question's rows together, the numbers only going down", () => {
+    const judged = [e(0, "A", "q1", true), e(1, "B", "q6", false), e(2, "A", "q8", true), e(3, "C", "q9", true), e(4, "B", "q6", true)];
+    const n = questionOrdinals(judged);
+    const rows = rejudgeRows(judged);
+    expect(rows.map((j) => j.index)).toEqual([4, 1, 3, 2, 0]);
+    const nums = rows.map((j) => n.get(j.questionId)!);
+    expect(nums).toEqual([...nums].sort((a, b) => b - a));
   });
 
   it("shows what a press really moves: the 0 floor going down, taken coming back", () => {

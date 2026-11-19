@@ -29,7 +29,7 @@ test("warrior: a team picks 戰士 in the lobby, rolls instead of answering, the
   await expect(team.getByText("戰士・剩 3 次")).toBeVisible();
 
   await team.getByRole("button", { name: /擲骰代替答題/ }).click();
-  await expect(team.getByText(/擲出 \d+( 大成功)?！看大螢幕/)).toBeVisible(); // a 20 on a multipleChoice question is a crit
+  await expect(team.getByText(/擲骰中！看大螢幕/)).toBeVisible(); // no value: the big screen's die lands it first (#328)
   await expect(screen.getByTestId("roll-overlay")).toBeVisible();
   // The host waits the beat out: the room judges the roll (and the use is already spent).
   await expect(host.getByText("戰士隊擲出了骰子…")).toBeVisible();
@@ -66,7 +66,7 @@ test("crit die: a right lock shows the die on the big screen after 公布答案,
   // After the reveal's 2 s and the crit intro's 2 s (#364), the crit die: nothing is judged yet.
   const overlay = screen.getByTestId("roll-overlay");
   await expect(overlay).toHaveAttribute("data-kind", "crit", { timeout: 10_000 });
-  await expect(team.getByText(/答對！暴擊骰擲出 \d+/)).toBeVisible();
+  await expect(team.getByText(/答對！擲暴擊骰中/)).toBeVisible();
   await expect(host.getByText("暴擊隊擲出了骰子…")).toBeVisible();
   await expect(screen.getByTestId("roll-result")).toHaveText(/^\d+ (大失敗|小失敗|小成功|大成功)：/); // the tier and its effect once it lands (#364)
 

@@ -1229,6 +1229,8 @@ export function advanceTurn(game: GameState, facedMonster?: string | null): Game
   if (!previous || !team || previous.id === team.id || facedMonster === null || (previous.inBoss && !facedMonster) || team.inBoss) return next;
   const lastMonster = facedMonster ?? teamMonsterId(game, previous);
   if (!lastMonster || lastMonster !== teamMonsterId(next, team)) return next;
+  // 下輪再答 comes back to the monster that asked it (#328 m3): only a team meeting its room's monster gets another one.
+  if (team.wrongOn === team.currentQuestionId) return next;
   const monster = switchMonster(next, team, () => 0);
   return { ...next, teams: patchTeam(next.teams, team.id, () => ({ swappedMonsterId: monster, metDefeats: next.defeats?.[monster] ?? 0 })) };
 }

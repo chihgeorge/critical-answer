@@ -375,12 +375,12 @@ export const BOSS_ENTER_PHASE_VARIANTS = [
 /** A wrong buzz (boss-buzzer.md): short, the music is playing again. */
 export const BUZZ_OUT_VARIANTS = ["{team}答錯了！這題出局，其他隊快搶！", "不對！{team}這題不能再搶，音樂繼續！", "{monster}大笑，{team}出局！還有誰知道？"];
 
-/** Every online team missed the song (boss-music-buzzer.md M1): the same one again, everyone in. */
-export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一首再搶一次！", "{team}也答錯，全員出局！同一首再搶一次！", "{monster}得意大笑：沒人答對！同一首再搶一次！"];
+/** Every online team missed the question (a song or text, #328) (boss-music-buzzer.md M1): the same one again, everyone in. */
+export const BUZZ_AGAIN_VARIANTS = ["都沒答對！同一題再搶一次！", "{team}也答錯，全員出局！同一題再搶一次！", "{monster}得意大笑：沒人答對！同一題再搶一次！"];
 /** A music question with fields (#369): nobody got every field, so its second and last round opens to all. */
 export const BUZZ_SECOND_VARIANTS = ["都沒全對！第二輪開搶，這是最後一次機會！", "{team}也沒全對！同一首第二輪，最後一次搶！", "{monster}冷笑：第二輪，也是最後一輪，快搶！"];
-/** The last team still in dropped instead, so nobody answered wrong: the same song reopens to all (M1). */
-export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一首再搶一次！";
+/** The last team still in dropped instead, so nobody answered wrong: the same question reopens to all (M1). */
+export const BUZZ_REOPEN_LINE = "最後一隊斷線了！同一題再搶一次！";
 
 /** 🚨 成立 (anti-ai-cheating.md): {team} was caught asking an AI by {caught}. */
 export const CAUGHT_VARIANTS = [
