@@ -72,8 +72,9 @@ export function floorLabel(room: number | null): string {
  * app/globals.css's px-phase-blink turns it back by the same amount: change both together. */
 export const PHASE_HUE_STEP = 90;
 
-/** `bossMonster`: the boss to draw while no question is out (the phase card). */
-export function describeTurn(view: SpectatorView, question: PublicQuestion | null, bossMonster?: PublicQuestion["monster"]) {
+/** `bossMonster`: the boss to draw while no question is out (the phase card). `stageMonster`: STATE's monster during a
+ * beat, which sends no question either (#401); unlike `bossMonster` it never turns the scene into the boss's. */
+export function describeTurn(view: SpectatorView, question: PublicQuestion | null, bossMonster?: PublicQuestion["monster"], stageMonster?: PublicQuestion["monster"]) {
   const teamIndex = view.teams.findIndex((t) => t.id === view.currentTurnTeamId);
   const team = view.teams[teamIndex];
   // Nobody on turn in a buzzer phase still means the boss (boss-buzzer.md).
@@ -82,7 +83,7 @@ export function describeTurn(view: SpectatorView, question: PublicQuestion | nul
   // draw the boss scene, while labels about the team on turn still follow `inBoss`.
   const bossScene = inBoss || (!question && !!bossMonster);
   const room = team?.roomIndex ?? 0;
-  const m = question?.monster ?? bossMonster;
+  const m = question?.monster ?? stageMonster ?? bossMonster;
   const phaseHue = bossScene ? PHASE_HUE_STEP * (view.bossPhase - 1) : 0;
   const monster: Monster = m ? monsterLook(m, phaseHue) : FALLBACK_MONSTER;
   return {

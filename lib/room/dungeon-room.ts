@@ -1684,7 +1684,8 @@ export class DungeonRoom {
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
-      ...(this.stageBeat ? { stageBeat: this.stageBeat } : {}),
+      // A beat sends no question, so it names the monster the stage keeps (#401); nobody on turn in the buzz phase is the boss.
+      ...(this.stageBeat ? { stageBeat: this.stageBeat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),

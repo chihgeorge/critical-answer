@@ -1128,7 +1128,7 @@ export default function PlayPage() {
   const myIndex = Math.max(0, roster.findIndex((t) => t.id === teamId));
   const myLook = lookOf(roster[myIndex], myIndex);
   const myTeam = game?.view.teams.find((t) => t.id === teamId);
-  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   const isMyTurn = !!game && game.view.currentTurnTeamId === teamId;
   const potion = game ? potionLine(myTeam, isMyTurn) : null;
   const [reactSent, setReactSent] = useState<ReactSent | null>(null);
