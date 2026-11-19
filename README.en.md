@@ -69,7 +69,7 @@ To let people outside your network play, put the front end on Vercel and the roo
 | --- | --- | --- | --- |
 | Before the event | Check the question bank answers, test the connection | Open the big-screen URL on the host page, test the volume | Get the phones online |
 | Gathering | On the home page, press 「主持遊戲」 (Host a game) behind the 「我是主持人」 (I'm the host) door to open a room | Shows the QR code and the 4-character room code | Each team scans the QR code, or types the code behind the home page's 「我是玩家」 (I'm a player) door, then picks a class |
-| Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 7-page how-to-play intro, then shows the initiative roll's order | Watch the big screen, then roll initiative on the phone |
+| Start | Press 「開始遊戲」 (Start game) to play the how-to-play intro | Plays the 4-page how-to-play intro, then shows the initiative roll's order | Watch the big screen, then roll initiative on the phone |
 | Each question | Multiple choice and sort: press 「公布答案」 (Reveal answer) (key `1`); fill-in: judge right or wrong | Question, dice, result | Multiple choice: lock in an answer; sort: drag the items into order, then lock; fill-in outside the boss room: roll persuasion first, then type |
 | Wrap-up | The boss falls or you press 「結束冒險」 (End adventure); you can press 「再玩一場」 (Play again) | Podium and epilogue (when a boss with a dish falls, the boss is cooked and served first) | See who has the most reward points |
 

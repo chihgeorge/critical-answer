@@ -182,7 +182,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const createdAt = typeof raw.createdAt === "number" && Number.isFinite(raw.createdAt) && raw.createdAt >= 0 ? raw.createdAt : null;
     const bank = raw.bank === undefined ? undefined : parseBank(raw.bank); // throws on a bank that would not load today
     if (raw.phaseCard !== undefined && typeof raw.phaseCard !== "boolean") return null;
-    if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1 && (raw.intro as number) <= INTRO_PAGES)) return null;
+    if (raw.intro !== undefined && !(Number.isInteger(raw.intro) && (raw.intro as number) >= 1)) return null;
     // Host-owned AI keys came later without a version bump: missing fields mean no AI and a fresh budget.
     const aiWanted = raw.aiWanted ?? false;
     const aiSource = raw.aiSource ?? "none";
@@ -212,6 +212,8 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw as unknown as RoomSnapshot),
       ...(raw.podium !== undefined ? { podium } : {}),
       ...(raw.revealFrom !== undefined ? { revealFrom } : {}),
+      // A save from when the intro had more pages shows the last page now.
+      ...(raw.intro !== undefined ? { intro: Math.min(raw.intro as number, INTRO_PAGES) } : {}),
       initiative: iniOk ? (ini as unknown as Initiative) : undefined,
       // Anything but the two values we write is auto, and no held podium.
       pacing: raw.pacing === "manual" ? "manual" : undefined,

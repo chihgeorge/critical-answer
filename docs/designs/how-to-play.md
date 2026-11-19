@@ -3,6 +3,8 @@
 Status: design-reviewed 2026-11-04 (/plan-design-review). Next: /plan-eng-review.
 Source: TODOS.md「正式遊戲開始前加玩法說明（文字＋圖片）」(P2).
 
+Update 2026-11-18: the slideshow is now 4 pages (輪流上陣・用手機作答, 說服檢定與暴擊骰, 各職業什麼時候擲骰 as a class table, 答錯與怎麼贏). The dice text of pages 2–3 lives in `components/how-to-play-dice.ts`.
+
 ## Problem
 
 The site owner tested the game and found that new players don't know how to play. Today nothing teaches

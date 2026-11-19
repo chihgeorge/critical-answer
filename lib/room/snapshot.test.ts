@@ -95,6 +95,13 @@ describe("parseSnapshot", () => {
     }
   });
 
+  // Value: protects=a room saved mid-intro when the intro had 7 pages still restores; fails_when=the old upper bound comes back;
+  // seam=parseSnapshot; no_claim=the screen's drawing of the page
+  it("shows the last intro page for a save from a longer intro", () => {
+    expect(parseSnapshot({ ...valid(), intro: 7 })?.intro).toBe(INTRO_PAGES);
+    expect(parseSnapshot({ ...valid(), intro: 2 })?.intro).toBe(2);
+  });
+
   // Value: protects=a v5 save from before boss phases is discarded, not restored to throw in boss play; fails_when=the
   // boss.phases check is removed; why_new=the restore backfill and its test were removed; seam=none
   it("discards a game saved before boss phases", () => {
@@ -192,7 +199,6 @@ describe("parseSnapshot", () => {
       ["phaseCard", "yes"],
       // The intro page must be one the screen can draw (how-to-play.md); restoring a valid one is in how-to-play.test.ts.
       ["intro", 0],
-      ["intro", INTRO_PAGES + 1],
       ["intro", "2"],
     ];
     for (const [field, value] of fields) {
