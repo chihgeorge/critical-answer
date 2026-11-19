@@ -13,8 +13,6 @@
     "package-lock.json": [],
     "worker/**": [],
     "wrangler.jsonc": [],
-    "scripts/pregate-runner.sh": [],
-    "scripts/dish-art-preview.ts": [],
-    "docs/designs/*.txt": []
+    "scripts/pregate-runner.sh": []
   }
 }

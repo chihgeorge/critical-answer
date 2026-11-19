@@ -1,3 +1,8 @@
+# 職業骰重做：模擬結果
+
+`scripts/balance-sim.ts`（分支 `tooling/class-dice-rework-sim`）的原始輸出，[class-dice-rework.md](class-dice-rework.md) 引用的數字都在這裡。
+
+```text
 Class-dice rework, final numbers (2026-11-18). PGIVE=0.1, room flee = change-room only. See docs/designs/class-dice-rework.md.
 f_base = current rules; f_F1 = REWORK sneak 1.4 + mage check +6 (proposed); f_F2 = + thief +4 cleric +1; f_dishall = F1 + every team's 20 adds half; g5 = 40k candidates; g4 = 20k; g3/g2 = 15k, old flee rule (FLEESAME=0.5).
 f_F1_df                            th=27.1 ch=27.6 cl=27.5 wa=27.9 ma=25.8 no=14.2 gap=2.1
@@ -248,3 +253,4 @@ x15_ch1_df                         th=23.8 ch=41.3 cl=24.7 wa=26.1 ma=22.1 no=11
 x15_ch1_ev                         th=23.7 ch=39.9 cl=23.5 wa=25.1 ma=24.2 no=13.5 gap=16.4
 x15_ch4_df                         th=23.3 ch=43.5 cl=24.5 wa=24.3 ma=22.0 no=12.4 gap=21.5
 x15_ch4_ev                         th=23.8 ch=41.2 cl=23.4 wa=24.9 ma=23.4 no=13.2 gap=17.8
+```

@@ -1,7 +1,7 @@
 # 設計：職業骰改版（暴擊骰改成料理骰，倍率統一）
 
 狀態：**已實作（2026-11-18，分支 `feat/class-dice-rework`）**。站長核准規則和數字後，提前在活動前實作；逃跑規則另外處理（#413）。廚師 7–19 維持 ×1.2（×1.5 模擬起來太強）。
-模擬器：`scripts/balance-sim.ts`（分支 `tooling/class-dice-rework-sim`）。全部數字在 [`class-dice-rework-results.txt`](class-dice-rework-results.txt)。
+模擬器：`scripts/balance-sim.ts`（分支 `tooling/class-dice-rework-sim`）。全部數字在 [`class-dice-rework-results.md`](class-dice-rework-results.md)。
 
 ## 為什麼改
 
