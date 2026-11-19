@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import type { PodiumReveal } from "../lib/protocol";
 import { advanceSocketAwards, answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
-import { endSpeech, holdSpeech, setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
+import { endSpeech, failSpeech, holdSpeech, setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -517,4 +517,15 @@ test("screen TTS: on the 叉路 screen the next line waits for the voice to fini
   await screen.waitForTimeout(3000);
   await expect(box).not.toContainText(after);
   await expect(box).toContainText(after, { timeout: 8000 });
+
+  // 3. A voice that fails every line at once: each line still stays up for the pace with no voice (typed + 2.2 s).
+  await failSpeech(screen);
+  const failed = "語音馬上出錯";
+  const paced = "照舊停留再換句";
+  narrate([failed, paced]);
+  await expect(box).toContainText(failed);
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(paced); // the voice has already failed both lines
+  await screen.waitForTimeout(1000);
+  await expect(box).not.toContainText(paced);
+  await expect(box).toContainText(paced, { timeout: 5000 });
 });

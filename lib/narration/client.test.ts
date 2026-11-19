@@ -61,17 +61,26 @@ describe("jumpLine (#405)", () => {
 });
 
 describe("boxLine (#365)", () => {
-  // Value: protects=the words on screen are the words heard, and a hidden tab keeps up with the room; fails_when=the box types on its own clock under the voice
-  it("follows the voice's line, never goes back, and stops at the last line", () => {
-    expect(boxLine(0, 3, undefined, false)).toBe(0);
-    expect(boxLine(0, 3, 2, false)).toBe(2);
-    expect(boxLine(2, 3, 1, false)).toBe(2);
-    expect(boxLine(0, 3, 5, false)).toBe(2);
+  // Value: protects=the next line waits for both the reading pause and the voice, one line at a time; fails_when=the box shows line 2 while line 1 is still spoken, or a voice failing every line at once flashes them past
+  it("with no voice, moves on once the line has rested", () => {
+    expect(boxLine(0, 3, undefined, false, false)).toBe(0);
+    expect(boxLine(0, 3, undefined, false, true)).toBe(1);
+    expect(boxLine(2, 3, undefined, false, true)).toBe(2);
+  });
+  it("waits for the voice to move past the line, even after the pause", () => {
+    expect(boxLine(0, 3, 0, false, true)).toBe(0);
+    expect(boxLine(0, 3, 1, false, true)).toBe(1);
+    expect(boxLine(2, 3, 1, false, true)).toBe(2);
+  });
+  it("a voice that ends or fails at once never rushes the box: the pause still holds, one line at a time", () => {
+    expect(boxLine(0, 3, 2, false, false)).toBe(0);
+    expect(boxLine(0, 3, 2, false, true)).toBe(1);
+    expect(boxLine(0, 3, 5, false, true)).toBe(1);
   });
   it("shows the last line at once on a hidden tab", () => {
-    expect(boxLine(0, 3, undefined, true)).toBe(2);
-    expect(boxLine(0, 3, 0, true)).toBe(2);
-    expect(boxLine(0, 0, undefined, true)).toBe(0);
+    expect(boxLine(0, 3, undefined, true, false)).toBe(2);
+    expect(boxLine(0, 3, 0, true, false)).toBe(2);
+    expect(boxLine(0, 0, undefined, true, false)).toBe(0);
   });
 });
 

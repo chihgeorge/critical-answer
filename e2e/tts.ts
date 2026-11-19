@@ -7,8 +7,9 @@ import { expect, type Page } from "@playwright/test";
 export async function stubSpeechSynthesis(page: Page) {
   await page.addInitScript(() => {
     const calls: string[] = [];
-    const w = window as unknown as { __ttsHold: boolean; __ttsEnd: () => void };
+    const w = window as unknown as { __ttsHold: boolean; __ttsFail: boolean; __ttsEnd: () => void };
     w.__ttsHold = false;
+    w.__ttsFail = false;
     let current: SpeechSynthesisUtterance | null = null;
     w.__ttsEnd = () => {
       const u = current;
@@ -30,7 +31,8 @@ export async function stubSpeechSynthesis(page: Page) {
         // Ends each line a moment later, like a real voice: the screen reads one line at a time and waits for onend.
         speak: (utter: SpeechSynthesisUtterance) => {
           calls.push(utter.text);
-          if (w.__ttsHold) current = utter;
+          if (w.__ttsFail) setTimeout(() => utter.onerror?.(new Event("error") as SpeechSynthesisErrorEvent), 0);
+          else if (w.__ttsHold) current = utter;
           else setTimeout(() => utter.onend?.(new Event("end") as SpeechSynthesisEvent), 50);
         },
         cancel: () => {
@@ -54,6 +56,8 @@ export async function stubSpeechSynthesis(page: Page) {
 
 /** From now on the stubbed voice never ends a line by itself, like a voice that hangs. */
 export const holdSpeech = (page: Page) => page.evaluate(() => void ((window as unknown as { __ttsHold: boolean }).__ttsHold = true));
+/** From now on the stubbed voice fails every line at once (onerror), like a TV whose speech engine is broken. */
+export const failSpeech = (page: Page) => page.evaluate(() => void ((window as unknown as { __ttsFail: boolean }).__ttsFail = true));
 /** Ends the line the held voice is speaking (see holdSpeech). */
 export const endSpeech = (page: Page) => page.evaluate(() => (window as unknown as { __ttsEnd: () => void }).__ttsEnd());
 

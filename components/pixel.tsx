@@ -403,12 +403,20 @@ function Sequence({ lines, onRead, voiceLine, readTo = 0, jump }: { lines: strin
   const [seen, setSeen] = useState(lines);
   const hidden = useSyncExternalStore(subscribeVisibility, () => document.hidden, () => false);
   const [jumped, setJumped] = useState(jump);
+  /** Line i has been typed and up for the reading pause: the box may move on (boxLine). */
+  const [rested, setRested] = useState(false);
+  const go = (to: number, isTyped = false) => {
+    setI(to);
+    setTyped(isTyped);
+    setRested(false);
+  };
+  let moved = false;
   if (firstChange(seen, lines) !== -1) {
     const from = resumeFrom(seen, lines, i);
     setSeen(lines);
     if (from !== null) {
-      setI(Math.min(from, lines.length - 1));
-      setTyped(false);
+      go(Math.min(from, lines.length - 1));
+      moved = true;
     }
   }
   // A line that overrides one already said goes up at once, without the reading pause (#405).
@@ -416,29 +424,23 @@ function Sequence({ lines, onRead, voiceLine, readTo = 0, jump }: { lines: strin
     setJumped(jump);
     const to = jumpLine(i, jump, lines.length);
     if (to !== null) {
-      setI(to);
-      setTyped(false);
+      go(to);
+      moved = true;
     }
   }
-  const want = boxLine(i, lines.length, voiceLine, hidden);
-  if (want !== i || (hidden && !typed)) {
-    setI(want);
-    setTyped(hidden);
-  }
+  const want = boxLine(i, lines.length, voiceLine, hidden, rested);
+  if (!moved && (want !== i || (hidden && !typed))) go(want, hidden);
   const last = i >= lines.length - 1;
   const read = useEffectEvent((count: number) => onRead?.(count));
   useEffect(() => {
     if (typed) read(i + 1);
   }, [typed, i]);
   useEffect(() => {
-    // The voice reading this narration moves the box on (voiceLine), so the words on screen are the words heard.
-    if (!typed || last || voiceLine !== undefined) return;
-    const id = setTimeout(() => {
-      setI((c) => c + 1);
-      setTyped(false);
-    }, LINE_PAUSE_MS);
+    // The reading pause runs whether or not a voice reads the line: boxLine also waits for the voice to move past it.
+    if (!typed || last) return;
+    const id = setTimeout(() => setRested(true), LINE_PAUSE_MS);
     return () => clearTimeout(id);
-  }, [typed, last, voiceLine]);
+  }, [typed, last, i]);
   return (
     <>
       <Typewriter key={`${i}\n${lines[i]}`} text={lines[i] ?? ""} onDone={() => setTyped(true)} />
