@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import { clericStage, hostKeyAction, introKeyAction } from "./host-keys";
 
 describe("hostKeyAction", () => {
-  it("maps 1/2/3/4 to the four judge buttons (4: 逃跑・換房)", () => {
+  it("maps 1/2/3 to the three judge buttons (3: 逃跑)", () => {
     expect(hostKeyAction({ key: "1" }, false)).toBe("correct");
     expect(hostKeyAction({ key: "2" }, false)).toBe("retry");
-    expect(hostKeyAction({ key: "3" }, false)).toBe("flee");
-    expect(hostKeyAction({ key: "4" }, false)).toBe("switch");
-    expect(hostKeyAction({ key: "5" }, false)).toBeNull();
+    expect(hostKeyAction({ key: "3" }, false)).toBe("switch");
+    expect(hostKeyAction({ key: "4" }, false)).toBeNull();
     expect(hostKeyAction({ key: "Enter" }, false)).toBeNull(); // Enter must not mark an answer correct
   });
 
@@ -42,7 +41,7 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "3" }, false, { stuck: false })).toBeNull();
     expect(hostKeyAction({ key: "1" }, false, { stuck: true })).toBeNull(); // the lock judges it, never the host
     expect(hostKeyAction({ key: "2" }, false, { stuck: true })).toBe("retry");
-    expect(hostKeyAction({ key: "3" }, false, { stuck: true })).toBe("flee");
+    expect(hostKeyAction({ key: "3" }, false, { stuck: true })).toBe("switch");
   });
 
   // Value: protects=the host can reveal a waiting lock from the keyboard, and 1 still does nothing once the beat runs
@@ -71,8 +70,8 @@ describe("hostKeyAction", () => {
     expect(hostKeyAction({ key: "1" }, false, undefined, "wait")).toBeNull();
     expect(hostKeyAction({ key: "2" }, false, undefined, "wait")).toBe("pray");
     expect(hostKeyAction({ key: "3" }, false, undefined, "wait")).toBe("retry");
-    expect(hostKeyAction({ key: "4" }, false, undefined, "wait")).toBe("flee");
-    expect(hostKeyAction({ key: "5" }, false, undefined, "wait")).toBe("switch");
+    expect(hostKeyAction({ key: "4" }, false, undefined, "wait")).toBe("switch");
+    expect(hostKeyAction({ key: "5" }, false, undefined, "wait")).toBeNull();
     expect(hostKeyAction({ key: "4" }, false, undefined, "before")).toBeNull();
     expect(hostKeyAction({ key: "5" }, false)).toBeNull();
   });

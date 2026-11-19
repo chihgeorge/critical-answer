@@ -9,7 +9,7 @@
 //   letter-count hint cracks WEAK of the unknown fill-ins, a whole answer or order all of them.
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
-//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room takes 逃跑・換房 (FLEESAME=0.5: 逃跑・同房 half the time, the rule before 2026-11-18).
+//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room meets a new monster (逃跑; FLEESAME=0.5 replays the old rule, the monster kept half the time).
 // - The boss has two phases: a turn-based one (HP1 hearts), then a buzzer phase (HP2) with no abilities.
 // - A team knows a question or not, for good (KNOW by difficulty; fill-in ×TEXTK). A first-letter hint cracks HINT of the
 //   unknown fill-ins. Unknown multipleChoice guesses among the options left; an unknown fill-in flees.
@@ -105,7 +105,7 @@ const CHEATBOSS = process.env.CHEATBOSS !== "0", CHEATERS = env("CHEATERS", 0), 
 for (const k of Object.keys(G.CATCH_PAY)) if (process.env[k.toUpperCase()]) (G.CATCH_PAY as Record<string, number>)[k] = Number(process.env[k.toUpperCase()]);
 // TEAMS=n teams a game (default 4; over 6 picks classes with repeats), CHEFS=k forces the first k to be chefs.
 // DISHALL=1 (what-if "everyone rolls the dish die"): a non-chef's correct turn-based answer rolls a d20 too, a 20 adds half its gain.
-// FLEESAME: share of room flees that are 逃跑・同房. 0 = the owner's 2026-11-18 rule (only 逃跑・換房 outside the boss room); 0.5 = the rule before.
+// FLEESAME: share of room flees that keep the monster (the removed 逃跑・同房). 0 = the current single 逃跑; 0.5 = the rule before 2026-11-18.
 const FLEESAME = env("FLEESAME", 0);
 const TEAMS = env("TEAMS", 4), CHEFS = env("CHEFS", 0), DISHALL = process.env.DISHALL === "1";
 // What-if chef abilities: CHEFADV=1 the chef always rolls one more dish die and keeps the highest; CHEFSTEAL see settle.

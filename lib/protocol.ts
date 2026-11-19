@@ -380,8 +380,8 @@ export type ClientMessage =
       questionId: string;
       correct: boolean;
       /** With correct: false. "team": a cleric's fill-in waits for 祈禱 / 重答 / 逃跑 (#106); "pray": the host
-       * picks 祈禱 for it. */
-      fleeChoice?: "flee" | "retry" | "switch" | "team" | "pray";
+       * picks 祈禱 for it. "switch" is the one 逃跑 (a new monster outside the boss room). */
+      fleeChoice?: "retry" | "switch" | "team" | "pray";
       /** The eventId of the STATE the host judged from; an older one is a stale press and is dropped. */
       eventId?: number;
       /** A music question with fields: each field right or not (docs/designs/multi-field.md F5); `correct` is then
@@ -398,8 +398,9 @@ export type ClientMessage =
   /** Locks the team's current pick (the server's `currentSelection`, never a client-sent index), judged
    * after the reveal beat (docs/designs/phone-answering.md E2, E11). */
   | { type: "TEAM_LOCK_OPTION"; questionId: string; optionIndex?: number }
-  /** The team's choice after a wrong lock: answer again next turn, or flee to an easier question (逃跑・同房), or flee to a new monster (逃跑・換房, "switch"). */
-  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "flee" | "switch" }
+  /** The team's choice after a wrong lock: answer again next turn, or 逃跑 ("switch": a new monster and an easier question;
+   * the boss room's 逃跑 is a new boss question). */
+  | { type: "TEAM_WRONG_CHOICE"; questionId: string; choice: "retry" | "switch" }
   /** Lobby only: the team's class, or null for none. The last pick before HOST_START counts. */
   | { type: "TEAM_PICK_CLASS"; classId: ClassId | null }
   /** Lobby only (#320): the team's colour, an index into TEAM_LOOKS. A colour another team holds is ignored. */
@@ -1131,8 +1132,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const teamId = str(m.teamId, MAX_ID);
       const questionId = str(m.questionId, MAX_ID);
       if (teamId === null || questionId === null || typeof m.correct !== "boolean") return null;
-      if (m.fleeChoice !== undefined && m.fleeChoice !== "flee" && m.fleeChoice !== "retry" && m.fleeChoice !== "switch" && m.fleeChoice !== "team" && m.fleeChoice !== "pray") return null;
-      if (m.correct && (m.fleeChoice === "team" || m.fleeChoice === "pray")) return null;
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
+      const fleeChoice = m.fleeChoice === "flee" ? "switch" : m.fleeChoice;
+      if (fleeChoice !== undefined && fleeChoice !== "retry" && fleeChoice !== "switch" && fleeChoice !== "team" && fleeChoice !== "pray") return null;
+      if (m.correct && (fleeChoice === "team" || fleeChoice === "pray")) return null;
       if (m.eventId !== undefined && !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
       // Per-field verdicts must agree with `correct`: right when at least one field is (multi-field.md F6).
       const fields = m.fields;
@@ -1142,7 +1145,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         teamId,
         questionId,
         correct: m.correct,
-        fleeChoice: m.fleeChoice,
+        fleeChoice,
         ...(m.eventId !== undefined ? { eventId: m.eventId as number } : {}),
         ...(fields !== undefined ? { fields: fields as boolean[] } : {}),
       };
@@ -1183,8 +1186,9 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "TEAM_WRONG_CHOICE": {
       const questionId = str(m.questionId, MAX_ID);
+      // "flee" (the old 逃跑・同房, from a stale page) is the one 逃跑 now.
       if (questionId === null || (m.choice !== "retry" && m.choice !== "flee" && m.choice !== "switch")) return null;
-      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice };
+      return { type: "TEAM_WRONG_CHOICE", questionId, choice: m.choice === "retry" ? "retry" : "switch" };
     }
     case "TEAM_PICK_CLASS":
       return m.classId === null || isClassId(m.classId) ? { type: "TEAM_PICK_CLASS", classId: m.classId } : null;

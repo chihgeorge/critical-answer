@@ -244,7 +244,7 @@ export interface Team {
   /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). `earned`: its own
    * correct answer reached bossThreshold (answerQuestion), not the host, an open door or an event room (⚡ 閃電突擊). */
   bossAt?: { round: number; turns: number; earned?: true };
-  /** 逃跑・換房 put a new monster in this team's room (catalog id); dropped when the team leaves the room. */
+  /** 逃跑 put a new monster in this team's room (catalog id); dropped when the team leaves the room. */
   swappedMonsterId?: string;
   /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
   flees?: number;
@@ -511,22 +511,23 @@ export type AnswerOutcome =
    * `dishDie` the dish die that landed, absent when none rolled. */
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; dishBonus?: number; dishDie?: number; killBonus?: number; roll?: RollMark }
-  /** `switchedTo`: 逃跑・換房's new monster (catalog id). */
+  /** `switchedTo`: 逃跑's new monster (catalog id). */
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true; penalty?: number };
 
 export class InvalidActionError extends Error {}
 
-/** After a wrong answer: 重答, 逃跑・同房 ("flee"), or 逃跑・換房 ("switch": a new monster, same room). */
+/** After a wrong answer: 重答, or 逃跑 ("switch": a new monster, same room). "flee" keeps the monster: only 🚨 成立
+ * (upholdCatch) uses it now; the boss room treats both alike. */
 export type FleeChoice = "retry" | "flee" | "switch";
 
-/** The monster this team faces in its room: 逃跑・換房's, else the room's. */
+/** The monster this team faces in its room: 逃跑's, else the room's. */
 export function teamMonsterId(game: GameState, team: Team): string | undefined {
   return team.swappedMonsterId ?? game.rooms[team.roomIndex]?.monsterId;
 }
 
-/** 逃跑・換房's new monster: another room monster of this game at the same base difficulty, else any other room
+/** 逃跑's new monster: another room monster of this game at the same base difficulty, else any other room
  * monster in the catalog (the catalog has no tiers of its own). */
 function switchMonster(game: GameState, team: Team, rng: () => number): string {
   const now = teamMonsterId(game, team);
