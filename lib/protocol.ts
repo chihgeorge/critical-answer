@@ -644,7 +644,9 @@ export type ServerMessage =
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
    * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
    * text never locks the new one (host-narration-edit.md D14). */
-  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
+  /** `jump`: the last line overrides one already said (送王房, 撤回裁決): the big screen shows it at once, without its
+   * reading pause (#405). */
+  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number; jump?: true }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
   | { type: "EPILOGUE"; text: string; replay?: true }

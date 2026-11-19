@@ -3247,7 +3247,7 @@ export class DungeonRoom {
   /** Adds a scripted line after narration `eventId` (last-sprint.md E5, shared with lucky-potion.md E5): at once with
    * `rev + 1`, as a host edit goes out, or held until that narration lands. Cut to MAX_EDIT_LINE (team names are user
    * text); dropped once the game is over. */
-  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE) {
+  private appendLine(eventId: number, raw: string, max = MAX_EDIT_LINE, jump = false) {
     const line = sanitizeText(raw, max);
     if (!line || this.game?.phase !== "playing") return;
     const n = this.lastNarration;
@@ -3255,7 +3255,7 @@ export class DungeonRoom {
       // A save past the limit would not restore: a line more is dropped rather than the game (buzzer drops can pile up).
       if (n.lines.length >= NARRATION_MAX_LINES) return void console.log(JSON.stringify({ event: "narration_line_dropped", eventId, lines: n.lines.length }));
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
-      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1 });
+      this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1, ...(jump ? { jump: true as const } : {}) });
     } else if (!n || n.eventId < eventId) {
       this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
     }
@@ -3925,7 +3925,8 @@ export class DungeonRoom {
       if (next && this.reveal) {
         this.heldHandoff = { eventId: this.eventSeq, line: this.scripted.nextLine(next), next };
         this.persist();
-      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
+        // It overrides the handoff already said: the big screen shows it at once (#405).
+      } else if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next), MAX_EDIT_LINE, true);
     } catch (err) {
       this.sendInvalid(conn, err);
     }
@@ -5343,7 +5344,7 @@ export class DungeonRoom {
     // A clip the host played over the caught answer stops: the open catch holds the question again.
     if (this.media?.questionId === undo.questionId && this.media.state === "playing") this.media = { ...this.media, state: "paused", press: this.media.press + 1 };
     console.log(JSON.stringify({ event: "catch_ruling_undone", upheld: undo.verdict.upheld, teamId: undo.teamId }));
-    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE);
+    this.appendLine(this.eventSeq, VERDICT_UNDO_LINE, MAX_EDIT_LINE, true); // takes back the ruling just said (#405)
     this.broadcastState();
   }
 
