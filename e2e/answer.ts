@@ -179,13 +179,14 @@ export type HostState = { type: string; phase: string; hold?: { id: number }; po
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
 export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTurn?: (team: HostState["view"]["teams"][number]) => Promise<void>) {
   for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
-    await onTurn?.(cur().view.teams[0]);
-    const before = cur().eventId;
-    // A correct answer's reveal waits for 🎲 擲料理骰 (HOST_NEXT): its die lands, then the scored reveal replaces it.
+    // A correct answer's reveal waits for 🎲 擲料理骰 (HOST_NEXT): its die lands, then the scored reveal (with its dish)
+    // replaces it. Before onTurn, so it sees the dish as the old flow did.
     if (cur().reveal?.dishNext) {
       host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
       await expect.poll(() => !!cur().reveal?.dishNext, { timeout: JUDGE_LANDS_MS }).toBe(false);
     }
+    await onTurn?.(cur().view.teams[0]);
+    const before = cur().eventId;
     // Close the previous answer reveal (D7); no-op if none. A cooked monster is served first, and 下一題 waits out its cooking.
     if (cur().reveal?.dish && !cur().reveal?.served) {
       host.send(JSON.stringify({ type: "HOST_SERVE", eventId: cur().eventId }));

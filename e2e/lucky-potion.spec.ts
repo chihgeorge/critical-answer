@@ -58,6 +58,8 @@ test("lucky potion: host gives it, the team drinks it, the dish die rolls two di
   await team.getByRole("button", { name: new RegExp(`^[A-D]\\s*${answer.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await host.getByRole("button", { name: /公布答案/ }).click();
+  // The answer and its explanation come first; 🎲 擲料理骰 rolls the dish die.
+  await host.getByRole("button", { name: "🎲 擲料理骰", exact: true }).click();
 
   const overlay = screen.getByTestId("roll-overlay");
   await expect(overlay).toHaveAttribute("data-kind", "dish");
