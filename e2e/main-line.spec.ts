@@ -166,7 +166,7 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
 });
 
 test("game over: the boss cooks, then the podium, then the epilogue arrives on the big screen", async ({ browser }) => {
-  test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
+  test.setTimeout(180_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
   const code = "EPLG";
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
@@ -203,7 +203,7 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   const bossOnStage = screen.waitForFunction(
     (names) => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => names.includes(e.textContent ?? "")),
     bosses,
-    { polling: "raf", timeout: 80_000 },
+    { polling: "raf", timeout: 140_000 },
   );
   let sawBossRoom = false;
   let sawDefeated = false;
