@@ -17,7 +17,7 @@ import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type Sce
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
-import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceNarration, type NarrationState } from "@/lib/narration/client";
+import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
@@ -902,7 +902,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
 
 /** ❓ 神秘房's outcome on the big screen (event-rooms.md D6, branch-fork.md): the scene in the arch and what it did, until
  * 下一題. The turn has passed on: the stage stays the event team's, one room back. */
-function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: SpectatorView; reveal: EventReveal; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+function EventRoomScreen({ view, reveal, eventId, narration, onRead, voiceLine }: { view: SpectatorView; reveal: EventReveal; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void; voiceLine?: number }) {
   const idx = view.teams.findIndex((t) => t.id === reveal.teamId);
   const team = view.teams[idx];
   const text = EVENT_SCENE_TEXT[reveal.scene];
@@ -936,7 +936,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
         lines={narration ? narration.lines : [`${name}打開了神秘房……`]}
-        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
       />
     </>
   );
@@ -945,7 +945,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead }: { view: S
 /** 占卜師 on the big screen (fortune-teller.md): the crystal ball with the condition, then the pizza and its clock, the
  * picked slice lit, then the effect card with every team the condition hit, until 下一題. The view is the game from before
  * the pick until the card. */
-function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { view: SpectatorView; fortune: FortuneView; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceLine }: { view: SpectatorView; fortune: FortuneView; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void; voiceLine?: number }) {
   const idx = view.teams.findIndex((t) => t.id === fortune.teamId);
   const team = view.teams[idx];
   const name = team?.name ?? "";
@@ -984,7 +984,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
         lines={narration ? narration.lines : [`占卜師看著${name}……`]}
-        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
       />
     </>
   );
@@ -993,7 +993,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
 /** 叉路 on the big screen (branch-fork.md): the middle arch is bricked up and a door stands in each of two doorways, 左門
  * and 右門, nothing behind either told. Once a side is picked (forkBeat) its door swings open and names what was behind it;
  * the other dims and stays unnamed. A timeout is marked ⏳ first. */
-function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+function ForkScreen({ view, beat, left, eventId, narration, onRead, voiceLine }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void; voiceLine?: number }) {
   const idx = view.teams.findIndex((t) => t.id === (beat ? beat.teamId : view.currentTurnTeamId));
   const team = view.teams[idx];
   const name = team?.name ?? "";
@@ -1041,7 +1041,7 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}
         loading={isPending(eventId, narration)}
         lines={narration ? narration.lines : [`${name}走到了叉路口……`]}
-        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count) } : {})}
+        {...(narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine } : {})}
       />
     </>
   );
@@ -1078,7 +1078,7 @@ function AwardCard({ beat, teams }: { beat: Extract<Beat, { kind: "award" }>; te
   );
 }
 
-function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, page, cuisine, finale, say, onRead, onCook, onChef, onCue, onPodium }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; page: number; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onChef: (bonus?: number) => void; onCue: (cue: SoundCue) => void; onPodium: () => void }) {
+function Finished({ view, winners, reveal, podium, narration, unread, typedTo, epilogue, page, cuisine, finale, say, onRead, onCook, onChef, onCue, onPodium, voiceAt }: { view: SpectatorView; winners: string[]; reveal: AnswerReveal | null; podium?: PodiumReveal; narration: NarrationState; unread: boolean; typedTo: number; epilogue: string | null; page: number; cuisine?: true; finale: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onCook: () => void; onChef: (bonus?: number) => void; onCue: (cue: SoundCue) => void; onPodium: () => void; voiceAt: VoiceAt }) {
   const dish = reveal?.dish;
   const line = dish ? dishLine(dish, "", true) : "";
   // The boss cooks first and the winner waits (cooking R8, I4): only a kill this screen saw live plays it.
@@ -1223,7 +1223,7 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7, ...(ended && epilogue ? { fontSize: 22, lineHeight: 1.35 } : {}) }}
         loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
         lines={step === 3 ? [line] : ended && shownEpilogue ? [shownEpilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
-        {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from) } : {})}
+        {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from), voiceLine: voiceLineOf(voiceAt, narration.eventId, from) } : {})}
       />
     </>
   );
@@ -1358,12 +1358,15 @@ export default function ScreenPage() {
    * `eventId` is the narration's, or null for any other line (intro, 上菜, epilogue). */
   const speech = useRef<{ lines: string[]; at: number; eventId: number | null; utter: SpeechSynthesisUtterance | null } | null>(null);
   /** The narration line the voice is reading, for the dialogue box to show the same line (#365). */
-  const [voiceAt, setVoiceAt] = useState<{ eventId: number; at: number } | null>(null);
+  const [voiceAt, setVoiceAt] = useState<VoiceAt>(null);
+  const voiceLine = voiceLineOf(voiceAt, narration?.eventId);
 
   function speakAt(q: NonNullable<typeof speech.current>) {
     if (speech.current !== q || !ttsVoice) return;
     if (q.at >= q.lines.length) {
       speech.current = null;
+      // The box is on the last line spoken: lines added later without the voice (a replay's) read at its own pace.
+      setVoiceAt(null);
       return;
     }
     setVoiceAt(q.eventId === null ? null : { eventId: q.eventId, at: q.at });
@@ -2187,16 +2190,16 @@ export default function ScreenPage() {
         )}
         {/* A door opening first (its view is the game before the press), then a ❓ outcome, then a team choosing its door. */}
         {game?.phase === "playing" && !game.intro && !game.initiative && game.fortune ? (
-          <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+          <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
-          <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+          <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
-          <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}
+          <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}
-        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onChef={onChef} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} />}
+        {game?.phase === "finished" && <Finished view={game.view} winners={game.winners} reveal={game.reveal} podium={game.podium} narration={narration} unread={!!narration && unreadId === narration.eventId} typedTo={typedTo} epilogue={epilogue} page={game.epiloguePage?.page ?? 0} cuisine={game.cuisine} finale={finale} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onCook={() => bgm.current?.playCue(SFX.cook)} onChef={onChef} onCue={(cue) => bgm.current?.playCue(SFX[cue])} onPodium={onPodium} voiceAt={voiceAt} />}
         {game?.phase === "playing" && <ReactionFloats floats={floats} teams={game.view.teams} />}
         </div>
         {/* 🌑 螢幕變暗 (immersion.md PR2): over the stage content, under the edge glows and banners; never under a transition. */}

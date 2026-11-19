@@ -53,6 +53,16 @@ export function boxLine(i: number, count: number, voiceLine: number | undefined,
   return voiceLine === undefined ? i : Math.min(Math.max(i, voiceLine), last);
 }
 
+/** The narration line the screen's voice is reading: `at` of narration `eventId`, or null when it reads none. */
+export type VoiceAt = { eventId: number; at: number } | null;
+
+/** The `voiceLine` for a dialogue box showing narration `eventId` from its line `from` (#365): every screen's narration
+ * box waits for the voice, not only the turn screen's. Undefined when the voice is not reading that narration (🔊 off,
+ * no voice, a replay), so the box keeps its own pace. */
+export function voiceLineOf(voiceAt: VoiceAt, eventId: number | undefined, from = 0): number | undefined {
+  return voiceAt && voiceAt.eventId === eventId ? Math.max(0, voiceAt.at - from) : undefined;
+}
+
 export const revealDialogue = (scored: boolean): string => scored ? "答對！" : "……";
 
 /** Where the dialogue box goes for a NARRATION `jump` (#405): to line `jump`, the line that overrides one already

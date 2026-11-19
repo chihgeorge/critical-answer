@@ -1,7 +1,7 @@
 import { test, expect, type Browser, type Page, type WebSocketRoute } from "@playwright/test";
 import type { PodiumReveal } from "../lib/protocol";
 import { advanceSocketAwards, answerCorrectly, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, nextQuestion, screenUrl, clickStart, openMore, closeMore, openSettings, closeLeftoverContexts } from "./answer";
-import { setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
+import { endSpeech, holdSpeech, setScreenAudio, stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 
 // These tests judge by hand (or HOST_JUDGE), which a multipleChoice turn doesn't take.
 textOnlyBank();
@@ -439,4 +439,82 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await host.getByRole("button", { name: "下一頁 ▶" }).click();
   await expect(screen.getByTestId("how-to-play")).toContainText("2/8");
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1, page2]);
+});
+
+// Value: protects=on the 叉路 screen (not only the turn screen) the next narration line waits until the voice has
+// finished the one before it, and a voice that never ends still lets the box read on after speechTimeoutMs;
+// fails_when=the box moves on after its own ~2.2 s pause while the line is still being spoken, or stalls forever on a
+// hung voice; why_new=only the turn screen's box followed the voice (owner report); seam=routeWebSocket freezes the
+// screen on the fork and injects the narration; no_claim=real speech output (speechSynthesis is stubbed)
+test("screen TTS: on the 叉路 screen the next line waits for the voice to finish, or for the safety timeout", async ({ browser }) => {
+  test.setTimeout(90_000);
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+
+  // The screen opens first: the fork's 15 s clock (auto pacing) leaves no time to open it there.
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await stubSpeechSynthesis(screen);
+  let frozen = false;
+  let sceneId = 0;
+  const sockets: WebSocketRoute[] = [];
+  await screen.routeWebSocket(/:1996\//, (ws) => {
+    sockets.push(ws);
+    ws.connectToServer().onMessage((m) => {
+      // Once frozen, the screen hears only this test: it stays on the fork whatever the room's clock does.
+      if (frozen) return;
+      const msg = JSON.parse(String(m)) as { type: string; eventId?: number };
+      if (msg.type === "STATE") sceneId = msg.eventId!;
+      ws.send(m);
+    });
+  });
+  await screen.goto(await screenUrl(host));
+  await tapScreen(screen);
+
+  // E2E_EVENT_TEAM: EventTeam (first in turn order) comes to a fork on its second turn (see event-rooms.spec.ts).
+  for (const name of ["EventTeam", "Plain"]) {
+    const page = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+    await page.goto(`/room/${code}/play?name=${name}`);
+    await expect(page.getByText("等待主持人開始遊戲")).toBeVisible();
+    await expect(host.getByText(name)).toBeVisible();
+  }
+  await startGame(host);
+  await expect(host.getByText("輪到：EventTeam")).toBeVisible();
+  await answerCorrectly(host);
+  await nextQuestion(host);
+  await expect(host.getByText("輪到：Plain")).toBeVisible();
+  await answerCorrectly(host);
+  await nextQuestion(host);
+  await expect(screen.getByTestId("fork-doors")).toBeVisible();
+  const box = screen.locator(".px-say");
+  await expect(box.getByLabel("旁白準備中")).toHaveCount(0); // the fork's own narration is in
+  frozen = true;
+  expect(sockets).toHaveLength(1); // a reconnect would re-arm the replay guard and leave the injected lines unspoken
+  await holdSpeech(screen);
+  let rev = 90;
+  const narrate = (lines: string[]) => sockets.at(-1)!.send(JSON.stringify({ type: "NARRATION", eventId: sceneId, lines, rev: rev++ }));
+
+  // 1. The next line waits for onend: well past the box's own 2.2 s pause, the first line is still up.
+  const first = "叉路口的風很冷，冒險者得想清楚要走哪一扇門才好";
+  const second = "第二句要等語音念完";
+  narrate([first, second]);
+  await expect(box).toContainText(first);
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(first);
+  await screen.waitForTimeout(3500);
+  await expect(box).toContainText(first);
+  await expect(box).not.toContainText(second);
+  await endSpeech(screen);
+  await expect(box).toContainText(second); // long before line 1's 12 s safety timeout
+  await expect.poll(() => ttsCalls(screen)).toContainEqual(second);
+
+  // 2. A voice that never ends: the box still reads on after speechTimeoutMs (5 characters: 5 s).
+  const hung = "語音卡住了";
+  const after = "超時後照樣顯示";
+  narrate([hung, after]);
+  await expect(box).toContainText(hung);
+  await screen.waitForTimeout(3000);
+  await expect(box).not.toContainText(after);
+  await expect(box).toContainText(after, { timeout: 8000 });
 });

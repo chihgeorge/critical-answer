@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxLine, editedLine, firstChange, handoffAdded, jumpLine, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, revealLines, sequenceStart, voiceNarration } from "./client";
+import { boxLine, editedLine, firstChange, handoffAdded, jumpLine, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, revealLines, sequenceStart, voiceLineOf, voiceNarration } from "./client";
 
 // Value: protects=the next-team line added after 下一題 is spoken, a late line over a reveal is not (#350, #352);
 // fails_when=handoffAdded ignores the reveal or the tracked narration, or voiceNarration voices the served dish's own lines.
@@ -72,6 +72,20 @@ describe("boxLine (#365)", () => {
     expect(boxLine(0, 3, undefined, true)).toBe(2);
     expect(boxLine(0, 3, 0, true)).toBe(2);
     expect(boxLine(0, 0, undefined, true)).toBe(0);
+  });
+});
+
+describe("voiceLineOf", () => {
+  // Value: protects=a narration box on any screen (叉路, 神秘房, 占卜, end screen) waits for the voice before its next line; fails_when=the box shows line 2 while line 1 is still being spoken
+  it("is the voice's line for the narration it reads, else undefined (the box keeps its own pace)", () => {
+    expect(voiceLineOf({ eventId: 4, at: 1 }, 4)).toBe(1);
+    expect(voiceLineOf({ eventId: 3, at: 1 }, 4)).toBeUndefined();
+    expect(voiceLineOf(null, 4)).toBeUndefined();
+    expect(voiceLineOf({ eventId: 4, at: 0 }, undefined)).toBeUndefined();
+  });
+  it("counts from the box's first line (the end screen picks up where the game screen was)", () => {
+    expect(voiceLineOf({ eventId: 4, at: 2 }, 4, 1)).toBe(1);
+    expect(voiceLineOf({ eventId: 4, at: 0 }, 4, 1)).toBe(0); // the voice still behind: the box holds its first line
   });
 });
 
