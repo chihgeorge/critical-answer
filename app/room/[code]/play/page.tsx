@@ -22,7 +22,7 @@ import { DialogueBox, LabelChip, Panel, PixelButton, QuestionMedia, SceneBackgro
 import { memoryPhoneHint } from "@/lib/memory-copy";
 import { dishUp, useCookStep, useFinaleStep, useRevealTime } from "@/components/cooking";
 import { PHONE_LAG_MS, placeLabel, revealNow, teamPlace } from "@/lib/podium";
-import { McOption } from "@/components/mc-option";
+import { McOption, optionLetter } from "@/components/mc-option";
 import { TapButton, useTapPhone } from "@/components/tap-button";
 import { CalibrateTap } from "@/components/calibrate-tap";
 import { D20 } from "@/components/d20";
@@ -230,7 +230,7 @@ function QuestionStrip({ id, text, className = "-mx-[10px] -mt-[10px] mb-[2px]" 
 
 /**
  * The team's own multipleChoice turn (docs/designs/phone-answering.md D2, D5–D7): pick, lock, then
- * either the beat (locked) or, after a wrong lock, 下輪再答 / 逃跑. Eliminated options are grey and inert.
+ * either the beat (locked) or, after a wrong lock, one 你們選的 line and 下輪再答 / 逃跑. Eliminated options are grey and inert.
  * `drops` counts lock refusals and socket drops: one after a press means the lock is lost now, with no confirm wait.
  * (A refusal of another action with the same detail can flash 沒送出 until the lock's STATE lands; a second press is
  * refused as answer_pending, so it cannot lock twice.)
@@ -304,6 +304,14 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
             setMine({ qid: q.id, order });
           }}
         />
+      ) : wrong ? (
+        // After a wrong lock the four grey tiles would push 逃跑 under the fold (cleric): one line says what was picked.
+        wrong.optionIndex !== null && options[wrong.optionIndex] !== undefined && (
+          <div data-testid="my-wrong-pick" className="flex items-baseline gap-2 border-t-[3px] border-[var(--dim-line)] pt-1 text-[18px] [overflow-wrap:anywhere]">
+            <span className="min-w-0 text-[var(--k)]">你們選的：{optionLetter(wrong.optionIndex)} {options[wrong.optionIndex]}</span>
+            <span className="ml-auto shrink-0 text-[var(--wrong)]">✕ 答錯</span>
+          </div>
+        )
       ) : (
       <div role="group" aria-labelledby={text ? stripId : undefined} aria-label={text ? undefined : "選項"} className="flex flex-col gap-2">
         {options.map((opt, i) => {
