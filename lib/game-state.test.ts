@@ -66,6 +66,7 @@ import {
   type Difficulty,
   type GameState,
   hostRejudge,
+  type GameConfig,
   type RoomTemplate,
   teamMonsterId,
   allTapped,
@@ -145,6 +146,29 @@ describe("createGame", () => {
     expect(g.boss.phases[1].questionIds).toEqual(["p2-easy", "p2-hard"]);
     expect(g.bossDifficulties).toEqual(marked);
     expect(createGame(teams, ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first)).not.toHaveProperty("bossDifficulties");
+  });
+
+  it("首領題隨機順序: off keeps the bank order; on shuffles each phase within a difficulty only", () => {
+    const teams = [{ id: "T0", name: "A" }];
+    const boss = ["h1", "e1", "e2", "e3", "h2", "h3"];
+    const later = [{ maxHp: 2, questionIds: ["p1", "p2", "p3", "p4"] }];
+    const marked = { e1: 2, e2: 2, e3: 2 } as const;
+    const played = ["e1", "h3"];
+    const make = (config: GameConfig, rng: () => number) => createGame(teams, ...deck(3, 1, 2), boss, config, 2, rng, undefined, {}, later, undefined, played, marked);
+    const off = make({ bossThreshold: 3 }, first);
+    expect(off.boss.questionIds).toEqual(["e2", "e3", "e1", "h1", "h2", "h3"]);
+    expect(off.boss.phases[1].questionIds).toEqual(["p1", "p2", "p3", "p4"]);
+    // rng 0 swaps index i with 0 at every step, so the shuffle visibly moves every list.
+    const on = make({ bossThreshold: 3, bossShuffle: true }, first);
+    const ids = on.boss.questionIds;
+    expect(ids).not.toEqual(off.boss.questionIds);
+    expect(ids.slice(0, 3).sort()).toEqual(["e1", "e2", "e3"]); // easiest difficulty still first
+    expect(ids[2]).toBe("e1"); // played last game: still last within its difficulty
+    expect(ids[5]).toBe("h3");
+    expect(ids.slice(3, 5).sort()).toEqual(["h1", "h2"]);
+    expect(on.boss.currentQuestionId).toBe(ids[0]);
+    expect(on.boss.phases[1].questionIds).not.toEqual(["p1", "p2", "p3", "p4"]);
+    expect([...on.boss.phases[1].questionIds].sort()).toEqual(["p1", "p2", "p3", "p4"]);
   });
 
   it("repeats an earlier game's questions once nothing else is left", () => {

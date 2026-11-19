@@ -399,6 +399,8 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
+  /** 首領題隨機順序 (lobby): each boss phase's questions shuffled within one difficulty. Absent keeps the bank order. */
+  bossShuffle?: true;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -802,7 +804,16 @@ export function createGame(
   const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
   // Easiest first; within one difficulty, an answer the last game showed goes last (a stable sort keeps freshFirst's order).
   const difficulty = (id: string) => (Object.hasOwn(bossDifficulties, id) ? bossDifficulties[id] : DEFAULT_BOSS_DIFFICULTY);
-  const bossOrder = (ids: string[]) => freshFirst(ids).sort((a, b) => difficulty(a) - difficulty(b));
+  // Shuffled before the stable sort, so 首領題隨機順序 moves questions only within their difficulty. Off draws no rng.
+  const shuffled = (ids: string[]) => {
+    const a = [...ids];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = pickIndex(rng, i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const bossOrder = (ids: string[]) => freshFirst(config.bossShuffle ? shuffled(ids) : ids).sort((a, b) => difficulty(a) - difficulty(b));
   bossQuestionIds = bossOrder(bossQuestionIds);
   laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];

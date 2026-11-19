@@ -106,6 +106,8 @@ export default function HostPage() {
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   /** 進王門檻 for the next game: this page's pick like answerSeconds; the room keeps it in game.config once started. */
   const [bossThreshold, setBossThreshold] = useState<number>(BOSS_THRESHOLD);
+  /** 首領題隨機順序 for the next game: this page's pick like bossThreshold; off keeps the bank order. */
+  const [bossShuffle, setBossShuffle] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -1024,7 +1026,7 @@ export default function HostPage() {
             <Panel className="mt-auto px-3 py-2">
               <div className="flex items-center gap-2">
                 <div data-testid="host-settings-summary" className="min-w-0 flex-1 text-[15px]">
-                  遊戲設定：玩法說明{introOn ? "開" : "關"}・作答 {answerSeconds ? `${answerSeconds} 秒` : "不倒數"}・進王 {bossThreshold} 分・{banks.selected.name}
+                  遊戲設定：玩法說明{introOn ? "開" : "關"}・作答 {answerSeconds ? `${answerSeconds} 秒` : "不倒數"}・進王 {bossThreshold} 分{bossShuffle ? "・首領題隨機" : ""}・{banks.selected.name}
                   {banks.loading && "（載入中…）"}
                 </div>
                 <PixelButton data-testid="host-settings-toggle" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(!settingsOpen)} className="!m-0 min-h-[44px] flex-none whitespace-nowrap !px-3 !py-1 text-[15px]">
@@ -1074,6 +1076,17 @@ export default function HostPage() {
                   </label>
                   <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
                   <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
+                    <input
+                      type="checkbox"
+                      data-testid="boss-shuffle"
+                      checked={bossShuffle}
+                      onChange={(e) => setBossShuffle(e.target.checked)}
+                      className="h-6 w-6 accent-[var(--k)]"
+                    />
+                    首領題隨機順序（同難度內）
+                  </label>
+                  <div className="text-[13px]">仍由簡單到難；關閉時照題庫順序出題</div>
+                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
                     題庫：
                     <select
                       data-testid="host-bank"
@@ -1114,7 +1127,7 @@ export default function HostPage() {
                 const noClass = lobby.filter((t) => !t.classId).length;
                 const warnings = [...(sizeWarning ? [bankSizeWarningText(sizeWarning, lobby.length)] : []), ...(noClass ? [`還有 ${noClass} 隊沒選職業（沒有技能，比較吃虧）`] : [])];
                 if (warnings.length && !window.confirm(`${warnings.join("\n")}\n確定要開始？`)) return;
-                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold });
+                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold, bossShuffle });
               }}
             >
               開始遊戲 ▶
