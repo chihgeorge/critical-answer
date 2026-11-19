@@ -13,9 +13,10 @@ export function AnswerClock({ ms, variant, onSecond, paused }: { ms: number; var
   const [left, setLeft] = useState(ms);
   useEffect(() => {
     if (paused) return;
-    let last = Date.now();
+    // performance.now: a wall-clock step on the device must not add time.
+    let last = performance.now();
     const t = setInterval(() => {
-      const now = Date.now();
+      const now = performance.now();
       setLeft((l) => l - (now - last));
       last = now;
     }, 250);

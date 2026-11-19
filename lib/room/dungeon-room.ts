@@ -3088,7 +3088,8 @@ export class DungeonRoom {
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
     // The entrance before the handoff to the next team (#394), leaving the handoff a slot under the line cap.
-    const room = NARRATION_MAX_LINES - (this.lastNarration?.lines.length ?? 0) - (held && line ? 1 : 0);
+    const shown = this.lastNarration?.eventId === this.eventSeq ? this.lastNarration.lines.length : 0;
+    const room = NARRATION_MAX_LINES - shown - (held && line ? 1 : 0);
     if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint).slice(0, Math.max(0, room))) this.appendLine(this.eventSeq, entry);
     if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
   }
