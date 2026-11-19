@@ -87,6 +87,7 @@ async function intoBuzzerPhase(browser: Browser) {
 // line are missing, or the host's buttons do not move the question; why_new=game-state tests cover the rules, nothing
 // drove the pages; seam=none; no_claim=a dropped picker (dungeon-room unit tests)
 test("buzzer pick (#370): the winner picks a category, the host overrides by type, and 下一步 ends a hold", async ({ browser, request }) => {
+  test.setTimeout(60_000); // 答錯 until the wanted boss question, each turn now with its own self-rolling check (#422)
   await seedBuzzer(request, [
     text("pick-a", "動漫"),
     { kind: "text", id: "pick-b", content: { kind: "youtube", value: VIDEO, audioOnly: true }, prompt: "題目 pick-b", answer: "答案 pick-b", category: "電影" },
