@@ -53,6 +53,8 @@ export interface GameLog {
     /** 🧪 幸運藥水 the host gave this team, and the ones it drank (docs/designs/lucky-potion.md E8). */
     potionsGiven: number;
     potionsDrunk: number;
+    /** 群眾預測 this team got right (docs/designs/crowd-prediction.md), 改判 included. 0 in older logs. */
+    predictionsRight: number;
     /** The host's 修正 presses on this team, in order: what changed, from and to (game-state hostFix). Empty in older logs. */
     fixes: FixRecord[];
     /** 抓包與神諭 (docs/designs/anti-ai-cheating.md): oracles this team used; catches it filed, and how each ended (a
@@ -100,6 +102,7 @@ export function gameLog(game: GameState, endedAt: number): GameLog {
       titles: awards.filter((a) => a.teamIds.includes(t.id)).map((a) => a.id),
       potionsGiven: t.potionsGiven ?? 0,
       potionsDrunk: t.potionsDrunk ?? 0,
+      predictionsRight: t.predictionsRight ?? 0,
       fixes: t.fixes ?? [],
       ...(t.catchesLeft !== undefined
         ? { antiCheat: { oracles: t.oracles ?? 0, catchesFiled: t.catchesFiled ?? 0, upheld: t.catchesUpheld ?? 0, dismissed: t.catchesDismissed ?? 0, cancelled: t.catchesCancelled ?? 0 } }

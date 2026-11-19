@@ -78,6 +78,7 @@ export interface TitleTeam {
   dishes?: string[];
   flees?: number;
   potionsDrunk?: number;
+  predictionsRight?: number;
   natural20s?: number;
   turns?: number;
   bossAt?: { turns: number; earned?: true };
@@ -113,6 +114,8 @@ const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, t
   { id: "dishes", icon: "🍲", title: "大胃王", value: (t) => t.dishes?.length || null, reason: (n) => `吃了 ${n} 道料理` },
   // Only a team that answered its way in (earned): one sent by the host or let through an open door is not quick.
   { id: "rush", icon: "⚡", title: "閃電突擊", value: (t) => (t.bossAt?.earned ? t.bossAt.turns : null), reason: (n) => `${n} 回合就進魔王房`, fewest: true },
+  // 🎯 群眾預測 guessed right (docs/designs/crowd-prediction.md). Not 🔮: that icon is 命運之子's.
+  { id: "prophet", icon: "🎯", title: "神預言", value: (t) => t.predictionsRight || null, reason: (n) => `猜中 ${n} 次` },
   { id: "crit", icon: "🎲", title: "大成功王", value: (t) => t.natural20s || null, reason: (n) => `擲出 ${n} 次 20` },
 ];
 

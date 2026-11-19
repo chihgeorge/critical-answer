@@ -458,7 +458,10 @@ export type ClientMessage =
   | { type: "HOST_BUZZ_PICK"; qtype: string }
   | { type: "HOST_BUZZ_PICK"; questionId: string }
   /** 觀眾反應 (docs/designs/audience-reactions.md): a waiting team taps one fixed reaction; the room rate-limits it. */
-  | { type: "REACT"; reaction: Reaction };
+  | { type: "REACT"; reaction: Reaction }
+  /** 群眾預測 (docs/designs/crowd-prediction.md): a waiting team locks 會答對 (true) or 會答錯 on the team answering. Final;
+   * `eventId` is STATE's, so a slow press from a judged attempt never lands in the retry's round. */
+  | { type: "PREDICT"; eventId: number; correct: boolean };
 
 /** The only reactions a phone can send: fixed, so there is no free text to filter. */
 export const REACTIONS = { clap: { emoji: "👏", label: "鼓掌" }, wow: { emoji: "😱", label: "好險" }, lol: { emoji: "😂", label: "笑死" }, boo: { emoji: "👎", label: "噓～" } } as const;
@@ -469,6 +472,8 @@ export const REACT_GAP_MS = 2000;
 export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;
+/** How long the phones and the big screen show a prediction's result when no answer card holds it (crowd-prediction.md). */
+export const PREDICT_SHOW_MS = 6000;
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
  * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
@@ -553,6 +558,11 @@ export type ServerMessage =
       undoWrong?: { teamId: string; questionId: string };
       /** The catch ruling HOST_UNDO_RULING may still take back (anti-ai-cheating.md): until the next question shows or anything moves. */
       undoRuling?: { upheld: boolean };
+      /** 群眾預測 (crowd-prediction.md): `open` while a waiting team may still lock on this turn's answer; `locked`, the
+       * teams that locked (who, never which side). Absent when neither. */
+      predictions?: { open: boolean; locked: string[] };
+      /** The last judgment's predictions: the teams that guessed it right and wrong. Memory only; absent when no team locked. */
+      predicted?: { eventId: number; correct: boolean; right: string[]; wrong: string[] };
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
        * Absent before any cue, and after a server restart. */
       cue?: SoundCue;
@@ -639,6 +649,8 @@ export type ServerMessage =
   | { type: "GAME_OVER"; winners: string[] }
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
   | { type: "REACTION"; teamId: string; reaction: Reaction }
+  /** A prediction was locked: every team that locked this round so far (who, not what). Never stored. */
+  | { type: "PREDICTIONS"; locked: string[] }
   /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
    * Clients keep the highest eventId they have seen. Result, an atmosphere (or host) line on big moments, and a
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
@@ -1230,6 +1242,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     }
     case "REACT":
       return typeof m.reaction === "string" && Object.hasOwn(REACTIONS, m.reaction) ? { type: "REACT", reaction: m.reaction as Reaction } : null;
+    case "PREDICT":
+      return typeof m.correct === "boolean" && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "PREDICT", eventId: m.eventId as number, correct: m.correct } : null;
     default:
       return null;
   }

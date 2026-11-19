@@ -96,8 +96,16 @@ describe("awardTitles", () => {
   });
 
   it("awards in the table's order, 🎲 last", () => {
-    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, natural20s: 1 });
-    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🧪", "🍲", "⚡", "🎲"]);
+    const all = team("甲", { events: ["blessing", "curse", "rotten"], flees: 1, potionsDrunk: 1, dishes: ["湯"], bossAt: { turns: 2, earned: true }, predictionsRight: 1, natural20s: 1 });
+    expect(awardTitles([all]).map((a) => a.icon)).toEqual(["🗺️", "✨", "💀", "🤢", "🏃", "🧪", "🍲", "⚡", "🎯", "🎲"]);
+  });
+
+  // Value: protects=🎯 神預言 (crowd-prediction.md): the most right predictions, ties share, 0 gives none; fails_when=the
+  // row is dropped, a tie picks one team, or a team that guessed nothing right gets it.
+  it("🎯 goes to the teams with the most right predictions; none right gives no title", () => {
+    const awards = awardTitles([team("甲", { predictionsRight: 3 }), team("乙", { predictionsRight: 1 }), team("丙", { predictionsRight: 3 })]);
+    expect(awards).toEqual([{ id: "prophet", icon: "🎯", title: "神預言", teamIds: ["甲", "丙"], reason: "猜中 3 次" }]);
+    expect(awardTitles([team("甲", { predictionsRight: 0 })])).toEqual([]);
   });
 
   it("🧪 goes to the team that drank the most lucky potions; none drunk gives no title", () => {

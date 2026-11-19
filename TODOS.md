@@ -16,7 +16,6 @@
 ### P3
 
 - [活動後：火把地城和舊畫面只留一個](#活動後火把地城和舊畫面只留一個)（[#281](https://github.com/chihgeorge/critical-answer/issues/281)） — S，活動後
-- [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測)（[#283](https://github.com/chihgeorge/critical-answer/issues/283)） — M
 - [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c)（[#285](https://github.com/chihgeorge/critical-answer/issues/285)） — M（人工約 1–2 天 / CC 約 1 小時），活動後
 - [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b)（[#286](https://github.com/chihgeorge/critical-answer/issues/286)） — L（人工約 1 週 / CC 約半天），活動後
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
@@ -125,25 +124,6 @@
 **Effort/Priority:** S / P3（活動後）
 
 **Depends on:** 11/21 活動的對局紀錄。
-
----
-
-## 觀眾反應的後續：燈籠預測
-
-**What:** 觀眾反應本身已經上了（等待中的隊伍在手機點 👏😱😂👎，大螢幕在背景飄過，`docs/designs/audience-reactions.md`）。旁白提到反應也上了（反應夠多時下一句判分旁白多一句，`lib/narration/crowd.ts`）。剩下 Codex 的「燈籠」點子：等待隊伍在別隊答題時偷偷鎖一個預測，揭曉時在大螢幕顯示，猜對的累積成打首領用的共用燈籠。
-
-**Why:** 燈籠不在這次範圍。若活動後「等待太無聊」還是主要抱怨，先看這個。
-
-**Context:**
-- `lib/room/dungeon-room.ts`（`handleReact`）
-- `docs/designs/phone-answering.md`（燈籠點子）
-
-**Effort/Priority:** M / P3
-
-**Depends on:** 活動（2026-11-21）的玩家回饋。
-
-**Notes:**
-- 旁白要提到反應，伺服器得先記下這一題收到哪些反應（現在只廣播、不存），再餵給 LLM 和腳本句。
 
 ---
 

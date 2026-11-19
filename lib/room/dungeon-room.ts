@@ -120,6 +120,7 @@ import {
   type PendingRoll,
   type PublicQuestion,
   type ServerMessage,
+  type StateMessage,
   type ScreenTestError,
   type SoundCue,
   type PodiumReveal,
@@ -630,6 +631,12 @@ export class DungeonRoom {
   private roomReacts: number[] = [];
   /** The reactions during the current turn, for the narrator (crowd.ts). In memory only. */
   private crowd = createCrowdTally();
+  /** 群眾預測 (docs/designs/crowd-prediction.md): the open round's locks (true = 會答對), live only while `key` is the
+   * turn's (roundKey). In memory only. */
+  private predict: { key: string; locks: Map<string, boolean> } | null = null;
+  /** The last judgment that resolved predictions: its eventId and ledger index. STATE reads the verdict and locks from
+   * the entry, so a 改判 on it shows at once. In memory only. */
+  private predicted: { eventId: number; index: number } | null = null;
   private clipEnded: string | null = null;
   /** 記憶題 (docs/designs/memory-questions.md): the memory questions whose media has ended (clip end, image seconds, or
    * the host's ⏭), per question so another clip ending never re-opens one; and the image on show with its deadline.
@@ -1747,6 +1754,7 @@ export class DungeonRoom {
       eventId: this.eventSeq,
       ...this.undoWrong(),
       ...(this.rulingUndoOpen() ? { undoRuling: { upheld: this.undo!.verdict!.upheld } } : {}),
+      ...this.predictionsView(),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
       // Only while something waits on the host (play, a held podium, more epilogue pages): not over a finished game's last page.
@@ -2114,6 +2122,7 @@ export class DungeonRoom {
     this.handoffWrong = 0;
     this.conns.clear();
     this.eventSeq = 0;
+    this.predict = this.predicted = null;
     this.lastNarration = null;
     this.heldLines = null;
     this.heldHandoff = null;
@@ -2637,13 +2646,16 @@ export class DungeonRoom {
         case "REACT":
           this.handleReact(sender, msg.reaction);
           break;
+        case "PREDICT":
+          this.handlePredict(sender, msg.eventId, msg.correct);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
-      // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_CLIP_DURATION" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
+      // A reaction or a prediction changes no saved state, so it neither counts as activity nor saves.
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "PREDICT" &&msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_CLIP_DURATION" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -2848,6 +2860,7 @@ export class DungeonRoom {
     this.heldLines = null;
     this.heldHandoff = null;
     this.cue = null;
+    this.predict = this.predicted = null;
     this.staleBeforeSeq = ++this.eventSeq;
     // A line queued in the game just left belongs to it, even if a narration still in flight carries it.
     if (this.nextLine) {
@@ -3849,7 +3862,15 @@ export class DungeonRoom {
     // A die still rolling (a 改成答對's) waits: this judgment could start a die over it.
     if (this.pendingRoll) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "roll_pending" });
     const previousReveal = this.reveal;
+    const previousPredict = this.predict;
+    const previousPredicted = this.predicted;
+    // 群眾預測: the undone 答錯's locks come back as this turn's round, so the re-judgment just below resolves them as 答對
+    // (the restored game has the tally from before the 答錯). No STATE goes out between, so no lock can join. A music
+    // question with fields, judged field by field later, is buzzer-phase only (question-bank.ts), so it has no round.
+    const undone = now.judgments?.slice(undo.prev.judgments?.length ?? 0).findLast((j) => j.teamId === teamId && j.questionId === questionId);
     this.game = this.undoneGame(undo, now);
+    this.predict = undone?.predictions ? { key: this.roundKey(teamId, questionId)!, locks: new Map(Object.entries(undone.predictions)) } : null;
+    this.predicted = null;
     this.reveal = null;
     this.undo = null;
     // A music question with fields is not made all right at one press (multi-field.md E2): the game goes back to before
@@ -3861,6 +3882,8 @@ export class DungeonRoom {
         this.game = now;
         this.reveal = previousReveal;
         this.undo = undo;
+        this.predict = previousPredict;
+        this.predicted = previousPredicted;
         return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "no_undo" });
       }
       this.phaseCardDue = false;
@@ -3878,6 +3901,8 @@ export class DungeonRoom {
       this.game = now;
       this.reveal = previousReveal;
       this.undo = undo;
+      this.predict = previousPredict;
+      this.predicted = previousPredicted;
       return this.sendInvalid(conn, err);
     }
     // A boss phase the 答錯 used up was not used up after all. A correct answer never sets phaseCardDue: its reveal comes first.
@@ -4077,7 +4102,12 @@ export class DungeonRoom {
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
     // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
-    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
+    // 群眾預測 resolve with the ledger entry, so only here: never on the early returns above (a die or kill roll first),
+    // which judge again later. A 🚨 catch drops the round unresolved (crowd-prediction.md).
+    const round = caught ? null : this.liveRound(teamId, questionId);
+    const locks = round?.locks.size ? Object.fromEntries(round.locks) : undefined;
+    this.predict = null;
+    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior", locks);
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
@@ -4095,6 +4125,7 @@ export class DungeonRoom {
     // fixed before any narration awaits, so concurrent judgments cannot interleave.
     this.game = ruledOut ? withCritDropped(game, ruledOut.teamId, ruledOut.questionId) : game;
     const eventId = ++this.eventSeq;
+    this.predicted = locks ? { eventId, index: ledgered.judgments!.length - 1 } : null;
     const phaseName = prev.boss.phaseIndex > 0 ? this.bank.boss.phases[prev.boss.phaseIndex]?.name : undefined;
     // The dish the answer just ate: game-state appended it to the team's dishes (a game saved before dishes appends none).
     const before = prev.teams.find((t) => t.id === teamId);
@@ -4408,6 +4439,58 @@ export class DungeonRoom {
     if (turn) this.crowd.tap(`${turn.id}:${turn.turns ?? 0}`, this.game.teams.find((t) => t.id === teamId)!.name, reaction);
     // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
+  }
+
+  /** Which turn a 群眾預測 round belongs to: the team and its question. Not eventId: the beats before a judgment
+   * (crit-intro) move it on. A turn that ends without a judgment (a skip, a dropped phone, an event) drops the round
+   * at the next STATE (predictionsView), so the team's next turn on the same question starts empty. */
+  private roundKey(teamId: string | null | undefined, questionId?: string): string | null {
+    const g = this.game;
+    return g && teamId && g.teams.some((t) => t.id === teamId) ? `${teamId}:${questionId ?? currentQuestionIdOf(g, teamId)}` : null;
+  }
+
+  /** 群眾預測's round, if it is still the turn's (crowd-prediction.md); a stale one reads as no round. */
+  private liveRound(teamId = this.game && currentTurnTeamId(this.game), questionId?: string) {
+    const key = this.roundKey(teamId, questionId);
+    return this.predict && key !== null && this.predict.key === key ? this.predict : null;
+  }
+
+  /** A waiting team may still lock a prediction: a room question is on screen and its team's answer has not started
+   * (no lock, submitted text, die or wrong answer waiting). Derived, so no handler has to close it. Timing questions
+   * live in buzzer phases only, so they never open a round. */
+  private predictOpen(): boolean {
+    const g = this.game;
+    if (!g || this.opening() || isBuzzPhase(g) || !this.questionOnScreen()) return false;
+    const team = g.teams.find((t) => t.id === currentTurnTeamId(g));
+    // An open 🚨 catch closes it too: an upheld one reveals the answer, and 撤回裁決 brings the catch back, not the round.
+    return !!team && !team.inBoss && team.typedAnswer === undefined && !this.pendingLock && !this.pendingRoll && !g.pendingWrong && !g.antiCheat?.openCatch;
+  }
+
+  /** PREDICT: a waiting team's 會答對 / 會答錯, final. Dropped without a reply when it is not a joined team's, the team is
+   * on turn, the round is closed or not this STATE's (`eventId`), or the team locked already: the phone shows the
+   * buttons only when a lock can land. Like a reaction, straight to the sockets and never saved. */
+  private handlePredict(conn: Conn, eventId: number, correct: boolean) {
+    const teamId = this.connTeam.get(conn.id);
+    const g = this.game;
+    if (!teamId || !g || !g.teams.some((t) => t.id === teamId) || eventId !== this.eventSeq || !this.predictOpen()) return;
+    const turn = currentTurnTeamId(g);
+    if (!turn || turn === teamId) return;
+    const round = this.liveRound() ?? (this.predict = { key: this.roundKey(turn)!, locks: new Map() });
+    if (round.locks.has(teamId)) return;
+    round.locks.set(teamId, correct);
+    this.room.broadcast(JSON.stringify({ type: "PREDICTIONS", locked: [...round.locks.keys()] } satisfies ServerMessage));
+  }
+
+  /** STATE's 群眾預測: whether locking is open and who locked (never a side), and the last judgment's result. */
+  private predictionsView(): Pick<StateMessage, "predictions" | "predicted"> {
+    // The turn moved on without a judgment: the round is gone for good, not just hidden.
+    if (!this.liveRound()) this.predict = null;
+    const open = this.predictOpen();
+    const locked = [...(this.predict?.locks.keys() ?? [])];
+    const entry = this.predicted && this.game?.judgments?.[this.predicted.index];
+    const locks = entry?.predictions;
+    const predicted = entry && locks ? { eventId: this.predicted!.eventId, correct: entry.correct, right: Object.keys(locks).filter((id) => locks[id] === entry.correct), wrong: Object.keys(locks).filter((id) => locks[id] !== entry.correct) } : null;
+    return { ...(open || locked.length ? { predictions: { open, locked } } : {}), ...(predicted ? { predicted } : {}) };
   }
 
   /** 現場放歌，開放搶答 (boss-music-buzzer.md M4): the big screen's video failed, the host plays the song from their own
