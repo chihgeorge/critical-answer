@@ -108,6 +108,13 @@ const TEAMS = env("TEAMS", 4), CHEFS = env("CHEFS", 0), DISHALL = process.env.DI
 // What-if chef abilities: CHEFADV=1 the chef always rolls one more dish die and keeps the highest; CHEFSTEAL see settle.
 // STARTPOT="chef,none": these classes start the game holding one potion.
 const STARTPOT = (process.env.STARTPOT ?? "").split(",").filter(Boolean);
+// DISHM="a,b,c,d": a non-chef's dish-die multipliers on this answer's gain for 1 / 2–6 / 7–19 / 20 (default 1,1,1,1.5; DISH1=x sets the first).
+const DISH1 = env("DISH1", 1), SNEAK1 = env("SNEAK1", 1), SNEAK1FLAT = env("SNEAK1FLAT", 0);
+const DISHM = process.env.DISHM ? process.env.DISHM.split(",").map(Number) : [DISH1, 1, 1, 1.5];
+// Points the dish die moved, per team-game: [chef, non-chef] × { team-games, net, absolute }.
+const sw = [{ n: 0, net: 0, abs: 0 }, { n: 0, net: 0, abs: 0 }];
+const swing = (chef: boolean, d: number) => { const x = sw[chef ? 0 : 1]; x.net += d; x.abs += Math.abs(d); };
+let dishOnes = 0, dishOnesAll = 0;
 const SNEAKLOSE = process.env.SNEAKLOSE === "1", CHEFADV = process.env.CHEFADV === "1", CHEFSTEAL = env("CHEFSTEAL", 0);
 // Dish-die counts of the game being played: every correct turn-based answer (a roll if everyone rolled), each chef team's rolls and 20s.
 let dishAll = 0;
@@ -120,6 +127,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
   let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, undefined, {}, later, undefined, [], bossDifficulties);
   if (AC) g = G.setAntiCheat(g, true);
   for (const [k, c] of classes.entries()) if (STARTPOT.includes(c ?? "none")) g = G.giveItem(g, `T${k}`);
+  const caught = new Set<string>();
   const sneakDie = new Map<string, number>(), sneakTried = new Set<string>(), chefBoost = new Map<string, number>();
   const latent = new Map<string, { known: boolean; hintable: boolean; weak: boolean }>();
   // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
@@ -178,9 +186,14 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
       if (ok) dishAll++;
+      // SNEAK1=x (what-if): a sneak die of 1 on this question means a correct answer keeps only x of its gain.
+      if (ok && SNEAK1 < 1 && caught.has(key) && "reward" in r.outcome) { const gain = (r.outcome as { reward: number }).reward; g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: x.reward + Math.round(gain * SNEAK1) - gain } : x)) }; }
+      if (ok && team().classId === "chef" && "chefBonus" in r.outcome) swing(true, (r.outcome as { chefBonus?: number }).chefBonus ?? 0);
       if (ok && DISHALL && team().classId !== "chef" && "reward" in r.outcome) {
-        const v = d20(), gain = (r.outcome as { reward: number }).reward;
-        if (v === 20) g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: x.reward + Math.round(gain * 0.5) } : x)) };
+        const v = d20(), gain = (r.outcome as { reward: number }).reward, delta = Math.round(gain * DISHM[G.skillTier(v)]) - gain;
+        if (v === 1) dishOnes++;
+        swing(false, delta);
+        if (delta) g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: x.reward + delta } : x)) };
         // CHEFSTEAL=x: another team's burnt dish (a 1) pays every chef team x of that answer's gain ("the chef rescues the dish").
         if (v === 1 && CHEFSTEAL) g = { ...g, teams: g.teams.map((x) => (x.classId === "chef" ? { ...x, reward: x.reward + Math.round(gain * CHEFSTEAL) } : x)) };
       }
@@ -242,6 +255,9 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
         else if (!sneakTried.has(key)) {
           sneakTried.add(key);
           const v = potionRoll();
+          if (v <= 1) caught.add(key);
+          // SNEAK1FLAT=x (what-if): a 1 costs x of this question's reward at once (never below 0), right or wrong.
+          if (v <= 1 && SNEAK1FLAT) { const fine = Math.round((inBoss ? d * 5 : d * 10) * SNEAK1FLAT); g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: Math.max(0, x.reward - fine) } : x)) }; }
           if (v <= 1 || (SNEAKLOSE && G.skillTier(v) === 1)) g = G.spendAbility(g, id, "thief"); // SNEAKLOSE=1: a 2–6 spends the use too
           else if (G.skillTier(v) >= 2) { g = G.armSneak(g, id); sneakDie.set(id, v); }
         }
@@ -286,6 +302,8 @@ for (let i = 0; i < N; i++) {
   // 4 teams: shuffle 4 of the 6 options, so every class meets every other.
   const lineup = TEAMS <= 6 && !CHEFS ? shuffle([...CLASSES]).slice(0, TEAMS) : Array.from({ length: TEAMS }, (_, k) => (k < CHEFS ? "chef" : CLASSES[Math.floor(R() * CLASSES.length)]));
   const cheaters = new Set(shuffle(lineup.map((_, k) => k)).slice(0, CHEATERS));
+  dishOnesAll += dishOnes; dishOnes = 0;
+  for (const c of lineup) sw[c === "chef" ? 0 : 1].n++;
   dishAll = 0; chefRolls.clear();
   const tags = lineup.map((_, k) => ({ oracle: R() < ORACLEP, cheater: cheaters.has(k) }));
   const g = play(lineup.map((c) => (c === "none" ? undefined : c)), tags);
@@ -310,6 +328,7 @@ for (let i = 0; i < N; i++) {
 }
 console.log(`games=${N} unfinished=${unfinished}`);
 // Dish die: per chef team, and per game with a chef (any chef team's 20); "all" = if every team rolled one d20 per correct turn-based answer.
+if (DISHALL) console.log(`non-chef dish 1s per game ${((dishOnesAll + dishOnes) / N).toFixed(2)} | dish points per team-game: chef net ${(sw[0].net / sw[0].n).toFixed(1)} abs ${(sw[0].abs / sw[0].n).toFixed(1)}, non-chef net ${(sw[1].net / sw[1].n).toFixed(1)} abs ${(sw[1].abs / sw[1].n).toFixed(1)}`);
 if (REWORK) console.log(`dish chef-rolls/team ${(dish.rolls / dish.chefTeams).toFixed(2)} 20s/team ${(dish.tw / dish.chefTeams).toFixed(3)} team-with-20 ${((100 * dish.teamAny) / dish.chefTeams).toFixed(1)}% game-with-chef-20 ${((100 * dish.any) / dish.chefGames).toFixed(1)}% | all-rolls/game ${(dish.all / dish.games).toFixed(1)} 20s/game ${((0.05 * dish.all) / dish.games).toFixed(2)} game-with-any-20 ${((100 * dish.allAny) / dish.games).toFixed(1)}%`);
 for (const [k, s] of [...stats].sort((a, b) => b[1].wins / b[1].n - a[1].wins / a[1].n))
   // ±: the 95% interval of the win share (normal approximation; class rows are one team per game, the * rows share games, so theirs is a little wide).

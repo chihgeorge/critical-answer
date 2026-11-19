@@ -179,3 +179,54 @@ s4_pg02_df                         th=27.1 ch=27.3 cl=28.5 wa=28.1 ma=26.1 no=12
 s4_pg02_ev                         th=26.8 ch=27.1 cl=26.3 wa=29.4 ma=25.7 no=14.6 gap=3.7
 s4_pg0_df                          th=27.1 ch=26.1 cl=28.7 wa=28.3 ma=26.1 no=13.6 gap=2.6
 s4_pg0_ev                          th=27.5 ch=27.1 cl=26.3 wa=26.6 ma=28.3 no=14.2 gap=2.0
+
+--- Owner's fixed dish table (non-chef 1 x0.1, 20 x1.5; chef 0.1/1/1.2/2). c1-c11 screening (10k; c6-c8 = V2/V3/V1), r* = rogue-1 variants on c10, F_* = finalists (40k) and potion sensitivity (10k). Configs: see scripts/balance-sim.ts knobs; c10 = DISHM=0.1,1,1,1.5 SNEAKLOSE=1 CHECK_BONUS mage6 thief3 cleric2 chef4; c4 = current CHECK_BONUS + STARTPOT=mage,chef CHEFPOTN=2.
+c10_df                             th=26.1 ch=27.1 cl=28.0 wa=28.1 ma=26.1 no=14.5 gap=2.0
+c10_ev                             th=26.8 ch=26.5 cl=26.6 wa=27.0 ma=27.9 no=15.2 gap=1.4
+c11_df                             th=26.5 ch=29.7 cl=27.1 wa=27.8 ma=25.0 no=13.7 gap=4.7
+c11_ev                             th=25.1 ch=28.4 cl=26.3 wa=27.9 ma=27.7 no=14.7 gap=3.3
+c1_df                              th=27.8 ch=25.4 cl=27.8 wa=28.4 ma=25.5 no=15.3 gap=3.0
+c1_ev                              th=28.0 ch=27.1 cl=26.3 wa=27.3 ma=26.4 no=14.8 gap=1.7
+c2_df                              th=26.2 ch=28.8 cl=27.7 wa=27.6 ma=25.5 no=14.1 gap=3.3
+c2_ev                              th=25.3 ch=28.4 cl=27.3 wa=27.0 ma=27.3 no=14.5 gap=3.1
+c3_df                              th=27.0 ch=28.9 cl=28.0 wa=26.6 ma=24.9 no=14.6 gap=4.0
+c3_ev                              th=26.5 ch=26.6 cl=26.7 wa=27.9 ma=27.1 no=15.1 gap=1.4
+c4_df                              th=27.2 ch=27.6 cl=27.7 wa=27.2 ma=26.1 no=14.1 gap=1.6
+c4_ev                              th=26.1 ch=28.4 cl=26.2 wa=27.2 ma=27.4 no=14.6 gap=2.3
+c5_df                              th=28.2 ch=27.8 cl=26.9 wa=27.5 ma=25.4 no=14.1 gap=2.8
+c5_ev                              th=28.8 ch=27.7 cl=26.0 wa=26.9 ma=26.4 no=14.2 gap=2.8
+c6_V2_df                           th=27.3 ch=29.9 cl=26.8 wa=27.6 ma=23.9 no=14.4 gap=6.0
+c6_V2_ev                           th=27.0 ch=29.4 cl=26.2 wa=26.9 ma=25.5 no=15.1 gap=3.9
+c6b_V2_df                          th=26.1 ch=29.9 cl=27.4 wa=27.0 ma=25.9 no=13.5 gap=4.0
+c6b_V2_ev                          th=26.1 ch=31.1 cl=25.0 wa=26.8 ma=26.2 no=15.0 gap=6.1
+c7_V3_df                           th=29.1 ch=20.5 cl=29.4 wa=30.2 ma=26.2 no=14.5 gap=9.7
+c7_V3_ev                           th=28.4 ch=21.5 cl=28.6 wa=29.7 ma=27.7 no=14.3 gap=8.2
+c8_V1_df                           th=29.2 ch=17.5 cl=30.5 wa=30.8 ma=26.7 no=15.2 gap=13.3
+c8_V1_ev                           th=29.3 ch=18.4 cl=28.4 wa=29.4 ma=29.8 no=14.8 gap=11.4
+r1_08_df                           th=27.3 ch=27.1 cl=27.7 wa=28.0 ma=25.2 no=14.6 gap=2.8
+r1_08_ev                           th=26.6 ch=27.9 cl=26.2 wa=26.1 ma=27.9 no=15.2 gap=1.8
+r2_01_df                           th=25.7 ch=27.2 cl=28.5 wa=27.4 ma=26.2 no=14.9 gap=2.8
+r2_01_ev                           th=25.1 ch=27.7 cl=26.0 wa=28.4 ma=27.8 no=15.1 gap=3.3
+r2_01_t5_df                        th=26.3 ch=26.7 cl=29.1 wa=27.6 ma=26.1 no=14.3 gap=3.0
+r2_01_t5_ev                        th=26.0 ch=25.6 cl=27.5 wa=27.1 ma=28.6 no=15.2 gap=3.0
+r3_flat_df                         th=26.8 ch=27.0 cl=27.6 wa=27.9 ma=26.3 no=14.4 gap=1.6
+r3_flat_ev                         th=26.2 ch=27.9 cl=26.4 wa=28.3 ma=26.4 no=14.9 gap=2.1
+F_c10_R2_df                        th=26.0 ch=28.1 cl=28.4 wa=27.5 ma=25.7 no=14.2 gap=2.7
+F_c10_R2_ev                        th=25.5 ch=27.4 cl=26.7 wa=28.0 ma=27.4 no=14.9 gap=2.5
+F_c10_df                           th=27.3 ch=27.5 cl=27.7 wa=27.4 ma=25.9 no=14.2 gap=1.8
+F_c10_ev                           th=27.3 ch=27.4 cl=26.4 wa=26.9 ma=27.2 no=14.9 gap=1.0
+F_c10_pg02_df                      th=26.4 ch=26.7 cl=28.9 wa=28.4 ma=25.9 no=13.9 gap=3.0
+F_c10_pg02_ev                      th=26.2 ch=27.3 cl=26.9 wa=28.2 ma=26.8 no=14.5 gap=2.0
+F_c10_pg0_df                       th=28.0 ch=28.0 cl=27.7 wa=26.5 ma=25.4 no=14.4 gap=2.6
+F_c10_pg0_ev                       th=27.0 ch=26.7 cl=27.3 wa=26.3 ma=26.7 no=16.0 gap=1.0
+F_c4_df                            th=27.0 ch=28.0 cl=27.5 wa=27.3 ma=25.9 no=14.3 gap=2.1
+F_c4_ev                            th=26.5 ch=28.3 cl=26.9 wa=26.8 ma=27.0 no=14.4 gap=1.8
+F_c4_pg02_df                       th=26.3 ch=29.3 cl=26.9 wa=28.6 ma=25.0 no=13.8 gap=4.3
+F_c4_pg02_ev                       th=26.8 ch=29.0 cl=27.4 wa=26.9 ma=25.3 no=14.4 gap=3.7
+F_c4_pg0_df                        th=26.9 ch=26.6 cl=27.9 wa=27.3 ma=26.7 no=14.6 gap=1.3
+F_c4_pg0_ev                        th=27.3 ch=27.2 cl=26.7 wa=26.9 ma=27.1 no=14.8 gap=0.6
+c7_V3_ev.txt:non-chef dish 1s per game 1.21 | dish points per team-game: chef net 26.1 abs 38.0, non-chef net 11.1 abs 46.4
+F_c10_ev.txt:non-chef dish 1s per game 1.20 | dish points per team-game: chef net 25.5 abs 37.7, non-chef net -3.7 abs 13.0
+c6_V2_ev.txt:non-chef dish 1s per game 1.19 | dish points per team-game: chef net 25.2 abs 37.6, non-chef net -12.9 abs 22.0
+F_c10_df.txt:non-chef dish 1s per game 1.24 | dish points per team-game: chef net 23.1 abs 35.2, non-chef net -3.4 abs 12.2
+c8_V1_ev.txt:non-chef dish 1s per game 1.20 | dish points per team-game: chef net 25.9 abs 37.9, non-chef net 20.3 abs 36.9
