@@ -2,6 +2,7 @@
 // The room side of a multi-phase boss (docs/designs/boss-phases.md): the answer reveal, then the phase
 // card, then the new phase's question, and nothing about a later phase reaching anyone but the host.
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -31,7 +32,7 @@ function phasedBank(q: (id: string) => object = text, hp1 = 1) {
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -149,7 +150,7 @@ describe("boss phases in the room", () => {
     send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "p1-a", optionIndex: 0 });
     send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "p1-a" });
     g.reveal();
-    await vi.advanceTimersByTimeAsync(6500); // the reveal, crit introduction, then the crit die
+    await vi.advanceTimersByTimeAsync(6500); // the reveal, dish introduction, then the dish die
     expect(g.state().reveal).not.toBeNull();
     await vi.advanceTimersByTimeAsync(16_000);
     expect(g.state().reveal).not.toBeNull();

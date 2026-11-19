@@ -1,6 +1,7 @@
 // The room side of the host's pads (docs/designs/immersion.md PR2): HOST_EFFECT from a host page is relayed to keyed big
 // screens as SCREEN_EFFECT, at most once per HOST_FX_WINDOW_MS per room, never while `clipPlaying`.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -15,7 +16,7 @@ const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const msgs = (calls: unknown[][]) => calls.map((c) => JSON.parse(c[0] as string));
 const effects = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).filter((m) => m.type === "SCREEN_EFFECT");
 const errors = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).filter((m) => m.type === "ERROR");

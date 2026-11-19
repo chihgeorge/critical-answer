@@ -57,9 +57,9 @@ describe("改判 list helpers", () => {
     expect(rejudgeButton(list, list[1], 25, { ...undo, fields: true })).toBe("改成答對（重新逐欄判定）");
     expect(rejudgeButton(list, list[2], 25, undo)).toBe("改成答對（+10）");
     expect(rejudgeButton(list, list[1], 25, undefined)).toBe("改成答對（+10）");
-    // Value: protects=a chef's or armed thief's first 改成答對 says it rolls a die, a flip back shows the paid amount;
-    // fails_when=the host sees a fixed +N that the die then contradicts; why_new=no row had `reads`; seam=none; no_claim=the room's roll
-    expect(rejudgeButton(list, { ...list[1], reads: "chef" }, 25, undefined)).toBe("改成答對（擲答對骰）");
-    expect(rejudgeButton(list, { ...list[1], reads: "thief", taken: 13 }, 25, undefined)).toBe("改成答對（+13）");
+    // Value: protects=a turn-based answer's first 改成答對 says it rolls the dish die, a flip back shows the paid amount;
+    // fails_when=the host sees a fixed +N that the die then contradicts; why_new=no row had `dish`; seam=none; no_claim=the room's roll
+    expect(rejudgeButton(list, { ...list[1], dish: { chef: true } }, 25, undefined)).toBe("改成答對（擲料理骰）");
+    expect(rejudgeButton(list, { ...list[1], dish: { sneak: 1.5 }, taken: 13 }, 25, undefined)).toBe("改成答對（+13）");
   });
 });

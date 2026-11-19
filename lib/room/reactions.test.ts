@@ -1,6 +1,7 @@
 // 觀眾反應 (docs/designs/audience-reactions.md): a waiting team's fixed reaction is broadcast for the big screen,
 // at most one per team per REACT_GAP_MS and REACT_ROOM_MAX per room in that time; never from the team on turn.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -17,7 +18,7 @@ const bank = parseBank({
 });
 
 const makeConn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn;
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const storage = (): RoomStorage => {
   const data = new Map<string, unknown>();
   return { get: async (k: string) => structuredClone(data.get(k)), put: (k: string, v: unknown) => void data.set(k, structuredClone(v)) } as RoomStorage;

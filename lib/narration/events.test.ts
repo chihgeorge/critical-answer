@@ -148,7 +148,7 @@ describe("boss phases", () => {
 });
 
 // Value: protects=a natural 20 or 1 reaches the narrator (dnd design E3); fails_when=toNarrationEvent drops outcome.roll
-describe("toNarrationEvent: the crit die", () => {
+describe("toNarrationEvent: a roll's 20 or 1", () => {
   it("carries a 20 or a 1 on correct, boss-hit and boss-kill, and nothing otherwise", () => {
     const crit = { kind: "crit", value: 20 } as const;
     const room: AnswerOutcome = { type: "correct-room-advance", teamId: "a", pointsAwarded: 2, reward: 30, nextRoomIndex: 1, entersBoss: false, roll: crit };

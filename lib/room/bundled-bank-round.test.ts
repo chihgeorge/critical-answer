@@ -1,4 +1,5 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { findQuestion } from "../question-bank";
@@ -7,7 +8,7 @@ import { BANK } from "../question-bank-data";
 // No vi.mock here, unlike dungeon-room.test.ts: this file plays the real bundled bank, all multipleChoice.
 const T1 = "00000000-0000-0000-0000-000000000001";
 const conn = (id: string) => ({ id, send: vi.fn(), close: vi.fn() }) as unknown as Conn;
-const send = (room: DungeonRoom, c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+const send = (room: DungeonRoom, c: Conn, msg: object) => sendSettled(room, c, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });

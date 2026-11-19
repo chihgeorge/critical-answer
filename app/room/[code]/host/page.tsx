@@ -15,7 +15,7 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
@@ -106,7 +106,6 @@ export default function HostPage() {
   const [answerSeconds, setAnswerSeconds] = useState<number>(DEFAULT_ANSWER_SECONDS);
   /** 進王門檻 for the next game: this page's pick like answerSeconds; the room keeps it in game.config once started. */
   const [bossThreshold, setBossThreshold] = useState<number>(BOSS_THRESHOLD);
-  const [hideCritRoll, setHideCritRoll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [noToken, setNoToken] = useState(false);
   const [connected, setConnected] = useState(false);
@@ -1074,10 +1073,6 @@ export default function HostPage() {
                   </label>
                   <div className="text-[13px]">隊伍多時選低一點，整場比較短；開始後不能改</div>
                   <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
-                    <input type="checkbox" checked={hideCritRoll} onChange={(e) => setHideCritRoll(e.target.checked)} className="h-6 w-6 accent-[var(--k)]" />
-                    隱藏暴擊骰（答對直接結算）
-                  </label>
-                  <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
                     題庫：
                     <select
                       data-testid="host-bank"
@@ -1118,7 +1113,7 @@ export default function HostPage() {
                 const noClass = lobby.filter((t) => !t.classId).length;
                 const warnings = [...(sizeWarning ? [bankSizeWarningText(sizeWarning, lobby.length)] : []), ...(noClass ? [`還有 ${noClass} 隊沒選職業（沒有技能，比較吃虧）`] : [])];
                 if (warnings.length && !window.confirm(`${warnings.join("\n")}\n確定要開始？`)) return;
-                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold, hideCritRoll });
+                send({ type: "HOST_START", intro: introOn, initiative: true, answerSeconds, bossThreshold });
               }}
             >
               開始遊戲 ▶
@@ -1605,7 +1600,7 @@ export default function HostPage() {
                   <div className="flex flex-wrap items-center gap-x-2 text-[13px]">
                     {t.classId && <span title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
                     {t.fork && <span data-testid="host-team-fork">🚪 叉路</span>}
-                    {t.sneakArmed && <span title={`偷襲準備好了：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、boss 扣血 ×2`}>🗝️</span>}
+                    {t.sneakArmed && <span title={t.sneakCrit ? `完美偷襲：這題答對${scoreName(game.cuisine)} ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `偷襲就位：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`}>🗡️</span>}
                     {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                     {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                     {t.item && <span title="有一瓶幸運藥水">🧪</span>}
