@@ -68,7 +68,7 @@ test("a send that is never confirmed gives the box back with the text", async ({
   await box.fill("掉了");
   await team.getByRole("button", { name: "送出" }).click();
   await expect(team.getByRole("button", { name: "送出中…" })).toBeDisabled();
-  await expect(team.getByText("沒送出，再按一次，或直接唸給主持人聽")).toBeVisible({ timeout: 5000 });
+  await expect(team.getByText("沒送出，再按一次，或直接唸給主持人聽")).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await expect(box).toHaveValue("掉了");
   await expect(team.getByRole("button", { name: "送出" })).toBeEnabled();
 });

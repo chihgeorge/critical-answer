@@ -64,7 +64,7 @@ test("lucky die: host gives it, a no-class team uses it, the dish die rolls two 
   await expect(overlay).toContainText("幸運骰！擲兩次取高");
   await expect(screen.getByTestId("potion-die")).toHaveCount(2);
   await expect(screen.getByTestId("roll-result")).toHaveText(/^取高：\d+/);
-  await expect(overlay).toHaveCount(0, { timeout: 5000 });
+  await expect(overlay).toHaveCount(0, { timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await openTeamTools(host, "幸運隊");
   await expect(host.getByTestId("give-potion")).toHaveText("🍀 給幸運骰");
   await expect(screen.getByTestId("pawn-potion")).toHaveCount(0);
