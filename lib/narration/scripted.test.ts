@@ -772,7 +772,7 @@ describe("every scripted pool line fits the dialogue box", () => {
   };
   walk(Object.values(scripted).filter((v) => typeof v !== "function"));
   // {rule} and {condition} are the line's payload (a bank rule, a fortune condition), so they count as nothing here.
-  const vars: Record<string, string> = { rule: "", condition: "", monster: "史萊姆", to: "史萊姆", part: "霧狀身體", points: "3", bonus: "3", bossHp: "3", bossMaxHp: "5", ordinal: "二", name: "狂暴模式", phase: "狂暴模式", dish: "史萊姆凍", effect: "💫暈眩", names: "冒險小隊", caught: "冒險小隊", by: "冒險小隊" };
+  const vars: Record<string, string> = { rule: "", condition: "", monster: "史萊姆", to: "史萊姆", part: "霧狀身體", points: "3", bonus: "3", bossHp: "3", bossMaxHp: "5", ordinal: "二", name: "狂暴模式", phase: "狂暴模式", dish: "史萊姆凍", effect: "💫暈眩", names: "冒險小隊", caught: "冒險小隊", by: "冒險小隊", door: "🏷️ 動漫" };
   const fill = (k: string, team: string) => {
     if (k === "team") return team;
     if (!(k in vars)) throw new Error(`no size for {${k}}`); // a new placeholder must get a size here, not count as nothing

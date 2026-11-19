@@ -1,5 +1,6 @@
 import type { Conn, RoomIO } from "./io";
 import { CLOSE_EXPIRED, CLOSE_IDLE } from "./close-codes";
+import { forkDoorLabel } from "../event-text";
 import { BANK_KEY, NARRATION_MAX_LINES, parseSavedBank, parseSnapshot, SCHEMA_VERSION, SNAPSHOT_KEY, type RoomSnapshot } from "./snapshot";
 import {
   createGame,
@@ -63,7 +64,8 @@ import {
   atFork,
   chooseFork,
   enterFork,
-  eventEligible,
+  forkRule,
+  forkDoors,
   startForkChoice,
   resolveFortune,
   endFortune,
@@ -74,6 +76,7 @@ import {
   FORK_MS,
   type ForkChoice,
   type ForkDoor,
+  type ForkDoorSpec,
   type ForkSide,
   InvalidActionError,
   addLateTeam,
@@ -129,6 +132,7 @@ import {
   REACT_GAP_MS,
   REACT_JITTER_MS,
   REACT_ROOM_MAX,
+  FORK_VOTE_GAP_MS,
   type Reaction,
   type Hold,
   type Pacing,
@@ -552,7 +556,7 @@ export class DungeonRoom {
    * meanwhile, so no score, room or turn moves before the door opens (the choice is applied and saved already).
    * `reveal`: the ❓ outcome, shown when the beat ends; `line`: ⚔️'s scripted line, said then. Memory only: a
    * restart drops the beat, and with it a ❓ outcome's screen and line (its effect stays). */
-  private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string }; fortune?: true } | null = null;
+  private forkBeat: { teamId: string; side: ForkSide; door: ForkDoor; category?: string; timeout: boolean; before: GameState; reveal?: EventReveal; line?: { eventId: number; text: string }; fortune?: true } | null = null;
   /** 占卜師 step 3 (docs/designs/fortune-teller.md): the picked slice lit for FORTUNE_BEAT_MS. The effect is applied and
    * saved already; STATE shows `before` meanwhile. Memory only: a restart goes straight to the effect card. */
   private fortuneBeat: { effect: FortuneEffect; timeout: boolean; before: GameState } | null = null;
@@ -619,6 +623,10 @@ export class DungeonRoom {
   private heldClockMs: number | null = null;
   /** 觀眾反應 (docs/designs/audience-reactions.md): each team's last reaction, and the room's recent ones. In memory only. */
   private reactedAt = new Map<string, number>();
+  /** 觀眾投票 (#285): the waiting teams' door votes for the fork being chosen, and when each team's last one counted.
+   * Cleared when a fork starts choosing (syncFork); STATE shows them only while one is. In memory only. */
+  private forkVotes = new Map<string, ForkSide>();
+  private votedAt = new Map<string, number>();
   /** The room clock at the last HOST_EFFECT relayed (immersion.md PR2). In memory only. */
   private hostFxAt = -Infinity;
   /** 🌑 螢幕變暗 (immersion.md PR2) and the room clock at its last change. In memory only (a restart clears it, like `media`). */
@@ -1717,7 +1725,9 @@ export class DungeonRoom {
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
-      ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
+      ...(this.forkBeat ? { forkBeat: { teamId: this.forkBeat.teamId, side: this.forkBeat.side, door: this.forkBeat.door, ...(this.forkBeat.category ? { category: this.forkBeat.category } : {}), ...(this.forkBeat.timeout ? { timeout: true as const } : {}) } } : {}),
+      ...this.forkDoorsView(),
+      ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.forkVotes.size ? { forkVotes: Object.fromEntries(this.forkVotes) } : {}),
       ...this.fortuneView(),
       ...this.liveMedia(),
       ...this.liveDim(),
@@ -2637,13 +2647,16 @@ export class DungeonRoom {
         case "REACT":
           this.handleReact(sender, msg.reaction);
           break;
+        case "FORK_VOTE":
+          this.handleForkVote(sender, msg.side);
+          break;
       }
       // A transcript download changes nothing; a rejected message did not either; and an automatic
       // reconnect's re-identification (`resume`) is a device, not a person.
       const resumed = "resume" in msg && msg.resume === true;
       // A big screen's reading progress is a device too: a TV left on retypes the line after every reconnect.
       // A reaction changes no saved state, so it neither counts as activity nor saves.
-      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_CLIP_DURATION" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
+      if (msg.type !== "HOST_GET_TRANSCRIPT" && msg.type !== "SCREEN_HELLO" && msg.type !== "REACT" && msg.type !== "FORK_VOTE" && msg.type !== "SCREEN_NARRATION_PROGRESS" && msg.type !== "SCREEN_CLIP_ENDED" && msg.type !== "SCREEN_CLIP_ERROR" && msg.type !== "SCREEN_CLIP_DURATION" && msg.type !== "SCREEN_SOUND" && msg.type !== "SCREEN_TAP_CLOCK" && msg.type !== "SCREEN_TEST_RESULT" && msg.type !== "CLOCK_PING" && msg.type !== "CALIBRATE_TAP" && !this.rejected && !resumed) {
         this.markActivity();
         // A handler above may already have saved this message's real effect (with the old activity time); flush
         // the new one too, so a restart never reads back a stale lastActivityAt for a room that was actually in use.
@@ -4078,7 +4091,9 @@ export class DungeonRoom {
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
     // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
     const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
-    const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
+    // A bank's placed fork (#286) always comes, back to back too; a random one keeps the room-apart rule.
+    const rule = picked ? null : forkRule(judged.game, outcome);
+    const game = rule === "placed" || (rule === "random" && !afterMonster && this.rollsEvent(teamId)) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
     // #369: this miss opened a music question's round 2, the last one for everyone.
@@ -4408,6 +4423,32 @@ export class DungeonRoom {
     if (turn) this.crowd.tap(`${turn.id}:${turn.turns ?? 0}`, this.game.teams.find((t) => t.id === teamId)!.name, reaction);
     // Straight to the sockets, not this.broadcast: a reaction changes nothing to save, so it skips persist().
     this.room.broadcast(JSON.stringify({ type: "REACTION", teamId, reaction } satisfies ServerMessage));
+  }
+
+  /** A labelled fork's doors (#286), for every screen while its team chooses and during its door opening. */
+  private forkDoorsView(): { forkDoors?: ForkDoorSpec[] } {
+    if (this.game?.phase !== "playing") return {};
+    const team = this.forkBeat ? this.forkBeat.before.teams.find((t) => t.id === this.forkBeat!.teamId) : this.game.teams.find((t) => t.fork?.phase === "choosing");
+    const doors = team && forkDoors(this.forkBeat?.before ?? this.game, team);
+    return doors ? { forkDoors: doors } : {};
+  }
+
+  /** 觀眾投票 (#285): a waiting team advises the team choosing at a fork. Dropped without a reply, like a reaction,
+   * when it is not a joined team's, no team is choosing (or its door is opening), the team is the one choosing, or its
+   * last vote counted under FORK_VOTE_GAP_MS ago. A changed vote goes straight to the sockets: nothing to save. */
+  private handleForkVote(conn: Conn, side: ForkSide) {
+    const teamId = this.connTeam.get(conn.id);
+    const game = this.game;
+    // paused() covers the door opening (forkBeat) too.
+    if (!teamId || game?.phase !== "playing" || this.paused()) return;
+    if (!game.teams.some((t) => t.id === teamId)) return; // a waiting late team
+    const chooser = game.teams.find((t) => t.fork?.phase === "choosing");
+    if (!chooser || chooser.id === teamId) return;
+    const now = this.now();
+    if (now - (this.votedAt.get(teamId) ?? -Infinity) < FORK_VOTE_GAP_MS || this.forkVotes.get(teamId) === side) return;
+    this.votedAt.set(teamId, now);
+    this.forkVotes.set(teamId, side);
+    this.room.broadcast(JSON.stringify({ type: "FORK_VOTES", votes: Object.fromEntries(this.forkVotes) } satisfies ServerMessage));
   }
 
   /** 現場放歌，開放搶答 (boss-music-buzzer.md M4): the big screen's video failed, the host plays the song from their own
@@ -4941,7 +4982,11 @@ export class DungeonRoom {
     const team = game.teams.find((t) => t.id === currentTurnTeamId(game));
     if (team?.fork?.phase !== "waiting") return false;
     // Which side hides ⚔️: drawn now, saved with the game, never in any STATE (branch-fork.md).
-    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right")));
+    // Labelled doors (#286) are fixed by the bank: nothing to draw, and a timeout opens the left one.
+    const side = forkDoors(game, team) ? "left" : (this.e2eMonsterSide ?? (this.rng() < 0.5 ? "left" : "right"));
+    this.keepUndoOpen(startForkChoice(game, team.id, this.now() + FORK_MS, side));
+    // A fork entering choosing starts with no votes (#285), also after an undo or a skipped turn sent it back to waiting.
+    this.forkVotes.clear();
     this.armFork();
     // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older (the doors
     // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
@@ -4993,12 +5038,14 @@ export class DungeonRoom {
     const before = this.game!;
     let chosen: ReturnType<typeof chooseFork>;
     try {
-      chosen = chooseFork(before, teamId, choice, this.rng);
+      const votes = [...this.forkVotes.values()];
+      chosen = chooseFork(before, teamId, choice, this.rng, { left: votes.filter((v) => v === "left").length, right: votes.filter((v) => v === "right").length }, this.categoryOf());
     } catch (err) {
       if (conn) return this.sendInvalid(conn, err);
       return console.error(JSON.stringify({ event: "fork_failed", error: String(err) }));
     }
     this.unpace("fork");
+    this.forkVotes.clear(); // recorded in chosen.record.crowd
     this.game = chosen.game;
     const name = before.teams.find((t) => t.id === teamId)?.name ?? "";
     const { result } = chosen;
@@ -5016,12 +5063,13 @@ export class DungeonRoom {
       reveal = { ...result, ...(m ? { dish: { name: m.dish.name, sprite: m.sprite, hue: m.hue } } : {}) };
       if (m) this.game = serveFeast(this.game, teamId, m.dish.name);
     } else {
-      // ⚔️'s line follows the fork narration on screen (no new eventId: nothing new is narrated by the AI).
+      // ⚔️'s line (a bank's 💀 / 🏷️ door names itself, #286) follows the fork narration on screen (no new eventId).
       const monster = this.currentQuestion()?.pub.monster.name ?? "";
-      line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster) };
+      const { door, category } = chosen.record;
+      line = { eventId: this.eventSeq, text: this.scripted.forkLine(choice === "timeout", name, monster, door === "monster" ? undefined : forkDoorLabel({ kind: door, category })) };
     }
-    // The opened door is revealed, and only it: the other side's door is never named.
-    const beat = { teamId, side: chosen.record.side, door: chosen.record.door, timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}), ...(fortune ? { fortune: true as const } : {}) };
+    // The opened door is revealed; on an unlabelled fork only it, the other side's door is never named.
+    const beat = { teamId, side: chosen.record.side, door: chosen.record.door, ...(chosen.record.category ? { category: chosen.record.category } : {}), timeout: choice === "timeout", before, ...(reveal ? { reveal } : {}), ...(line ? { line } : {}), ...(fortune ? { fortune: true as const } : {}) };
     this.forkBeat = beat;
     this.pace("forkBeat", "fork-beat", FORK_BEAT_MS, () => (this.forkBeat === beat ? "接下來走進門後的房間" : null), () => {
       if (this.forkBeat === beat) this.endForkBeat();

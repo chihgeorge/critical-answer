@@ -110,7 +110,41 @@ between two doors and lives with the result.
 - The first real games' logs shows how often teams take ❓, ⚔️ and time out; watch whether the room reacts at the doors.
 - Unit tests cover the choice, the timeout, reconnects, restarts and the opening; e2e on CI covers both doors.
 
+## Audience vote (Approach C, #285, 2026-11-18)
+
+- **Advice, not a decision.** While a team chooses, every other team in the game (not a waiting late team) votes 左門 or
+  右門 on its phone; the choosing team still presses its own door, and a timeout still opens ⚔️. A binding vote would
+  undo d2a (the team chooses) and stays with the owner. The doors stay unmarked, so the voters guess too: the vote never
+  reads `monsterSide`.
+- **One vote per team, switchable,** at most one counted change per `FORK_VOTE_GAP_MS` (300 ms) per team; a repeat of
+  the same side is dropped. Wrong timing (no fork choosing, a door opening, the choosing team itself) is dropped without
+  an ERROR, like a reaction; the phone shows the buttons only when a vote can land, and its lit button comes from the
+  room's tally, never local state.
+- **Memory only, off the save path.** `FORK_VOTE` skips `markActivity()` and `persist()`; a change goes straight to the
+  sockets as `FORK_VOTES { votes }` (teamId → side). STATE carries `forkVotes` while a fork is choosing, so a phone or
+  screen that reconnects sees the tally. `syncFork` clears the votes whenever a door clock starts (a new fork, or one an
+  undo or a skipped turn sent back to waiting); a restart loses them. The choice writes the tally into its
+  `ForkRecord.crowd` (`{ left, right }`, only when someone voted), so the game log shows whether teams followed the crowd.
+- **Screens.** A waiting phone: the vote under 「{隊名}在叉路口猶豫中」. The choosing phone: 「觀眾建議：左門 N 票・右門 M
+  票」 between its header and the doors. The big screen: 「👥 N 票」 on each door's face. All of it disappears with the
+  door opening. Not narrated; the host page is unchanged.
+
+## Placed forks and labelled doors (Approach B, #286, 2026-11-18)
+
+- **Where.** `BankRoom.fork` (`{}` or `{ doors: [left, right] }`), on a middle room only (not the first, where a game
+  starts, nor the last, which never forks). `roomForkProblem` is the one check: parseBank refuses a bad fork and the
+  editor's `bankProblems` flags the same before a save. It is copied to `RoomTemplate.fork`. Bank format 13
+  (`FORK_FORMAT`): format-12 code would drop the field on its next save.
+- **The plan wins.** `forkRule`: a bank that places any fork draws no random forks; walking into a placed room by a
+  correct answer always forks, without the one-room gap. The host's queued question (`picked`) still blocks a fork.
+- **Labelled, owner decision A.** A fork with `doors` shows them from the start (STATE `forkDoors` while the team chooses
+  and during its door opening; the vote buttons of #285 read the same labels); a timeout opens the left door, and
+  `syncFork` draws no `monsterSide`. Without `doors` it is the unlabelled ⚔️ / ❓ fork above.
+- **Door kinds.** monster and mystery as before. hard: `redealForDoor` deals from pool d+1 and sets `currentDifficulty`, so
+  progress follows the pool; refused in a difficulty-5 room. category: an unrevealed question of the category from the
+  room's pool that no other team holds, undrawn ones first; with none, the team keeps its question. `ForkRecord.category`
+  logs which.
+
 ## Deferred (TODOS.md)
 
-- Audience vote on the door (Approach C).
-- Question-bank or editor-placed forks, and difficulty or category doors (Approach B; needs a bank format bump).
+- None for forks.

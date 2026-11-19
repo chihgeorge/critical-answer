@@ -58,7 +58,7 @@ import { initialSortOrder, sortAnswer, sortOrderOf } from "@/lib/sort-order";
 import { EventStage } from "@/components/event-room";
 import { FortuneCard, FortunePizza } from "@/components/fortune";
 import { HostAwayBanner } from "@/components/host-away-banner";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, EVENT_SCENE_TEXT, eventEffectLine, forkDoorLabel, forkSideLabel, FORTUNE_CONDITION_TEXT } from "@/lib/event-text";
 
 const bgmSupported = () => "AudioContext" in window;
 
@@ -993,13 +993,14 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead }: { vi
 /** 叉路 on the big screen (branch-fork.md): the middle arch is bricked up and a door stands in each of two doorways, 左門
  * and 右門, nothing behind either told. Once a side is picked (forkBeat) its door swings open and names what was behind it;
  * the other dims and stays unnamed. A timeout is marked ⏳ first. */
-function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
+function ForkScreen({ view, beat, left, votes, doors, eventId, narration, onRead }: { view: SpectatorView; beat?: StateMessage["forkBeat"]; left?: number; votes?: StateMessage["forkVotes"]; doors?: StateMessage["forkDoors"]; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void }) {
   const idx = view.teams.findIndex((t) => t.id === (beat ? beat.teamId : view.currentTurnTeamId));
   const team = view.teams[idx];
   const name = team?.name ?? "";
   // The doors sit on the background's doorways: scene pixels (160x90) times the stage's 6 (960x540).
   const px = 960 / 160;
   const doorTop = (sceneFloor(90) - FORK_ARCH.h) * px;
+  const count = (side: "left" | "right") => Object.values(votes ?? {}).filter((v) => v === side).length;
   return (
     <>
       <Room room={team?.roomIndex ?? 0} arch="fork" />
@@ -1026,8 +1027,12 @@ function ForkScreen({ view, beat, left, eventId, narration, onRead }: { view: Sp
           return (
             <div key={side} data-side={side} {...(open ? { "data-testid": "fork-door-open", "data-door": beat.door } : {})} style={{ opacity: dim ? 0.3 : 1, filter: dim ? "grayscale(1)" : undefined }}>
               <Nameplate className="absolute" style={{ left: x + (FORK_ARCH.w * px) / 2, top: doorTop - 62, transform: "translateX(-50%)", zIndex: 5 }}>
-                <span>{open ? FORK_DOOR_LABEL[beat.door] : FORK_SIDE_LABEL[side]}</span>
+                <span>{open ? forkDoorLabel({ kind: beat.door, category: beat.category }) : forkSideLabel(side, doors)}</span>
               </Nameplate>
+              {/* 觀眾投票 (#285): how many waiting teams advise this door; gone once a door opens. */}
+              {!beat && count(side) > 0 && (
+                <span data-testid={`fork-votes-${side}`} className="px-chip absolute" style={{ left: x + (FORK_ARCH.w * px) / 2, top: doorTop + 56, transform: "translateX(-50%)", zIndex: 5, fontSize: 24, whiteSpace: "nowrap" }}>👥 {count(side)} 票</span>
+              )}
               {/* The opened door swings in on its hinge, leaving the dark doorway behind it. */}
               <div className="absolute" style={{ left: x, top: doorTop, zIndex: 4, transformOrigin: "left center", transform: open ? "perspective(600px) rotateY(-80deg)" : undefined, transition: prefersReducedMotion() ? undefined : "transform 700ms ease-out" }}>
                 <Sprite kind="door" scale={px} />
@@ -2118,6 +2123,9 @@ export default function ScreenPage() {
         case "SCREEN_EFFECT":
           onHostEffect(msg.effect);
           break;
+        case "FORK_VOTES":
+          setGame((g) => (g ? { ...g, forkVotes: msg.votes } : g));
+          break;
         case "REACTION": {
           const id = ++floatSeq;
           const f: Float = { id, teamId: msg.teamId, reaction: msg.reaction, x: FLOAT_LANES[id % FLOAT_LANES.length] };
@@ -2189,7 +2197,7 @@ export default function ScreenPage() {
         {game?.phase === "playing" && !game.intro && !game.initiative && game.fortune ? (
           <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
-          <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
+          <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} votes={game.forkVotes} doors={game.forkDoors} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceAt && voiceAt.eventId === narration?.eventId ? voiceAt.at : undefined} />}

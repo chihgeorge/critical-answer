@@ -39,7 +39,7 @@ import { NarrationPanel, type EditRefusal } from "@/components/narration-panel";
 import { QuestionPicker } from "@/components/question-picker";
 import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
-import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
+import { EVENT_OUTCOME_TITLE, forkDoorLabel, forkSideLabel, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import { FALLBACK_SEEK_S, formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
@@ -1416,10 +1416,10 @@ export default function HostPage() {
                   <Panel tone="lav" className="flex items-center justify-center gap-2 px-3 py-2 text-center text-[20px]">
                     {game.forkBeat ? (
                       // Only the opened door is named: the room never tells the host which side hid what.
-                      <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{FORK_DOOR_LABEL[game.forkBeat.door]}</span>
+                      <span data-testid="host-fork-beat">{game.forkBeat.timeout ? "⏳ 時間到，" : ""}大螢幕正在打開{FORK_SIDE_LABEL[game.forkBeat.side]}：{forkDoorLabel({ kind: game.forkBeat.door, category: game.forkBeat.category })}</span>
                     ) : (
                       <>
-                        <span>{turn.team.name}在叉路口，選左門或右門</span>
+                        <span>{turn.team.name}在叉路口，選{game.forkDoors ? `「${forkSideLabel("left", game.forkDoors)}」或「${forkSideLabel("right", game.forkDoors)}」` : "左門或右門"}</span>
                         {typeof game.forkLeft === "number" && <AnswerClock key={game.forkLeft} ms={game.forkLeft} variant="chip" />}
                       </>
                     )}

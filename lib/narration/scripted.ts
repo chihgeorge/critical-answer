@@ -533,6 +533,9 @@ export const FORK_OPEN_VARIANTS = ["{team}走到了叉路口……左邊還是�
 export const FORK_MONSTER_VARIANTS = ["{team}推開 ⚔️ 門，{monster}擋在面前！", "⚔️ 門後，{monster}正等著{team}。"];
 /** Said when the clock picked ⚔️ for the team. */
 export const FORK_TIMEOUT_VARIANTS = ["{team}猶豫太久，被推進了 ⚔️ 門！", "時間到！一陣風把{team}吹進 ⚔️ 門。"];
+/** A bank's 💀 or 🏷️ door opened (#286): `{door}` is its nameplate, so the line never says ⚔️ under another door. */
+export const FORK_DOOR_VARIANTS = ["{team}推開「{door}」，{monster}出題！", "「{door}」門後，{monster}等著{team}。"];
+export const FORK_DOOR_TIMEOUT_VARIANTS = ["時間到！{team}被推進「{door}」。"];
 
 /** 占卜師 (docs/designs/fortune-teller.md), all scripted: the crystal ball names the condition, never who matches. */
 export const FORTUNE_CONDITION_VARIANTS = ["水晶球浮現一行字：「{condition}」……", "占卜師盯著水晶球：「我看見了……{condition}。」", "水晶球亮了起來：命運落在「{condition}」身上。"];
@@ -747,8 +750,9 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       const chosen = fill(pick(timeout ? FORTUNE_TIMEOUT_VARIANTS : FORTUNE_CHOSEN_VARIANTS, timeout ? "fortune-timeout" : "fortune-chosen"), { team, effect: `${e.icon}${e.name}` });
       return [chosen, fill(pick(self ? FORTUNE_SELF_VARIANTS : FORTUNE_HIT_VARIANTS, self ? "fortune-self" : "fortune-hit"), { team, names })];
     },
-    /** The line once a fork's ⚔️ door opened: picked, or `timeout`. */
-    forkLine(timeout: boolean, team: string, monster: string): string {
+    /** The line once a fork's ⚔️ door opened: picked, or `timeout`. `door`: a bank's 💀 or 🏷️ door's nameplate (#286). */
+    forkLine(timeout: boolean, team: string, monster: string, door?: string): string {
+      if (door) return timeout ? fill(pick(FORK_DOOR_TIMEOUT_VARIANTS, "fork-door-timeout"), { team, door }) : fill(pick(FORK_DOOR_VARIANTS, "fork-door"), { team, monster, door });
       return timeout ? fill(pick(FORK_TIMEOUT_VARIANTS, "fork-timeout"), { team }) : fill(pick(FORK_MONSTER_VARIANTS, "fork-monster"), { team, monster });
     },
   };

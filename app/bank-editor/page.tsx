@@ -17,12 +17,12 @@ import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRef
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
-import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, bossQuestions, isMusicQuestion, poolCategories, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, drawsBoss, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
 import { bankSize, bankSizeWarning, bankSizeWarningText } from "@/lib/bank-size";
-import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
+import { DEFAULT_BOSS_DIFFICULTY, type Difficulty, type ForkDoorSpec, type RoomFork } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime, youtubeWatchUrl } from "@/lib/youtube";
 import { pageOf, questionPage } from "@/lib/bank-editor-pages";
@@ -953,6 +953,74 @@ export default function BankEditorPage() {
   );
 }
 
+const FORK_DOOR_OPTIONS: { kind: ForkDoorSpec["kind"]; name: string }[] = [
+  { kind: "monster", name: "⚔️ 怪物房" },
+  { kind: "mystery", name: "❓ 神秘房" },
+  { kind: "hard", name: "💀 難題" },
+  { kind: "category", name: "🏷️ 類別" },
+];
+
+/** 題庫指定叉路 (#286): none, an unlabelled fork, or a fork with two named doors. roomForkProblem flags a bad pick. */
+function ForkPicker({ i, fork, categories, onChange }: { i: number; fork?: RoomFork; categories: string[]; onChange: (fork: RoomFork | undefined) => void }) {
+  const mode = !fork ? "none" : fork.doors ? "doors" : "plain";
+  const doorFor = (kind: ForkDoorSpec["kind"]): ForkDoorSpec => (kind === "category" ? { kind, category: categories[0] ?? "" } : { kind });
+  const setDoor = (side: 0 | 1, door: ForkDoorSpec) => {
+    const doors = [...(fork?.doors ?? [{ kind: "monster" }, { kind: "mystery" }])] as ForkDoorSpec[];
+    doors[side] = door;
+    onChange({ doors });
+  };
+  return (
+    <>
+      <label className="flex items-center gap-1">
+        叉路
+        <select
+          data-testid={`bank-room-${i}-fork`}
+          className="px-input !w-auto !py-1"
+          value={mode}
+          onChange={(e) => onChange(e.target.value === "none" ? undefined : e.target.value === "plain" ? {} : { doors: [{ kind: "monster" }, { kind: "mystery" }] })}
+        >
+          <option value="none">無</option>
+          <option value="plain">有（門不標示）</option>
+          <option value="doors">有（指定兩扇門）</option>
+        </select>
+      </label>
+      {fork?.doors?.map((door, side) => (
+        <span key={side} className="flex items-center gap-1">
+          {side === 0 ? "左門" : "右門"}
+          <select
+            data-testid={`bank-room-${i}-door-${side}`}
+            className="px-input !w-auto !py-1"
+            value={door.kind}
+            onChange={(e) => setDoor(side as 0 | 1, doorFor(e.target.value as ForkDoorSpec["kind"]))}
+          >
+            {FORK_DOOR_OPTIONS.map((o) => (
+              <option key={o.kind} value={o.kind}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+          {door.kind === "category" && (
+            <select
+              data-testid={`bank-room-${i}-door-${side}-category`}
+              aria-label={`${side === 0 ? "左門" : "右門"}的類別`}
+              className="px-input !w-auto !py-1"
+              value={door.category}
+              onChange={(e) => setDoor(side as 0 | 1, { kind: "category", category: e.target.value })}
+            >
+              {!categories.includes(door.category) && <option value={door.category}>{door.category || "（這個難度沒有類別）"}</option>}
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
 /** Each room's monster, difficulty (which pool it draws from) and reward, and the boss and its reward per hit.
  * Monsters come from the catalog only, each with its own dish (docs/designs/monster-catalog.md §4). */
 function RoomsEditor({
@@ -998,8 +1066,10 @@ function RoomsEditor({
               {score}
               <input type="number" min={0} step={1} className="px-input !w-[72px] !py-1" value={r.reward} onChange={(e) => onRoom(i, { reward: toReward(e.target.value) })} />
             </label>
+            {i > 0 && i < bank.rooms.length - 1 && <ForkPicker i={i} fork={r.fork} categories={[...poolCategories(bank.pools[r.difficulty])]} onChange={(fork) => onRoom(i, { fork })} />}
           </div>
         ))}
+        <div className="text-[13px]">叉路（#286）：答對走進這間房時一定出現叉路。指定兩扇門時門上會寫去處，時間到開左門；只要有一間房設了叉路，這份題庫就不再隨機出叉路。</div>
         <div className="flex flex-wrap items-center gap-2 text-[15px]">
           <span className="w-[64px]">首領</span>
           <MonsterPicker testId="bank-boss-monster" label="首領" value={drawsBoss(bank) ? RANDOM_BOSS : bank.boss.monster} boss onChange={onBossMonster} />
