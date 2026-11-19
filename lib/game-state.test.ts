@@ -1978,6 +1978,8 @@ describe("class dice: every tier per class", () => {
     expect([1, 4, 12, 20].map((v) => right(v).game.teams[0].abilityUses)).toEqual([2, 2, 2, 2]);
     expect(right(20).outcome).toMatchObject({ roll: { kind: "crit", value: 20 } });
     for (const v of [1, 4, 12]) expect(() => startSneak(sneak(v).game, "T0")).toThrow(/sneak_used/);
+    // A press whose die never landed (a restart cut the beat) rolls again without a second use.
+    expect(startSneak(startSneak(g0, "T0"), "T0").teams[0].abilityUses).toBe(2);
     // A wrong answer pays no sneak bonus.
     expect(answerQuestion(sneak(12).game, "T0", q0(g0), false, "retry").game.teams[0].reward).toBe(30);
   });
@@ -2202,10 +2204,18 @@ describe("the dish die (class-dice-rework.md)", () => {
   it("a warrior's 20 pays double and is marked a crit; its hit's dish die goes on top", () => {
     const g = spendAbility(critGame(["warrior"]), "T0", "warrior");
     expect(warriorRoll(g, "T0", q0(g), 20, first).outcome).toMatchObject({ reward: 20, roll: { kind: "crit", value: 20 } });
-    expect(warriorRoll(g, "T0", q0(g), 20, first, 20).outcome).toMatchObject({ reward: 30, roll: { kind: "dish", value: 20 } });
+    expect(warriorRoll(g, "T0", q0(g), 20, first, 20).outcome).toMatchObject({ reward: 30, roll: { kind: "crit", value: 20 }, dishDie: 20 });
     const hit = warriorRoll(g, "T0", q0(g), 19, first, 10).outcome;
     expect(hit).toMatchObject({ reward: 8 });
     expect("roll" in hit && hit.roll).toBeFalsy();
+  });
+
+  // Value: protects=a persuasion win keeps its mark under a burnt or legendary dish, so the narrator says 說服 and not 燒焦
+  // (red-team, class-dice-rework.md); fails_when=the dish die's mark is ranked above the check's
+  it("a check's 20 keeps its mark when the dish die lands 1 or 20; the dish rides in dishDie", () => {
+    const g = critGame([undefined]);
+    const won = { ...g, checks: { [checkKey(q0(g), "T0")]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    for (const v of [1, 20]) expect(answerQuestion(won, "T0", q0(g), true, "retry", first, v).outcome).toMatchObject({ roll: { kind: "check", value: 20 }, dishDie: v });
   });
 });
 

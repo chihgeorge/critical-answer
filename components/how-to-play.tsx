@@ -17,6 +17,7 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
     script: "每一隊輪流出場，輪到哪一隊大螢幕上方會寫。選擇題點選後按「鎖定答案」；一般房填空題先擲說服檢定，再打字送出，由我來判對錯。",
   },
   ...DICE_PAGES,
+  // Page 4 names one 逃跑, never 同房／換房: the single flee (#413) only rewords its 「換一題簡單一點的」 here and in Picture.
   {
     topic: "答錯與怎麼贏",
     big: "答錯可以下輪再答或逃跑；分數最高的隊伍是冠軍",

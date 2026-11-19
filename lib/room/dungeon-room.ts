@@ -596,8 +596,8 @@ export class DungeonRoom {
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
   /** Dice in their beat: a warrior's roll, a correct answer's dish die, a class die, a persuasion check, or the kill's 4d20 (value is
-   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a crit team
-   * locks again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
+   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a team whose
+   * dish die was rolling answers or is judged again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
    * through lostCrit with fresh dice). Shares the "lock" step. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
@@ -1465,6 +1465,8 @@ export class DungeonRoom {
     const check = game.checks?.[checkKey(id, teamId)];
     // A natural 20 that kills the boss rolls its 4d20 next: still unseen, so its question stays hidden through that beat too.
     const won = roll?.kind === "kill" && check?.value === 20 && !check.dropped;
+    // So does the dish die that a natural 20's free answer rolls (class-dice-rework.md): no video, memory timer or hints.
+    if (this.persuadedDish() && roll!.teamId === teamId && roll!.questionId === id) return true;
     return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check;
   }
 
@@ -3935,7 +3937,7 @@ export class DungeonRoom {
    * `roll`: a warrior's d20 stands in for the answer (warriorRoll), and `correct` is ignored; a dish die (`kind: "dish"`,
    * or a warrior's `dish`) rides on a correct answer. */
   /** judgeNow, with a lost natural 20 held back until it is done (it narrates first and its phase card is due) and
-   * tried after: the turn may now be the crit team's. */
+   * tried after: the turn may now be the check-20 team's. */
   private judge(...args: Parameters<DungeonRoom["judgeNow"]>) {
     this.judging = true;
     try {
@@ -3958,7 +3960,10 @@ export class DungeonRoom {
     const hit = roll?.kind === "warrior" ? roll.value >= WARRIOR_TARGET && roll.dish === undefined : correct && !roll;
     if (hit && !caught && !killDice && !isBuzzPhase(prev)) {
       // Checked now, as the judgment would be: a refusal must not wait for the beat.
-      const trial = (roll ? warriorRoll(prev, teamId, questionId, roll.value, () => 0, undefined, [1, 1, 1, 1]) : answerQuestion(prev, teamId, questionId, true, fleeChoice, () => 0, undefined, [1, 1, 1, 1])).outcome;
+      // A music question's fields hit once each (multi-field.md): the same marks the judgment uses, or a 2-field kill slips by.
+      const fq = this.question(questionId);
+      const fm = fq?.kind === "text" && fq.fields ? (fields ?? fq.fields.map(() => true)) : undefined;
+      const trial = (roll ? warriorRoll(prev, teamId, questionId, roll.value, () => 0, undefined, [1, 1, 1, 1]) : answerQuestion(prev, teamId, questionId, true, fleeChoice, () => 0, undefined, [1, 1, 1, 1], fm && { right: fm.filter(Boolean).length, total: fm.length, marks: fm })).outcome;
       if (!(trial.type === "correct-boss-hit" && trial.bossKilled)) {
         this.pendingAnswer = { ...(fields ? { fields } : {}), ...(roll ? { warrior: roll.value } : {}) };
         // Pin the turn, as a lock does: the answer is already right.
@@ -4073,7 +4078,7 @@ export class DungeonRoom {
     // The dish die behind this answer renames a cooked dish on a 1, 2–6 or 20 (a gift stays as the monster gave it).
     const dishDie = roll?.kind === "dish" ? roll.value : roll?.dish;
     const cooked = ateFrom && !persuaded ? catalogMonster(ateFrom).dish : undefined;
-    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, this.rng) : undefined;
+    const rolled = cooked && dishDie !== undefined ? rolledDish(cooked, dishDie, Math.random) : undefined;
     const dish = !ateFrom ? undefined : persuaded ? { ...catalogMonster(ateFrom).gift, gift: true as const } : rolled ? { ...cooked!, name: rolled.name, comment: rolled.comment, ...(rolled.look === "burnt" || rolled.look === "legend" ? { look: rolled.look } : {}) } : cooked;
     // A phase card, not the next team, follows this answer. In a buzzer phase there is no team on turn.
     const narrated = toNarrationEvent(prev, outcome, monster, game.boss.phasePending ? undefined : this.nextTurn() ?? undefined, phaseName);

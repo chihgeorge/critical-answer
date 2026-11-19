@@ -9,7 +9,7 @@ import { COOK_MS, COOK_POT_MS, COOK_SMOKE_MS, EAT_AT_MS, EAT_BITE_MS, EAT_MS, FI
 import { revealMarks } from "@/lib/podium";
 import { DISH_SPRITE, type SpriteKind } from "@/lib/sprite-kind";
 import type { ClassId } from "@/lib/game-state";
-import { signed } from "@/lib/event-text";
+import { dishChangeLabel } from "@/lib/class-dice";
 import { Panel, prefersReducedMotion, Sprite } from "@/components/pixel";
 import { monsterById } from "@/lib/monster-catalog";
 import { dishScale, emptyPlateScale } from "@/lib/pixel-art";
@@ -234,12 +234,17 @@ function DishCard({ dish, title }: { dish: Dish; title: string }) {
         </div>
         <div className="text-[20px]">「{dish.comment}」</div>
         <div className="mt-1 text-[22px]" style={{ color: "var(--ok2)" }}>
-          <span className="px-num">+{dish.points}</span> 飽足感
+          {/* A dish die that changed the score reads 「原本 → 現在」 (owner, 2026-11-18): a delta next to the total read as a sum. */}
           {dish.dishBonus ? (
-            <span style={{ color: dish.dishBonus < 0 ? "var(--danger)" : dish.look === "legend" ? "#b07a00" : "#a8470f" }}>
-              （🍳 {dish.look === "burnt" ? "焦黑" : dish.look === "legend" ? "傳說級" : "廚師"} <span className="px-num">{signed(dish.dishBonus)}</span>）
+            <span data-testid="dish-change">
+              <span style={{ color: dish.dishBonus < 0 ? "var(--danger)" : dish.dishDie === 20 ? "#b07a00" : "#a8470f" }}>{dishChangeLabel(dish.dishDie)}</span>{" "}
+              <span className="px-num">{dish.points - dish.dishBonus}</span> → <span className="px-num">{dish.points}</span> 飽足感
             </span>
-          ) : null}
+          ) : (
+            <>
+              <span className="px-num">+{dish.points}</span> 飽足感
+            </>
+          )}
         </div>
       </div>
     </Panel>

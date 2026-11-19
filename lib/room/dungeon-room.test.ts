@@ -1304,6 +1304,7 @@ describe("TEAM_SELECT_OPTION", () => {
       roll(20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "dish" }); // a win is a correct answer: its dish die rolls
+      expect(lastBroadcast(room).question).toBeNull(); // the question the 20 won stays unseen through the dish beat too
       settleDish(room);
       expect(room.game!.teams[0].score).toBe(1);
       expect(JSON.stringify(lastBroadcast(room).view.checks ?? {})).not.toContain("萬");

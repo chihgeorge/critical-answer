@@ -190,7 +190,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && !me.inBossPhase && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2); the boss room has none (#364).
     body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
-  } else if (me.classId === "thief" && !q.checkFirst && me.sneakTry?.questionId !== q.id) {
+  } else if (me.classId === "thief" && !q.checkFirst && (me.sneakTry?.questionId !== q.id || me.sneakTry.value === undefined)) {
     // Not before the check: 偷襲 rolls once the question is up, once per question.
     body = button("🗡️", "偷襲：先擲偷襲骰", `7 以上答對 ×${SNEAK_REWARD_MULTIPLIER}、20 ×${SNEAK_CRIT_MULTIPLIER}・擲 1 扣一成・剩 ${me.abilityUses} 次`, "#ff8787", use);
   } else if (me.classId === "mage" && game.view.mageCasts?.[checkKey(q.id, teamId)]) {
@@ -665,7 +665,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </>
       )}
       {/* A mage's skill die may still take a potion once the check is done (class dice), before its hint shows. */}
-      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint && <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} />}
+      {/* Anyone else's potion waits for its next die: the warrior's or thief's own, else the dish die (class-dice-rework.md). */}
+      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && (me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint ? <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} /> : <PotionButton game={game} teamId={teamId} questionId={q.id} die="dish" send={send} />)}
       {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
@@ -1360,7 +1361,7 @@ export default function PlayPage() {
         {/* Our own dish die, once its answer is scored (and its dish served): what it did to the reward. */}
         {game && !finished && revealed?.scored?.teamId === teamId && revealed.scored.dishDie !== undefined && (!revealed.dish || revealed.served) && (
           <div data-testid="dish-roll-row" className="px-bar mt-1 !text-[19px]" role="status" style={revealed.scored.dishDie === 1 ? { background: "var(--danger)", color: "#fff" } : revealed.scored.dishDie === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -5px 0 var(--orange)" } : undefined}>
-            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, !!revealed.scored.chef)}
+            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine))}
           </div>
         )}
 

@@ -1352,13 +1352,15 @@ export function answerQuestion(
   // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
   const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
   const dishMark = correct && !isBuzzPhase(game) && (dishDie === 20 || dishDie === 1) ? dishDie : undefined;
+  // A check's 20 or 1 names the answer first (persuaded, or halved), then a class die's 20; the dish die rides along in
+  // the outcome's dishDie, so its look and line still show.
   const rollMark: { roll?: RollMark } =
-    dishMark
-      ? { roll: { kind: "dish", value: dishMark } }
+    correct && (check?.value === 20 || check?.value === 1)
+      ? { roll: { kind: "check", value: check.value } }
       : crit
         ? { roll: { kind: "crit", value: 20 } }
-        : correct && (check?.value === 20 || check?.value === 1)
-          ? { roll: { kind: "check", value: check.value } }
+        : dishMark
+          ? { roll: { kind: "dish", value: dishMark } }
           : {};
   const blessing = (base: number) => (boon === "blessing" ? Math.round(base * 0.5) : 0);
   // R5: the half is taken from the base reward, then the sneak raises it; a warrior's hit pays its die's share of it.
@@ -1774,8 +1776,11 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
 export function startSneak(game: GameState, teamId: string): GameState {
   assertAbilityTurn(game, teamId, "thief");
   const questionId = currentQuestionIdOf(game, teamId);
-  if (getTeam(game, teamId).sneakArmed || getTeam(game, teamId).sneakTry?.questionId === questionId) throw new InvalidActionError("sneak_used");
-  const spent = spendAbility(game, teamId, "thief");
+  const tried = getTeam(game, teamId).sneakTry;
+  // A press whose die never landed (a restart cut its beat; the die lives in the room's memory) rolls again, already paid.
+  const unrolled = tried?.questionId === questionId && tried.value === undefined;
+  if (getTeam(game, teamId).sneakArmed || (tried?.questionId === questionId && !unrolled)) throw new InvalidActionError("sneak_used");
+  const spent = unrolled ? game : spendAbility(game, teamId, "thief");
   return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakTry: { questionId } })) };
 }
 

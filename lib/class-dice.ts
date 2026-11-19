@@ -42,17 +42,18 @@ export function dishEffect(value: number, chef: boolean): string {
   return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "失手了，獎勵不變" : t === 2 ? (chef ? `上菜！廚師 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
 }
 
-/** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1). */
-export function dishPhoneLine(value: number, bonus: number, chef: boolean): string {
+/** What a dish die that changed the score is called before its 「原本 → 現在」: a 1, a 20, or a chef's 7–19. */
+export function dishChangeLabel(value: number | undefined): string {
+  return value === 1 ? "焦黑！" : value === 20 ? "傳說級！" : "廚師加成";
+}
+
+/** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1), `points`
+ * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18). */
+export function dishPhoneLine(value: number, bonus: number, points: number, unit: string): string {
+  // A change leaves out 「料理骰 N：」, so the line fits one row of a phone.
+  if (bonus) return `🍳 ${dishChangeLabel(value)} ${points - bonus} → ${points} ${unit}`;
   const t = skillTier(value);
-  const signed = `${bonus >= 0 ? "+" : "−"}${Math.abs(bonus)}`;
-  return t === 0
-    ? `🍳 料理骰 1：焦黑殘渣 ${signed}`
-    : t === 1
-      ? `🍳 料理骰 ${value}：半生不熟`
-      : t === 2
-        ? `🍳 料理骰 ${value}：上菜${chef && bonus ? `（廚師 ${signed}）` : ""}`
-        : `🍳 料理骰 20：傳說級料理 ${signed}`;
+  return t === 0 ? "🍳 料理骰 1：燒焦了" : t === 1 ? `🍳 料理骰 ${value}：半生不熟` : t === 2 ? `🍳 料理骰 ${value}：上菜` : "🍳 料理骰 20：傳說級料理";
 }
 
 /** The warrior's roll for the answer: 1 wrong and loses the question's reward, 2–6 wrong, 7–19 right for 80%, 20 double. */
