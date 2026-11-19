@@ -307,8 +307,8 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
       ) : wrong ? (
         // After a wrong lock the four grey tiles would push 逃跑 under the fold (cleric): one line says what was picked.
         wrong.optionIndex !== null && options[wrong.optionIndex] !== undefined && (
-          <div data-testid="my-wrong-pick" className="flex items-baseline gap-2 border-t-[3px] border-[var(--dim-line)] pt-1 text-[18px] text-[var(--dim-ink)] [overflow-wrap:anywhere]">
-            <span className="min-w-0">你們選的：{optionLetter(wrong.optionIndex)} {options[wrong.optionIndex]}</span>
+          <div data-testid="my-wrong-pick" className="flex items-baseline gap-2 border-t-[3px] border-[var(--dim-line)] pt-1 text-[18px] [overflow-wrap:anywhere]">
+            <span className="min-w-0 text-[var(--k)]">你們選的：{optionLetter(wrong.optionIndex)} {options[wrong.optionIndex]}</span>
             <span className="ml-auto shrink-0 text-[var(--wrong)]">✕ 答錯</span>
           </div>
         )
