@@ -54,7 +54,7 @@ describe("toNarrationEvent", () => {
       team: "藍隊",
       monster: "史萊姆",
     });
-    // 逃跑・換房 names the new monster.
+    // 逃跑 names the new monster.
     expect(toNarrationEvent(game, { type: "incorrect-flee", teamId: "b", newDifficulty: 1, switchedTo: "ghost-shy" }, "史萊姆")).toEqual({ type: "flee", team: "藍隊", monster: "史萊姆", to: "害羞幽靈" });
   });
 
