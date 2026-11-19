@@ -164,11 +164,12 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
       g = r.game;
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
-    // 🍀 A held lucky die doubles a skill die (the team has a use, it is spending it), or a dish die once the team has no
-    // skill uses left (lib's luckyDieFits). It spends the die on g: call it on its own line, before any call that reads g.
+    // 🍀 A held lucky die doubles a skill die (the team has a use, it is spending it), or a dish die when the team has no
+    // skill uses left at all (lib's luckyDieFits) and its skill die did not already roll on this question (skillRolledOn).
+    // It spends the die on g: call it on its own line, before any call that reads g.
     const potionRoll = (die: "class" | "dish") => {
       const v = d20();
-      if (!team().item || (die === "dish" && G.hasSkillUses(team(), { questionId: q, mageCasts: g.mageCasts }))) return v;
+      if (!team().item || (die === "dish" && (G.hasSkillUses(team()) || G.skillRolledOn(team(), { questionId: q, mageCasts: g.mageCasts })))) return v;
       g = G.spendPotion(G.drinkPotion(g, id), id);
       return Math.max(v, d20());
     };

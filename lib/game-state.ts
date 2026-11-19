@@ -240,6 +240,8 @@ export interface Team {
   /** The thief's last 偷襲: on which question (once per question, whatever its die said), the die once it landed and
    * what a 1 took. */
   sneakTry?: SneakTry;
+  /** The question the cleric last prayed on (pray): its prayer die rolled there, so no lucky die for the rest of it. */
+  prayedOn?: string;
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
   typedAnswer?: string;
@@ -1851,7 +1853,7 @@ export function pray(game: GameState, teamId: string): GameState {
   return {
     ...game,
     pendingWrong: { ...game.pendingWrong!, prayed: true, praying: true },
-    teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })),
+    teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1, prayedOn: game.pendingWrong!.questionId })),
   };
 }
 
@@ -1960,25 +1962,30 @@ export function potionArmed(game: GameState, teamId: string): boolean {
 }
 
 /** 🍀 用幸運骰 (甲2, owner 2026-11-19): an armed lucky die goes on the team's next class skill die (洞悉, 祈禱, 衝鋒, 偷襲);
- * a team with no skill uses left (a chef, no class, or all used) puts it on its next dish die instead. Never on the
- * persuasion check (it rolls itself) or a kill's dice. The room calls it after spending the use, so a class die always fits. */
-export function luckyDieFits(team: SkillTeam, kind: string, at?: SkillAt): boolean {
+ * a team with no skill uses left at all (a chef, no class, or all 3 used) puts it on its next dish die instead. Never on
+ * the persuasion check (it rolls itself) or a kill's dice. The room calls it after spending the use, so a class die always fits. */
+export function luckyDieFits(team: SkillTeam, kind: string): boolean {
   if (kind === "mage" || kind === "cleric" || kind === "warrior" || kind === "thief") return true;
-  return kind === "dish" && !hasSkillUses(team, at);
+  return kind === "dish" && !hasSkillUses(team);
 }
 
-type SkillTeam = Pick<Team, "classId" | "abilityUses"> & Partial<Pick<Team, "id" | "sneakTry">>;
-/** The question the die is for, and the game's (or view's) mageCasts: a skill already used on it has no die left there. */
+type SkillTeam = Pick<Team, "classId" | "abilityUses"> & Partial<Pick<Team, "id" | "sneakTry" | "prayedOn">>;
+/** The question the lucky die would be for, and the game's (or view's) mageCasts. */
 type SkillAt = { questionId: string; mageCasts?: Record<string, unknown> };
 
-/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. With `at`, a mage
- * that already cast on that question, or a thief whose sneak die already landed there, has no skill die left on it. */
-export function hasSkillUses(team: SkillTeam, at?: SkillAt): boolean {
-  if (!(team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") || team.abilityUses <= 0) return false;
-  if (!at || team.id === undefined) return true;
-  if (team.classId === "mage") return !at.mageCasts?.[checkKey(at.questionId, team.id)];
-  if (team.classId === "thief") return team.sneakTry?.questionId !== at.questionId || team.sneakTry.value === undefined;
-  return true;
+/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. */
+export function hasSkillUses(team: SkillTeam): boolean {
+  return (team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") && team.abilityUses > 0;
+}
+
+/** The team's skill die already rolled on `at`'s question: a mage cast 洞悉 there, a thief's 偷襲 die landed there, or a
+ * cleric prayed there. A lucky die is used before a roll, so it stays closed for the rest of that question (owner 2026-11-19). */
+export function skillRolledOn(team: SkillTeam, at: SkillAt): boolean {
+  if (team.id === undefined) return false;
+  if (team.classId === "mage") return !!at.mageCasts?.[checkKey(at.questionId, team.id)];
+  if (team.classId === "thief") return team.sneakTry?.questionId === at.questionId && team.sneakTry.value !== undefined;
+  if (team.classId === "cleric") return team.prayedOn === at.questionId;
+  return false;
 }
 
 /** 🍀 用幸運骰: the team arms its lucky die for its current question. The room checks the turn and D6's cases first. */
@@ -1989,6 +1996,7 @@ export function drinkPotion(game: GameState, teamId: string): GameState {
   if (!getTeam(game, teamId).item) throw new InvalidActionError("no_item");
   if (potionArmed(game, teamId)) throw new InvalidActionError("already_drunk");
   const questionId = currentQuestionIdOf(game, teamId);
+  if (skillRolledOn(getTeam(game, teamId), { questionId, mageCasts: game.mageCasts })) throw new InvalidActionError("skill_rolled");
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ itemArmedFor: questionId, itemArmedTurn: t.turns ?? 0 })) };
 }
 
@@ -2696,6 +2704,8 @@ export interface SpectatorView {
     sneakCrit?: true;
     /** The thief's last 偷襲 (its button stays grey on that question) and what its die did. */
     sneakTry?: SneakTry;
+    /** The question the cleric last prayed on: its lucky die stays grey there (skillRolledOn). Absent from an older server. */
+    prayedOn?: string;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
@@ -2774,6 +2784,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       ...(t.sneakArmed && t.sneakCrit ? { sneakCrit: true as const } : {}),
       ...(t.sneakTry ? { sneakTry: t.sneakTry } : {}),
+      ...(t.prayedOn ? { prayedOn: t.prayedOn } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       // A boss team's question is the boss's, not its stale room question.

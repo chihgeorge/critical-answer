@@ -4737,10 +4737,10 @@ export class DungeonRoom {
   private startRoll(kind: "kill", teamId: string, questionId: string, kill: { values: number[]; value: number }): void;
   private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number } | { rejudge: true } | { warrior: number }) {
     const die = () => this.fixedDie ?? rollD20(this.rng);
-    // 🍀 A lucky die armed on this question doubles the team's next class skill die, or its dish die once it has no skill uses
-    // left (luckyDieFits), never a check, a kill's or a 改成答對's; spent before the STATE goes out, so a restart in the beat
+    // 🍀 A lucky die armed on this question doubles the team's next class skill die, or its dish die when it has no skill uses
+    // left at all (luckyDieFits), never a check, a kill's or a 改成答對's; spent before the STATE goes out, so a restart in the beat
     // cannot roll it again (E3).
-    const potion = !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) && luckyDieFits(this.game.teams.find((t) => t.id === teamId)!, kind, { questionId, mageCasts: this.game.mageCasts }) ? [die(), die()] : null;
+    const potion = !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) && luckyDieFits(this.game.teams.find((t) => t.id === teamId)!, kind) ? [die(), die()] : null;
     if (potion) this.game = spendPotion(this.game!, teamId);
     const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
     // A sneak die's 1 shows what it takes as it lands (sneakRoll, tried on the game now).
@@ -5468,8 +5468,8 @@ export class DungeonRoom {
   }
 
   /** 🍀 用幸運骰 (lucky-potion.md D6, E4): only on the team's own turn, outside a buzzer phase. Its next class skill die on
-   * this question rolls twice, or its dish die once it has no skill uses left (luckyDieFits); a die that never rolls leaves
-   * it held. The phone shows the button in the same cases, so a refusal only happens on a race. */
+   * this question rolls twice, or its dish die when it has no skill uses left at all (luckyDieFits); a die that never rolls
+   * leaves it held. Once its skill die rolled on this question it is refused (skillRolledOn, drinkPotion). The phone shows the button in the same cases, so a refusal only happens on a race. */
   private handleTeamDrinkPotion(conn: Conn, questionId: string, eventId: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;

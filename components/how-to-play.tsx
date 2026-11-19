@@ -185,7 +185,7 @@ function Picture({ page }: { page: number }) {
           {face(17, "kept")}
           <span>→ 取高：17</span>
         </div>
-        <span className="text-[16px]">技能骰；沒技能可用就是料理骰</span>
+        <span className="text-[16px]">技能骰；技能次數用完就是料理骰</span>
       </div>
     );
   if (page === 7)

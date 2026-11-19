@@ -203,9 +203,13 @@ describe("🍀 lucky die in the room", () => {
     c.dice.push(15, 3); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
     send(c.room, c.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
     expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
+    // The prayer rolled on m1: no lucky die for the rest of it (skillRolledOn).
+    expect(c.team(A).prayedOn).toBe("m1");
   });
 
-  it("takes a mage's drink on a fill-in after its skill is cast or its answer is in; it waits for a skill die, else comes back", () => {
+  // Value: protects=the owner's PR 422 ruling: a lucky die is used before a roll, so after the mage's cast on this question
+  // the drink is refused there (never moved to the dish die); fails_when=the room arms it after the cast again
+  it("refuses a mage's drink on a question it already cast on; takes it once its answer is in", () => {
     const failedCheck = () => {
       const m = started(text("t1"), ["mage", null]);
       m.give(A); // the check landed failed (sendSettled): no hint
@@ -217,7 +221,8 @@ describe("🍀 lucky die in the room", () => {
     vi.advanceTimersByTime(2000);
     expect(cast.room.game!.mageCasts?.[checkKey("t1", A)]).toBeTruthy();
     cast.drink();
-    expect(cast.team(A).itemArmedFor).toBe("t1");
+    expect(cast.team(A).itemArmedFor).toBeUndefined();
+    expect(cast.lastTo(cast.phones[0])).toMatchObject({ detail: "skill_rolled" });
 
     const typed = failedCheck();
     send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });
