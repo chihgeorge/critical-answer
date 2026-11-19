@@ -161,7 +161,7 @@ export async function nextQuestion(host: Page) {
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; question?: { checkFirst?: true } | null; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; question?: { checkFirst?: true } | null; stageBeat?: string; pendingRoll?: unknown; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
@@ -178,7 +178,7 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
     // A team walks into the boss room only once 下一題 closes its dish (#364), so read its question after the reveal closes.
     await expect.poll(() => cur().reveal ?? null, { timeout: JUDGE_LANDS_MS }).toBeNull();
     // A fill-in rolls its check by itself first; the room refuses a judgment until it and its card are done.
-    await expect.poll(() => !!cur().question?.checkFirst, { timeout: JUDGE_LANDS_MS }).toBe(false);
+    await expect.poll(() => !!cur().question?.checkFirst || !!cur().stageBeat || !!cur().pendingRoll, { timeout: JUDGE_LANDS_MS }).toBe(false);
     const t = cur().view.teams[0];
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
