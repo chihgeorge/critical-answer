@@ -48,7 +48,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   // The join QR is right there in the host's lobby, no drawer needed.
   await expect(host.getByRole("img", { name: "掃描加入" })).toBeVisible();
 
-  // While waiting, each phone shows only its own team (the big screen and the host list every team).
+  // While waiting, each phone shows only its own team (the big screen and the host list every team). Both joins are
+  // in on the host first, so the "not the other team" check runs after the second join was broadcast.
+  await expect(host.getByText("乙隊").first()).toBeVisible();
   for (const [i, { page }] of players.entries()) {
     await expect(page.getByTestId("roster")).toContainText(["甲隊", "乙隊"][i]);
     await expect(page.getByTestId("roster")).not.toContainText(["乙隊", "甲隊"][i]);

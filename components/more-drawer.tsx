@@ -95,7 +95,11 @@ export function MoreDrawer({
   calibrate?: ReactNode;
 }) {
   // One section open at a time (ui-simplify H1): the teams in a game, the setup in the lobby.
-  const [open, setOpen] = useState<string | null>(fixable.length > 0 ? "teams" : lobby || calibrate ? "setup" : null);
+  // `undefined` = the phase's default, so a game starting (or ending) with the drawer open lands on a group that exists.
+  const [chosen, setOpen] = useState<string | null | undefined>(undefined);
+  const fallback = fixable.length > 0 ? "teams" : lobby || calibrate ? "setup" : null;
+  const shown = new Set([fixable.length > 0 && "teams", fixable.length > 0 && "rejudge", (lobby || calibrate) && "setup", screen && "screen", "other"]);
+  const open = chosen === undefined || (chosen !== null && !shown.has(chosen)) ? fallback : chosen;
   const [toolsFor, setToolsFor] = useState<string | null>(null);
   const section = (key: string, title: string, status: ReactNode, body: ReactNode) => (
     <Section key={key} id={key} title={title} status={status} open={open === key} onToggle={() => setOpen(open === key ? null : key)}>
@@ -162,13 +166,14 @@ export function MoreDrawer({
               </div>
             )}
           </section>
+          {/* A refused fix, 改判 or 送王房 says why here, whichever group is open (the drawer covers the page's own line). */}
+          {error && <div role="alert" className="px-2 py-1 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</div>}
           {fixable.length > 0 &&
             section(
               "teams",
               "隊伍",
               `${fixable.length} 隊`,
               <div data-testid="host-fix" className="flex flex-col gap-2">
-                {error && <div role="alert" className="px-2 py-1 text-[14px]" style={{ background: "#ffd9d9" }}>{error}</div>}
                 {fixable.map((t) => {
                   const fix = (f: HostFix) => fixAllowed(`${t.id}:${f}`) && send({ type: "HOST_FIX", teamId: t.id, fix: f });
                   const small = "!m-0 min-h-[44px] min-w-[44px] !px-2 !py-0 text-[15px]";
@@ -416,7 +421,7 @@ function Section({ id, title, status, open, onToggle, children }: { id: string; 
         data-testid={`more-section-${id}`}
         aria-expanded={open}
         onClick={onToggle}
-        className="flex items-center gap-2 border-b-2 border-[var(--k)] pb-[2px] text-left text-[17px]"
+        className="flex min-h-[44px] items-center gap-2 border-b-2 border-[var(--k)] pb-[2px] text-left text-[17px]"
       >
         <span aria-hidden>{open ? "▾" : "▸"}</span>
         <span className="flex-1">{title}</span>

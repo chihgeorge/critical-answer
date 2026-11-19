@@ -1217,8 +1217,8 @@ export default function PlayPage() {
             </Panel>
           </div>
         )}
-        {!game && lobby?.some((t) => t.id === teamId) && <ClassPicker current={lobby.find((t) => t.id === teamId)?.classId} send={send} />}
-        {!game && lobby?.some((t) => t.id === teamId) && <LookPicker me={teamId} teams={lobby} send={send} />}
+        {!game && lobby && lobbyMe && <ClassPicker current={lobbyMe.classId} send={send} />}
+        {!game && lobby && lobbyMe && <LookPicker me={teamId} teams={lobby} send={send} />}
 
         {intro !== null && (
           <div data-testid="phone-intro" className="flex flex-col gap-2">

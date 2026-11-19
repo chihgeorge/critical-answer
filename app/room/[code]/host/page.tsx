@@ -808,7 +808,6 @@ export default function HostPage() {
     />
   );
 
-  // ⚙ 更多's 隊伍: each team's rarer buttons, by its hero so the host finds the team at a glance.
   // ⚙ 更多's 隊伍 (ui-simplify H2): one row per team with its character; these are the rarer tools under its ⋯.
   const playingTeams = game?.phase === "playing" ? game.view.teams : [];
   const teamSprite = (id: string) => {

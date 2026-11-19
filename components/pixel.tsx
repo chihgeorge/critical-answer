@@ -345,7 +345,8 @@ export function TurnRibbon({ children, color, maxWidth, end }: { children: React
     <div className="px-ribbon" style={{ ...(color ? { background: color } : null), maxWidth }}>
       <i>▶</i>
       <span className={cx("min-w-0 truncate", !!end && "flex-1")}>{children}</span>
-      {end && <span className="flex-none text-[18px]">{end}</span>}
+      {/* The ribbon is red on our turn, like the clock's last seconds: a dark ring keeps the chip apart. */}
+      {end && <span className="flex-none text-[18px] ring-2 ring-[var(--k)]">{end}</span>}
     </div>
   );
 }

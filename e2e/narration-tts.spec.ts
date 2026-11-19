@@ -127,7 +127,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 
   const team2 = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await team2.goto(`/room/${code}/play?name=${encodeURIComponent("乙隊")}`);
-  await expect(team.getByTestId("roster")).toContainText("乙隊");
+  await expect(team2.getByTestId("roster")).toContainText("乙隊"); // a phone lists only its own team
 
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
