@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { textOnlyBank, startGame, rollCheck, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, textOnlyBank, startGame, checkLanded, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -19,7 +19,7 @@ async function clericRoom(browser: Browser, beforeWrong?: (host: Page) => Promis
   await team.getByRole("button", { name: /牧師/ }).click();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team);
+  await checkLanded(team);
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await box.fill("猜錯了");
   await team.getByRole("button", { name: "送出" }).click();
@@ -86,6 +86,7 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("牧師隊")}`);
   await team.getByRole("button", { name: /牧師/ }).click();
   await startGame(host);
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await expect(host.getByRole("button", { name: "答錯", exact: true })).toBeEnabled();
   await host.keyboard.press("2");
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();
@@ -157,7 +158,7 @@ test("cleric: the phone's 逃跑 in the wait deals a new question and spends not
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   // The new question is a new persuasion check, and it shows only once that is rolled (dnd design R6).
-  await rollCheck(team);
+  await checkLanded(team);
   await expect(question).not.toHaveText(before!);
   await expect(box).toHaveValue("");
   await expect(team.getByText("牧師・剩 3 次")).toBeVisible();

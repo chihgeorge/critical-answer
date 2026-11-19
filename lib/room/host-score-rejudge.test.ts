@@ -222,8 +222,6 @@ describe("the 改判 ledger", () => {
   it("an upheld 🚨 catch adds no entry", () => {
     const g = started([null, null]);
     send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: g.team(A).currentQuestionId, eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.phones[1], { type: "TEAM_CATCH", questionId: g.team(A).currentQuestionId });
     send(g.room, g.host, { type: "HOST_RULE_CATCH", upheld: true });
     expect(g.state().reveal).toMatchObject({ caught: { teamId: A, by: B } });

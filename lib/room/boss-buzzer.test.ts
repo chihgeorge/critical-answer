@@ -209,12 +209,11 @@ describe("buzzer boss phase in the room", () => {
     expect(g.state().answerClock).toBeUndefined();
   });
 
-  it("a buzzing team cannot roll a persuasion check, and the host cannot skip a question a team is answering", () => {
+  it("a buzzing team rolls no persuasion check, and the host cannot skip a question a team is answering", () => {
     const g = buzzerGame(text);
     g.buzz(0);
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "b-a", eventId: g.state().eventId });
-    expect(g.lastError(g.phones[0])).toMatchObject({ detail: "buzzer_phase" });
     expect((g.room as unknown as { pendingRoll: unknown }).pendingRoll).toBeNull();
+    expect(g.state().view.checks).toEqual({});
     send(g.room, g.host, { type: "HOST_BUZZ_SKIP", questionId: "b-a" });
     expect(g.lastError(g.host)).toMatchObject({ detail: "buzz_taken" });
     expect(g.state().question.id).toBe("b-a");

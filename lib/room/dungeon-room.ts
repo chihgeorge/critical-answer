@@ -52,6 +52,7 @@ import {
   SNEAK_REWARD_MULTIPLIER,
   drinkPotion,
   potionArmed,
+  luckyDieFits,
   spendPotion,
   pray,
   canPray,
@@ -235,6 +236,8 @@ export const HOST_AWAY_GRACE_MS = 8000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** How long the next team's auto check waits after a 答錯 that 改判答對 can still undo: the host's window before a 20 ends it. */
+export const CHECK_GRACE_MS = 5000;
 /** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
 export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
@@ -649,7 +652,9 @@ export class DungeonRoom {
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
    * ends it, a phone going on or offline does not (setOnline). `prev` is the game before that 答錯. Memory only.
    * `verdict`: instead the last catch ruling, which 撤回裁決 takes back (rulingUndoOpen); 改判答對 never sees it. */
-  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean } } | null = null;
+  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
+  /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
+  private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -1977,6 +1982,8 @@ export class DungeonRoom {
     if (this.game?.phase === "finished") {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
+    // After the STATE that opened the turn (its start or handoff cue plays first); a judgment rolls it once it is done.
+    if (!this.judging && this.autoCheck()) this.broadcastState();
   }
 
   private markActivity() {
@@ -2603,12 +2610,6 @@ export class DungeonRoom {
         case "TEAM_USE_ABILITY":
           this.handleTeamUseAbility(sender, msg.questionId);
           break;
-        case "TEAM_ROLL_CHECK":
-          this.handleTeamRollCheck(sender, msg.questionId, msg.eventId);
-          break;
-        case "HOST_ROLL_CHECK":
-          this.handleHostRollCheck(sender, msg.teamId, msg.questionId, msg.eventId);
-          break;
         case "TEAM_ROLL_INITIATIVE":
           this.handleTeamRollInitiative(sender);
           break;
@@ -3177,6 +3178,8 @@ export class DungeonRoom {
     if (lockTeam) this.syncLockTeam(lockTeam);
     if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
     this.lostCritTimer = null;
+    if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
+    this.checkGraceTimer = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
     this.tapReveal = null;
@@ -3802,10 +3805,19 @@ export class DungeonRoom {
   private undoneGame(undo: NonNullable<DungeonRoom["undo"]>, now: GameState): GameState {
     const live = new Map(now.teams.map((t) => [t.id, t]));
     const carry = !undo.verdict;
+    // A check another team rolled since (autoCheck on the turn the 答錯 handed over) stays rolled, with its 20s and 1s:
+    // the team has seen it, so the undo must not let it roll again.
+    const rolled = new Map(now.teams.filter((t) => t.id !== undo.teamId).flatMap((t) => {
+      const key = checkKey(currentQuestionIdOf(now, t.id), t.id);
+      return now.checks?.[key] && !undo.prev.checks?.[key] ? [[t.id, key] as const] : [];
+    }));
+    const checks = rolled.size ? { ...undo.prev.checks, ...Object.fromEntries([...rolled.values()].map((k) => [k, now.checks![k]])) } : undo.prev.checks;
     return {
       ...undo.prev,
+      ...(checks ? { checks } : {}),
       teams: undo.prev.teams.map((t) => {
         const n = live.get(t.id);
+        if (n && rolled.has(t.id)) t = { ...t, natural20s: n.natural20s, natural1s: n.natural1s };
         // A tap is kept only on the question it was made on.
         const tapped = t.id !== undo.teamId && currentQuestionIdOf(undo.prev, t.id) === currentQuestionIdOf(now, t.id);
         // 抓包與神諭 uses and an oracle asked since are not moves either (anti-ai-cheating.md): kept.
@@ -3819,7 +3831,8 @@ export class DungeonRoom {
 
   private undoHeld(): boolean {
     // A finished game is logged and narrated: an undo would reopen it under a ranking already told.
-    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive();
+    // A stage beat (the next team's passed-check card) owns the "lock" pace slot: a judgment now would strand it.
+    return this.game?.phase === "finished" || (!!this.reveal && (!!this.reveal.scored || !!this.reveal.caught)) || this.phaseCard || this.opening() || !!this.pendingLock || !!this.pendingRoll || !!this.forkBeat || this.fortuneActive() || !!this.stageBeat;
   }
 
   /** Runs `judge`, a 答錯 on a fill-in, so that 改判答對 may undo it. A cleric's wait and the 重答 / 逃跑 after it chain to the
@@ -3835,7 +3848,7 @@ export class DungeonRoom {
     } finally {
       const pending = this.undoPending;
       this.undoPending = null;
-      if (pending && this.game && this.game !== prev) this.undo = { ...pending, after: this.game };
+      if (pending && this.game && this.game !== prev) this.undo = { ...pending, after: this.game, at: this.now() };
     }
   }
 
@@ -3976,6 +3989,7 @@ export class DungeonRoom {
       this.judging = false;
     }
     if (this.lostCrit) this.applyLostCrit();
+    if (this.autoCheck()) this.broadcastState();
   }
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
@@ -4734,9 +4748,10 @@ export class DungeonRoom {
   private startRoll(kind: "kill", teamId: string, questionId: string, kill: { values: number[]; value: number }): void;
   private startRoll(kind: PendingRoll["kind"] & string, teamId: string, questionId: string, extra?: { bonus: number; dc: number } | { values: number[]; value: number } | { rejudge: true } | { warrior: number }) {
     const die = () => this.fixedDie ?? rollD20(this.rng);
-    // 🧪 A potion drunk on this question doubles the team's next die, any but the kill's and a 改成答對's (class-dice-rework.md),
-    // and is spent before the STATE goes out, so a restart in the beat cannot roll it again (E3).
-    const potion = kind !== "kill" && !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) ? [die(), die()] : null;
+    // 🍀 A lucky die armed on this question doubles the team's next class skill die, or its dish die when it has no skill uses
+    // left at all (luckyDieFits), never a check, a kill's or a 改成答對's; spent before the STATE goes out, so a restart in the beat
+    // cannot roll it again (E3).
+    const potion = !(extra && "rejudge" in extra) && this.game !== null && potionArmed(this.game, teamId) && luckyDieFits(this.game.teams.find((t) => t.id === teamId)!, kind) ? [die(), die()] : null;
     if (potion) this.game = spendPotion(this.game!, teamId);
     const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
     // A sneak die's 1 shows what it takes as it lands (sneakRoll, tried on the game now).
@@ -4827,13 +4842,13 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** 🧪 A potion's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
-   * good. Good: a check that passes, a dish die that burns nothing (2–6 pays ×1 too), any other die 7 or more (skillTier). */
+  /** 🍀 A lucky die's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
+   * good. Good: a dish die that burns nothing (2–6 pays ×1 too), a class die 7 or more (skillTier). */
   private sayPotion(roll: PendingRoll) {
-    const good = (v: number) => (roll.kind === "check" && roll.dc !== undefined ? v === 20 || (v !== 1 && v + (roll.bonus ?? 0) >= roll.dc) : roll.kind === "dish" ? v !== 1 : skillTier(v) >= 2);
+    const good = (v: number) => (roll.kind === "dish" ? v !== 1 : skillTier(v) >= 2);
     const [low, high] = [Math.min(...roll.values!), Math.max(...roll.values!)];
     const kind = !good(high) ? "bust" : good(low) ? null : "saved";
-    if (kind) this.appendLine(this.eventSeq, `🧪 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);
+    if (kind) this.appendLine(this.eventSeq, `🍀 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);
   }
 
   /** The narrator's line once a class die lands: its value, then an owner-approved line for its tier (dieLine). */
@@ -4856,7 +4871,11 @@ export class DungeonRoom {
     this.setCue(passed ? "check-pass" : "check-fail");
     const said = this.diceLines.checkLine(passed ? "pass" : value === 1 ? "fumble" : "fail", this.lineNames(teamId));
     if (passed) {
-      this.writeScripted([`說服成功！${said}接下來看題目。`]);
+      // The check rolls as the turn opens, so the owl may still be reading the last turn's result and 「輪到…」 lines:
+      // the ones not read yet stay ahead of the check's, instead of being cut off by its new narration.
+      const n = this.lastNarration;
+      const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
+      this.writeScripted([...unread, `說服成功！${said}接下來看題目。`].slice(-NARRATION_MAX_LINES));
       this.checkSuccessBeat(teamId, questionId);
       this.broadcastState();
       this.sendNarration();
@@ -4950,7 +4969,7 @@ export class DungeonRoom {
     this.armFork();
     // A narration of its own, scripted (no AI wait): a later AI line for the last turn is dropped as older (the doors
     // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
-    // older narration (a 🧪 give, the sprint line) come along, before the opening line, which stays last.
+    // older narration (a 🍀 give, the sprint line) come along, before the opening line, which stays last.
     const eventId = ++this.eventSeq;
     const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
     if (held.length) this.heldLines = null;
@@ -5217,42 +5236,42 @@ export class DungeonRoom {
     if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
   }
 
-  /** 擲骰說服 (dnd design R-E1, R-E4): the team on turn rolls its check on its own fill-in question, once. */
-  private handleTeamRollCheck(conn: Conn, questionId: string, eventId: number) {
-    const teamId = this.playingTeam(conn);
-    if (teamId) this.rollCheck(conn, teamId, questionId, eventId);
-  }
-
-  /** 替○○擲骰: the host's stuck row rolls the check for the team on turn, under the team's own rules (potion included). */
-  private handleHostRollCheck(conn: Conn, teamId: string, questionId: string, eventId: number) {
-    if (this.requireHost(conn)) this.rollCheck(conn, teamId, questionId, eventId);
-  }
-
-  private rollCheck(conn: Conn, teamId: string, questionId: string, eventId: number) {
+  /** The persuasion check rolls itself (owner, 2026-11-19): once the team on turn faces a fill-in question it has no check
+   * on, and nothing else holds the turn (a reveal, a card, a lock, a die), the room rolls d20 + its class bonus. Called
+   * from the end of broadcastState (and of a judgment), so every change that frees the turn rolls it. Returns whether it
+   * rolled: the caller then sends the STATE that carries the die. */
+  private autoCheck(): boolean {
     const game = this.game;
-    if (!game) return;
-    const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
-    // Pressed under an older STATE (the host judged meanwhile): it was for another attempt.
-    if (eventId !== this.eventSeq) return reject("stale_event");
-    if (this.paused()) return reject("reveal_pending");
-    if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
-    if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
-    // No checks in a buzzer phase (boss-buzzer.md D6): refused before the die rolls, not after.
-    if (isBuzzPhase(game) || game.teams.some((t) => t.id === teamId && t.inBoss)) return reject("buzzer_phase");
-    // A fork holds no question to roll on: its held deal stays hidden.
-    const forkTeam = game.teams.find((t) => t.id === teamId);
-    if (forkTeam && atFork(forkTeam)) return reject("fork");
-    if (this.question(questionId)?.kind !== "text" || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
-    if (game.checks?.[checkKey(questionId, teamId)]) return reject("check_done");
-    // A typed answer already waits for the host: a natural 20 must not win over it.
-    if (game.teams.find((t) => t.id === teamId)?.typedAnswer !== undefined) return reject("answer_submitted");
+    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
+    const teamId = currentTurnTeamId(game);
+    // A restored natural 20 (lostCrit) judges its own team's turn; another team's check need not wait for it.
+    if (this.lostCrit?.teamId === teamId) return false;
+    const team = game.teams.find((t) => t.id === teamId);
+    // The boss room has no check (#382), and a fork holds no question to roll on.
+    if (!teamId || !team || team.inBoss || atFork(team)) return false;
+    const questionId = currentQuestionIdOf(game, teamId);
     const q = this.question(questionId);
-    if (q?.kind !== "text") return reject("stale_question");
+    // A typed answer already waits for the host: a natural 20 must not win over it.
+    if (q?.kind !== "text" || game.checks?.[checkKey(questionId, teamId)] || team.typedAnswer !== undefined) return false;
+    // Another team's 答錯 that 改判答對 can still undo gives the host CHECK_GRACE_MS first: a 20 here would end that undo.
+    // Inside the 答錯 itself (withUndo) the undo is still pending: it opens now.
+    const undo = this.undo;
+    const opened = this.undoPending ? (this.undoPending.teamId !== teamId ? this.now() : undefined) : undo && !undo.verdict && undo.teamId !== teamId && this.undoOpen(undo) ? undo.at : undefined;
+    const wait = opened === undefined ? 0 : opened + CHECK_GRACE_MS - this.now();
+    if (wait > 0) {
+      if (!this.checkGraceTimer) {
+        this.checkGraceTimer = setTimeout(() => {
+          this.checkGraceTimer = null;
+          if (!this.judging && this.autoCheck()) this.broadcastState();
+        }, wait);
+      }
+      return false;
+    }
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
-    // this.game, not game: startRoll may have spent a potion.
-    this.game = recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer);
-    this.broadcastState();
+    // Not a move: an open 改判答對 stays open (undoneGame keeps this check).
+    this.keepUndoOpen(recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer));
+    return true;
   }
 
   /** 🚨 開啟抓包與神諭 (anti-ai-cheating.md): on, the TV's banner (onCount) and the owl's rules line; off, an open catch is
@@ -5345,7 +5364,7 @@ export class DungeonRoom {
     this.game = game;
     this.undo = undoable({ upheld });
     const name = (id: string) => game.teams.find((t) => t.id === id)?.name ?? "";
-    this.appendLine(this.eventSeq, `🛡️ ${name(c.teamId)}是冤枉的！${name(c.by)}扣 ${CATCH_PAY.falseReport} 分，${name(c.teamId)}${potion ? "拿到一瓶幸運藥水" : `加 ${CATCH_PAY.wronged} 分`}，繼續作答！`);
+    this.appendLine(this.eventSeq, `🛡️ ${name(c.teamId)}是冤枉的！${name(c.by)}扣 ${CATCH_PAY.falseReport} 分，${name(c.teamId)}${potion ? "拿到一顆幸運骰" : `加 ${CATCH_PAY.wronged} 分`}，繼續作答！`);
     this.broadcastState();
   }
 
@@ -5370,11 +5389,11 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** 🧪 給藥水 (lucky-potion.md D3, E4): any team, any time of the game, one potion at a time. The owl says so (D7). */
+  /** 🍀 給幸運骰 (lucky-potion.md D3, E4): any team, any time of the game, one at a time. The owl says so (D7). */
   private handleHostGiveItem(conn: Conn, teamId: string) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-    // A potion given now could change what the fortune's 🧪 does (fortune-teller.md E3).
+    // A lucky die given now could change what the fortune's 🍀 does (fortune-teller.md E3).
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
     // STATE shows the game from before a boss-entry dish until 下一題 (#364): the potion would not show.
     if (this.bossEntryBefore) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
@@ -5384,7 +5403,7 @@ export class DungeonRoom {
       return this.sendInvalid(conn, err);
     }
     const name = this.game.teams.find((t) => t.id === teamId)!.name;
-    this.appendLine(this.eventSeq, `🧪 ${name}拿到一瓶幸運藥水！`);
+    this.appendLine(this.eventSeq, `🍀 ${name}拿到一顆幸運骰！`);
     this.broadcastState();
   }
 
@@ -5456,7 +5475,7 @@ export class DungeonRoom {
   private applyFix(conn: Conn, teamId: string, change: (game: GameState) => GameState, label: string) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-    // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給藥水).
+    // Same holds as 送王房: a die or lock in its beat waits until it lands; a fortune's matching teams are fixed (as for 給幸運骰).
     // Any door beat waits too, whoever's door: STATE shows forkBeat.before, so a fix would not show and get pressed twice.
     // So does the team's wrong answer still waiting (a cleric's 祈禱 choice): ability− could strand it with no way to pray.
     // So does a dish that leads into the boss room (#364): STATE shows the game from before the answer until 下一題.
@@ -5477,9 +5496,9 @@ export class DungeonRoom {
     this.broadcastState();
   }
 
-  /** 🧪 喝下幸運藥水 (lucky-potion.md D6, E4): only on the team's own turn, outside a buzzer phase. Its next die on this
-   * question rolls twice (class-dice-rework.md): a check, a class die, or the dish die of a correct answer, which every
-   * turn-based question may still roll. The phone shows the button in the same cases, so a refusal only happens on a race. */
+  /** 🍀 用幸運骰 (lucky-potion.md D6, E4): only on the team's own turn, outside a buzzer phase. Its next class skill die on
+   * this question rolls twice, or its dish die when it has no skill uses left at all (luckyDieFits); a die that never rolls
+   * leaves it held. Once its skill die rolled on this question it is refused (skillRolledOn, drinkPotion). The phone shows the button in the same cases, so a refusal only happens on a race. */
   private handleTeamDrinkPotion(conn: Conn, questionId: string, eventId: number) {
     const teamId = this.playingTeam(conn);
     const game = this.game;
@@ -5487,7 +5506,7 @@ export class DungeonRoom {
     const reject = (detail: string) => this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail });
     if (eventId !== this.eventSeq) return reject("stale_event");
     if (this.paused()) return reject("reveal_pending");
-    // A cleric's wrong answer may still take a potion for its prayer die (class dice).
+    // A cleric's wrong answer may still take a lucky die for its prayer die (class dice).
     const forPrayer = canPray(game, teamId);
     if (this.pendingLock || this.pendingRoll || (game.pendingWrong && !forPrayer)) return reject("answer_pending");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
@@ -5501,7 +5520,7 @@ export class DungeonRoom {
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
-    this.appendLine(this.eventSeq, `🧪 ${this.diceLines.potionLine("drink", this.lineNames(teamId).team)}`);
+    this.appendLine(this.eventSeq, `🍀 ${this.diceLines.potionLine("drink", this.lineNames(teamId).team)}`);
     this.broadcastState();
   }
 

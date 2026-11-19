@@ -2,7 +2,7 @@
 // (docs/designs/timing-tap.md) on all three pages. YouTube is blocked everywhere: no real video loads, and the big
 // screen's player fails the way a blocked network does.
 import { test, expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { hostCheckSettled, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -65,6 +65,7 @@ async function intoBuzzerPhase(browser: Browser) {
     phones.push(phone);
   }
   await startGame(host);
+  await hostCheckSettled(host); // 送王房 is refused while the team on turn rolls its fill-in check
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).first().click(); // 甲隊 joined first
   await host.getByRole("button", { name: "確定送？" }).click();

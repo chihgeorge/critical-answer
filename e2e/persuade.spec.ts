@@ -3,16 +3,16 @@ import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./ans
 
 closeLeftoverContexts();
 
-// The persuasion check (dnd design R6, R-E1): a fill-in question starts with 擲骰說服 on the phone, and the question
-// shows on the big screen and the phone only once the die has rolled (check first, question after). The e2e worker
+// The persuasion check (dnd design R6): a fill-in question's check rolls itself as the turn opens (owner 2026-11-19), and
+// the question shows on the big screen and the phone only once the die has landed (check first, question after). The e2e worker
 // fixes the die at 10 (playwright.config.ts E2E_DIE), which passes a first room's DC 8 and earns the first character.
 textOnlyBank("〈萬家福〉");
 
-// Value: protects=the phone rolls before it answers, the big screen shows the DC and then the die, the question stays
-// off the TV and the phone until the roll (the host still has it), and a pass shows the answer's first character on the
-// phone and the TV (dnd design R6, R-E1, R-E3); fails_when=the box or the question shows before the roll, the DC chip or
-// overlay is missing, or the hint never reaches a screen; no_claim=a fail, a 20 or a 1 (unit tests).
-test("a team rolls 擲骰說服, passes the DC, sees the first character, then types its answer", async ({ browser }) => {
+// Value: protects=the check rolls itself with no button, the big screen shows the DC and then the die, the question stays
+// off the TV and the phone until it lands (the host still has it), and a pass shows the answer's first character on the
+// phone and the TV (dnd design R6, R-E3); fails_when=the box or the question shows before the die lands, the phone still
+// shows a roll button, or the hint never reaches a screen; no_claim=a fail, a 20 or a 1 (unit tests).
+test("the check rolls itself, passes the DC, the team sees the first character, then types its answer", async ({ browser }) => {
   const host = await (await browser.newContext()).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -29,21 +29,17 @@ test("a team rolls 擲骰說服, passes the DC, sees the first character, then t
   const box = team.getByRole("textbox", { name: "你們的答案" });
   await expect(box).toHaveCount(0);
   await expect(screen.getByTestId("screen-check-dc")).toContainText("說服擲骰檢定 8");
-  // Check first, question after: only the host has the question; the TV says who rolls, the phone has only the button.
+  // Check first, question after: only the host has the question while the die rolls; the phone has nothing to press.
   const question = (await host.getByTestId("host-question").textContent())!;
   expect(question.length).toBeGreaterThan(0);
   await expect(host.getByTestId("host-check-first")).toBeVisible();
-  await expect(screen.getByTestId("screen-check-first")).toHaveText("說服隊：按手機上的「🎲 擲骰說服」，擲完才出題");
+  await expect(screen.getByTestId("screen-check-first")).toHaveText("🎲 說服檢定中……擲完才出題");
   await expect(screen.getByText(question)).toHaveCount(0);
   await expect(team.getByText(question)).toHaveCount(0);
-  await expect(team.getByTestId("roll-check")).toContainText("必擲・不花次數・過了給第一個字");
-  for (const page of [screen, team, host]) await expect(page.getByTestId("answer-clock")).toHaveCount(0);
+  await expect(team.getByTestId("roll-check")).toHaveCount(0);
+  await expect(screen.getByTestId("roll-overlay")).toHaveCount(0, { timeout: 8000 });
 
-  await team.getByTestId("roll-check").click();
-  await expect(screen.getByTestId("roll-overlay")).toBeVisible();
-  await expect(screen.getByTestId("roll-overlay")).toHaveCount(0, { timeout: 5000 });
-
-  await expect(screen.getByTestId("screen-check-first")).toHaveCount(0);
+  await expect(screen.getByTestId("screen-check-first")).toHaveCount(0, { timeout: 8000 });
   await expect(screen.getByText(question)).toBeVisible();
   await expect(team.getByRole("heading", { name: question })).toBeVisible();
   await expect(host.getByTestId("host-check-first")).toHaveCount(0);
@@ -51,7 +47,6 @@ test("a team rolls 擲骰說服, passes the DC, sees the first character, then t
   await expect(team.getByTestId("check-result")).toHaveText("🗣️ 過了！看提示");
   await expect(team.getByTestId("check-hint")).toHaveText("🔮 第一個字：萬");
   await expect(screen.getByTestId("screen-check-hint")).toHaveText("🔮 第一個字：萬");
-  await expect(team.getByTestId("roll-check")).toHaveCount(0);
 
   await box.fill("萬家福");
   await team.getByRole("button", { name: "送出" }).click();

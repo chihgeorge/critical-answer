@@ -413,16 +413,10 @@ describe("parseClientMessage", () => {
     expect(parseClientMessage({ type: "HOST_UNDO_RULING", extra: 1 })).toEqual({ type: "HOST_UNDO_RULING" });
   });
 
-  it("TEAM_ROLL_CHECK carries the question id and a non-negative integer eventId only", () => {
-    expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3 });
-    for (const eventId of [undefined, -1, 1.5, "3"]) expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId })).toBeNull();
-    expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", eventId: 0 })).toBeNull();
-  });
-
-  it("HOST_ROLL_CHECK carries the team, the question and a non-negative integer eventId only", () => {
-    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: 3, value: 20 })).toEqual({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: 3 });
-    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", questionId: "r0-q1", eventId: 3 })).toBeNull();
-    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: -1 })).toBeNull();
+  // Value: protects=an older phone's 擲骰說服 or host's 替○○擲骰 cannot roll a second check now that it rolls itself; fails_when=the parser takes them again
+  it("TEAM_ROLL_CHECK and HOST_ROLL_CHECK are gone: the persuasion check rolls itself", () => {
+    expect(parseClientMessage({ type: "TEAM_ROLL_CHECK", questionId: "r0-q1", eventId: 3 })).toBeNull();
+    expect(parseClientMessage({ type: "HOST_ROLL_CHECK", teamId: "t", questionId: "r0-q1", eventId: 3 })).toBeNull();
   });
 
   it("TEAM_USE_ABILITY carries only the question id", () => {

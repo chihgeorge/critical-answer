@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { hostCheckSettled, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -67,6 +67,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await startGame(host);
 
   // Whoever rolled first, 甲隊 goes to the boss room and clears phase 1 on its turn.
+  await hostCheckSettled(host); // 送王房 is refused while the team on turn rolls its fill-in check
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).first().click(); // 甲隊 joined first
   await host.getByRole("button", { name: "確定送？" }).click();

@@ -34,6 +34,8 @@ function game(questions: object[], roll = true) {
   });
   const io = { broadcast: vi.fn() } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0 });
+  // The check rolls itself as each fill-in comes up; check() lands it.
+  (room as unknown as { holdCheck: boolean }).holdCheck = true;
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -44,7 +46,6 @@ function game(questions: object[], roll = true) {
   const state = () => msgs(io.broadcast.mock.calls).findLast((m) => m.type === "STATE");
   /** Check first, question after: a fill-in's video is up only once its team's persuasion check's beat has ended. */
   const check = () => {
-    send(room, phone, { type: "TEAM_ROLL_CHECK", questionId: state().question.id, eventId: state().eventId });
     (room as unknown as { resolveRoll(): void }).resolveRoll();
   };
   if (roll) check();
@@ -73,7 +74,7 @@ describe("check first, question after", () => {
     // So does the character an earlier team's own check earned (a team that has since left the room's teams list never matters).
     const T2 = "00000000-0000-0000-0000-000000000002";
     const other = makeConn("other");
-    g.room.game = { ...g.room.game!, mageHints: { v1: "答" }, teams: [...g.room.game!.teams, { ...g.room.game!.teams[0], id: T2, name: "乙隊", online: false }], checks: { [checkKey("v1", T2)]: { value: 12, bonus: 0, dc: 8, passed: true, hint: "答" } } };
+    g.room.game = { ...g.room.game!, mageHints: { v1: "答" }, teams: [...g.room.game!.teams, { ...g.room.game!.teams[0], id: T2, name: "乙隊", online: false }], checks: { ...g.room.game!.checks, [checkKey("v1", T2)]: { value: 12, bonus: 0, dc: 8, passed: true, hint: "答" } } };
     g.room.onConnect(other);
     const held = msgs(other.send.mock.calls).findLast((m) => m.type === "STATE");
     expect(held.view.mageHints).toEqual({});

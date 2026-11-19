@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, nextQuestion, openTeamTools, closeMore, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, textOnlyBank, startGame, nextQuestion, openTeamTools, closeMore, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -47,6 +47,7 @@ test("the host picks a team's next question and it comes up after the team's cor
   // The pick's reply comes after any judgment the keys would have sent, so the turn is checked once it is in.
   await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
   await expect(host.getByTestId("host-reveal")).toHaveCount(0);
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
 
   await host.getByRole("button", { name: "答對！" }).click();

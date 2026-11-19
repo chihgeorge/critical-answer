@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { answerCorrectly, serveDish, startGame, nextQuestion, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, answerCorrectly, serveDish, startGame, nextQuestion, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { readFile } from "node:fs/promises";
 
 closeLeftoverContexts();
@@ -57,6 +57,7 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await expect(team.getByText(/^1[05] 飽足感$/)).toBeVisible();
   await expect(host.getByText("1/15")).toBeVisible();
 
+  await hostCheckSettled(host); // 送王房 is refused while the team on turn rolls its fill-in check
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定送？" }).click();

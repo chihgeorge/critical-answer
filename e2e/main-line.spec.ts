@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { advanceSocketAwards, answerCorrectly, rollCheck, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
+import { advanceSocketAwards, answerCorrectly, checkLanded, NEXT_WAIT_MS, textOnlyBank, startGame, judgeToTheEnd, EPILOGUE_RE, type HostState, screenUrl, openMore, closeMore, closeLeftoverContexts } from "./answer";
 import { stubSpeechSynthesis, tapScreen, ttsCalls } from "./tts";
 import { MONSTERS } from "../lib/monster-catalog";
 
@@ -78,7 +78,7 @@ test("create room, join two teams, start, judge; screen and play never see host-
   expect(answer.length).toBeGreaterThan(0);
   // Check first, question after: the big screen has it once the team has rolled its persuasion check.
   await expect(screen.getByText(question)).toHaveCount(0);
-  await rollCheck(players[0].page);
+  await checkLanded(players[0].page);
   await expect(screen.getByText(question)).toBeVisible();
 
   // A correct judgment scores and passes the turn.
@@ -111,8 +111,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
   // Now the narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
   // addressed, and the last line has no ▼.
-  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
+  // 乙隊's fill-in check rolls itself right away (2 s die, 2 s card), so the lines come after it.
+  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 12_000 });
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 14_000 }); // the follow-up addresses the next team
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
@@ -165,7 +166,7 @@ test("a browser with no host token cannot start a game", async ({ page }) => {
 });
 
 test("game over: the boss cooks, then the podium, then the epilogue arrives on the big screen", async ({ browser }) => {
-  test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
+  test.setTimeout(180_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
   const code = "EPLG";
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });
@@ -202,7 +203,7 @@ test("game over: the boss cooks, then the podium, then the epilogue arrives on t
   const bossOnStage = screen.waitForFunction(
     (names) => document.body.innerText.includes("冒　險　結　束") && [...document.querySelectorAll("div")].some((e) => names.includes(e.textContent ?? "")),
     bosses,
-    { polling: "raf", timeout: 80_000 },
+    { polling: "raf", timeout: 140_000 },
   );
   let sawBossRoom = false;
   let sawDefeated = false;

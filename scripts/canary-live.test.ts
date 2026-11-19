@@ -82,8 +82,8 @@ describe("summarize", () => {
 
 describe("decide", () => {
   const none: Seen = {
-    revealed: false, over: false, wrong: false, phaseCard: false, next: false, acted: false, reveal: false, roll: false,
-    checkFirst: false, hostRoll: false, fork: false, fortune: false, memory: false, fields: false, judge: false, sort: false,
+    revealed: false, over: false, wrong: false, phaseCard: false, next: false, acted: false, reveal: false,
+    checkFirst: false, fork: false, fortune: false, memory: false, fields: false, judge: false, sort: false,
     choice: false, buzz: false, buzzWaiting: false, tap: false, play: false, played: false, liveOpen: false, skip: false,
   };
   const seen = (s: Partial<Seen>): Seen => ({ ...none, ...s });
@@ -92,7 +92,6 @@ describe("decide", () => {
     expect(decide(seen({ choice: true }), null)).toBe("choice");
     expect(decide(seen({ choice: true, sort: true }), null)).toBe("sort");
     expect(decide(seen({ judge: true }), null)).toBe("judge");
-    expect(decide(seen({ roll: true, judge: true }), null)).toBe("roll");
     expect(decide(seen({ reveal: true, choice: true }), null)).toBe("reveal");
     expect(decide(seen({ fields: true, judge: true }), null)).toBe("fields");
     expect(decide(seen({ buzz: true, skip: true }), null)).toBe("buzz");
@@ -100,8 +99,6 @@ describe("decide", () => {
   it("does not judge during a memory clip or before the team's check", () => {
     expect(decide(seen({ memory: true, judge: true }), null)).toBe("memory");
     expect(decide(seen({ checkFirst: true, judge: true }), null)).toBe("wait");
-    expect(decide(seen({ checkFirst: true, hostRoll: true, judge: true }), null)).toBe("host-roll");
-    expect(decide(seen({ checkFirst: true, roll: true, judge: true }), null)).toBe("roll");
     expect(decide(seen({ checkFirst: true, memory: true }), null)).toBe("wait");
   });
   it("walks through doors, fortunes and boss phase cards", () => {

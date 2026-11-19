@@ -54,10 +54,8 @@ async function room(browser: Browser) {
   await expect(team.getByText("等待主持人開始遊戲")).toBeVisible();
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  // A fill-in rolls its check first (rollCheck); the memorizing comes after it, with no answer box yet.
-  const roll = team.getByTestId("roll-check");
-  await expect(roll.or(team.getByTestId("play-memorize"))).toBeVisible();
-  if (await roll.isVisible()) await roll.click();
+  // A fill-in's check rolls itself first; the memorizing comes after it, with no answer box yet.
+  await expect(team.getByTestId("play-memorize")).toBeVisible({ timeout: 8000 });
   return { host, screen, team };
 }
 

@@ -61,6 +61,8 @@ import {
   drinkPotion,
   potionArmed,
   spendPotion,
+  luckyDieFits,
+  skillRolledOn,
   resolveFortune,
   type ClassId,
   type Difficulty,
@@ -2828,7 +2830,33 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
   });
 });
 
-describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
+describe("🍀 lucky die (docs/designs/lucky-potion.md)", () => {
+  // Value: protects=the owner's 甲2 (2026-11-19): a skill die while uses are left, else the dish die, never the check or
+  // the kill; fails_when=luckyDieFits takes any next die again, or a chef / no-class team never gets it on the dish die
+  it("luckyDieFits: a class skill die; the dish die only with no skill uses left; never the check or the kill", () => {
+    for (const kind of ["mage", "cleric", "warrior", "thief"]) expect(luckyDieFits({ classId: "mage", abilityUses: 0 }, kind)).toBe(true);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 1 }, "dish")).toBe(false);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: "chef", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: undefined, abilityUses: 3 }, "dish")).toBe(true);
+    for (const kind of ["check", "kill"]) expect(luckyDieFits({ classId: undefined, abilityUses: 0 }, kind)).toBe(false);
+  });
+
+  // Value: protects=the owner's PR 422 ruling (2026-11-19): a lucky die is used before a roll, so once the skill die rolled on
+  // a question it is closed there, never moved to the dish die; fails_when=skillRolledOn misses a class or a question
+  it("skillRolledOn: a mage's cast, a thief's landed sneak die, a cleric's prayer close that question only", () => {
+    const at = { questionId: "q1", mageCasts: { [checkKey("q1", "t1")]: true } };
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 2 }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 2 }, { questionId: "q2", mageCasts: at.mageCasts })).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1", value: 12 } }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1" } }, at)).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "cleric", abilityUses: 0, prayedOn: "q1" }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "cleric", abilityUses: 0, prayedOn: "q1" }, { questionId: "q2" })).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "warrior", abilityUses: 2 }, at)).toBe(false);
+    // Used up on that question still closes it: the dish die does not take it there.
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 0 }, at)).toBe(true);
+  });
+
   it("giveItem: gives one, refuses a second while held, and refuses a finished game", () => {
     const g = giveItem(makeGame(), "T1");
     expect(g.teams[1]).toMatchObject({ item: "luckyPotion", potionsGiven: 1 });
@@ -2844,6 +2872,9 @@ describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
     expect(g.teams[0].itemArmedFor).toBe(g.teams[0].currentQuestionId);
     expect(potionArmed(g, "T0")).toBe(true);
     expect(() => drinkPotion(g, "T0")).toThrow(/already_drunk/);
+    const q = held.teams[0].currentQuestionId;
+    const cast = { ...held, mageCasts: { [checkKey(q, "T0")]: true as const }, teams: held.teams.map((t, i) => (i === 0 ? { ...t, classId: "mage" as const, abilityUses: 0 } : t)) };
+    expect(() => drinkPotion(cast, "T0")).toThrow(/skill_rolled/);
   });
 
   it("a question left without a roll keeps the potion, no longer armed; spendPotion takes it and counts it", () => {

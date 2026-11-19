@@ -1,6 +1,6 @@
-// 🧪 幸運藥水 in the room (docs/designs/lucky-potion.md): the host gives one, the team drinks it on its own turn, and its
-// next die (check, class die or dish die) rolls twice keeping the higher, then it is gone. No roll this question: it
-// comes back (class-dice-rework.md).
+// 🍀 幸運骰 in the room (docs/designs/lucky-potion.md): the host gives one, the team uses it on its own turn, and its
+// next class skill die, or its dish die once it has no skill uses left (甲2), rolls twice keeping the higher, then it is
+// gone. Never the persuasion check, which rolls itself. No roll this question: it comes back.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
@@ -73,7 +73,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("🧪 lucky potion in the room", () => {
+describe("🍀 lucky die in the room", () => {
   it("the host gives one to any team, even off turn; a second one, or one from a phone, is refused", () => {
     const g = started();
     g.give(B);
@@ -107,7 +107,7 @@ describe("🧪 lucky potion in the room", () => {
       g.dice.push(low, 18);
       g.lockRight();
       await vi.advanceTimersByTimeAsync(10_000);
-      return /還好有喝|一顆失敗，一顆成功|藥水發威/.test(JSON.stringify(g.all())); // POTION_VARIANTS.saved
+      return /還好有幸運骰|一顆失敗，一顆成功|幸運骰發威/.test(JSON.stringify(g.all())); // POTION_VARIANTS.saved
     };
     expect(await saved([null, null], 3)).toBe(false);
     expect(await saved(["chef", null], 3)).toBe(false);
@@ -123,15 +123,36 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.team(A).item).toBe("luckyPotion");
   });
 
-  it("a persuasion check with the potion records the higher die", () => {
-    const g = started(text("t1"));
+  // Value: protects=甲2: a class with skill uses left keeps the lucky die for its skill die, not the dish die; with none
+  // left the dish die takes it; fails_when=startRoll arms it on any next die again
+  it("a skill class with uses left keeps it off the dish die; with none left the dish die takes it", () => {
+    const g = started(mc("m1"), ["mage", null]);
     g.give(A);
     g.drink();
-    g.dice.push(19, 4);
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    expect(g.state().pendingRoll).toMatchObject({ kind: "check", value: 19, values: [19, 4] });
-    expect(g.room.game!.checks![checkKey("t1", A)].value).toBe(19);
-    expect(g.team(A).item).toBeUndefined();
+    g.dice.push(3, 18);
+    g.lockRight();
+    expect(g.state().pendingRoll).toMatchObject({ kind: "dish", value: 3 });
+    expect(g.state().pendingRoll.values).toBeUndefined();
+    expect(g.team(A).item).toBe("luckyPotion");
+
+    const n = started(mc("m1"), ["mage", null]);
+    n.room.game = { ...n.room.game!, teams: n.room.game!.teams.map((t) => (t.id === A ? { ...t, abilityUses: 0 } : t)) };
+    n.give(A);
+    n.drink();
+    n.dice.push(3, 18);
+    n.lockRight();
+    expect(n.state().pendingRoll).toMatchObject({ kind: "dish", value: 18, values: [3, 18] });
+    expect(n.team(A).item).toBeUndefined();
+  });
+
+  it("the persuasion check rolls itself before a drink, and an armed one stays off it", () => {
+    const g = started(text("t1"));
+    // The check rolled and landed as the turn opened (sendSettled): one die, nothing to double.
+    expect(g.room.game!.checks![checkKey("t1", A)]).toBeDefined();
+    g.give(A);
+    g.drink();
+    expect(g.team(A).itemArmed).toBe(true);
+    expect(g.team(A).item).toBe("luckyPotion");
   });
 
   it("doubles the warrior's roll, and its hit's dish die is a single die", () => {
@@ -155,7 +176,7 @@ describe("🧪 lucky potion in the room", () => {
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "flee", eventId: g.state().eventId });
     expect(g.team(A).item).toBe("luckyPotion");
     expect(g.room.game!.teams[0].currentQuestionId).not.toBe("t1");
-    expect(g.team(A).itemArmedFor).toBe("t1"); // the phone's 「藥水還在」 (E2)
+    expect(g.team(A).itemArmedFor).toBe("t1"); // the phone's 「幸運骰還在」 (E2)
   });
 
   // Value: protects=a potion doubles a mage's skill die (drinkable on a fill-in after its check) and a cleric's prayer die
@@ -163,10 +184,7 @@ describe("🧪 lucky potion in the room", () => {
   // warrior dice were covered; seam=none; no_claim=the phones' potion button
   it("doubles a mage's skill die after a fill-in check and a cleric's prayer die on its wrong lock", () => {
     const m = started(text("t1"), ["mage", null]);
-    m.give(A);
-    m.dice.push(1); // a failed check (a natural 1: +6 passes DC 8 on any other die): no hint, so the mage's die is still to come
-    send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
-    vi.advanceTimersByTime(2000);
+    m.give(A); // the check landed failed (sendSettled): no hint, so the mage's die is still to come
     m.drink();
     expect(m.team(A).itemArmedFor).toBe("t1");
     m.dice.push(5, 16);
@@ -185,15 +203,16 @@ describe("🧪 lucky potion in the room", () => {
     c.dice.push(15, 3); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value, not the chef
     send(c.room, c.phones[0], { type: "TEAM_USE_ABILITY", questionId: "m1" });
     expect(c.state().pendingRoll).toMatchObject({ kind: "cleric", value: 15, values: [15, 3] }); // pregate-literal: CHEF_BONUS_PERCENT=15 a die value
+    // The prayer rolled on m1: no lucky die for the rest of it (skillRolledOn).
+    expect(c.team(A).prayedOn).toBe("m1");
   });
 
-  it("takes a mage's drink on a fill-in after its skill is cast or its answer is in: the dish die is still to come", () => {
+  // Value: protects=the owner's PR 422 ruling: a lucky die is used before a roll, so after the mage's cast on this question
+  // the drink is refused there (never moved to the dish die); fails_when=the room arms it after the cast again
+  it("refuses a mage's drink on a question it already cast on; takes it once its answer is in", () => {
     const failedCheck = () => {
       const m = started(text("t1"), ["mage", null]);
-      m.give(A);
-      m.dice.push(1); // a failed check (a natural 1: +6 passes DC 8 on any other die): no hint, the skill die is still to come
-      send(m.room, m.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: m.state().eventId });
-      vi.advanceTimersByTime(2000);
+      m.give(A); // the check landed failed (sendSettled): no hint
       return m;
     };
     const cast = failedCheck();
@@ -202,7 +221,8 @@ describe("🧪 lucky potion in the room", () => {
     vi.advanceTimersByTime(2000);
     expect(cast.room.game!.mageCasts?.[checkKey("t1", A)]).toBeTruthy();
     cast.drink();
-    expect(cast.team(A).itemArmedFor).toBe("t1");
+    expect(cast.team(A).itemArmedFor).toBeUndefined();
+    expect(cast.lastTo(cast.phones[0])).toMatchObject({ detail: "skill_rolled" });
 
     const typed = failedCheck();
     send(typed.room, typed.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: typed.state().eventId });
@@ -300,11 +320,11 @@ describe("🧪 lucky potion in the room", () => {
       g.give(A); // the start narration is still on its way
       await vi.advanceTimersByTimeAsync(0);
       const n = narrations(g).at(-1);
-      expect(n.lines.at(-1)).toBe("🧪 甲隊拿到一瓶幸運藥水！");
+      expect(n.lines.at(-1)).toBe("🍀 甲隊拿到一顆幸運骰！");
       g.give(B);
       const m = narrations(g).at(-1);
       expect(m).toMatchObject({ eventId: n.eventId, rev: n.rev + 1 });
-      expect(m.lines).toEqual([...n.lines, "🧪 乙隊拿到一瓶幸運藥水！"]);
+      expect(m.lines).toEqual([...n.lines, "🍀 乙隊拿到一顆幸運骰！"]);
     });
 
     it("a held line is dropped when the game ends first", async () => {
@@ -312,7 +332,7 @@ describe("🧪 lucky potion in the room", () => {
       g.give(A);
       send(g.room, g.host, { type: "HOST_END_GAME" });
       await vi.advanceTimersByTimeAsync(0);
-      expect(narrations(g).some((m) => m.lines.some((l: string) => l.includes("幸運藥水")))).toBe(false);
+      expect(narrations(g).some((m) => m.lines.some((l: string) => l.includes("幸運骰")))).toBe(false);
     });
   });
 });

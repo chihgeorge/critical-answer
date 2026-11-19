@@ -10,11 +10,21 @@ const HEADERS = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
  * (docs/designs/kill-roll.md). */
 const JUDGE_LANDS_MS = 9000;
 
-/** 擲骰說服 on a fill-in question (dnd design R6): the answer box shows once the check's beat ends. The e2e
- * worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a room's DC and never wins outright. */
-export async function rollCheck(team: Page) {
-  await team.getByTestId("roll-check").click();
-  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 5000 });
+/** A fill-in's persuasion check rolls itself (dnd design R6, owner 2026-11-19): the answer box shows once its beat ends,
+ * after the 說服成功 card. The e2e worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a
+ * room's DC and never wins outright. After another team's 答錯 the check first waits out the host's 改判答對 window
+ * (CHECK_GRACE_MS, 5 s), so the wait covers that, the 2 s die and the 2 s card. */
+export async function checkLanded(team: Page) {
+  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: CHECK_SETTLE_MS });
+}
+
+/** How long a fill-in's own check can take: the host's 改判答對 window after another team's 答錯, the die, the card. */
+const CHECK_SETTLE_MS = 15_000;
+
+/** The host page's side of checkLanded: the room refuses a judgment (or 送王房) while the check rolls itself and while
+ * its 說服成功 card shows, so a spec that judges a fill-in as its turn opens waits for the host's check note to go. */
+export async function hostCheckSettled(host: Page) {
+  await expect(host.getByTestId("host-check-first")).toHaveCount(0, { timeout: CHECK_SETTLE_MS });
 }
 
 /** The big screen link on the host page. It carries the room's screen key: only a screen opened by it is sent the
@@ -40,7 +50,7 @@ export async function openMore(host: Page, section?: "teams" | "rejudge" | "setu
   if ((await head.getAttribute("aria-expanded")) !== "true") await head.click();
 }
 
-/** Unfolds a team's ⋯ in ⚙ 更多's 隊伍: 指定下一題, 🧪 給藥水, 交給新手機, 設定分數 and the ability fixes. */
+/** Unfolds a team's ⋯ in ⚙ 更多's 隊伍: 指定下一題, 🍀 給幸運骰, 交給新手機, 設定分數 and the ability fixes. */
 export async function openTeamTools(host: Page, team: string) {
   await openMore(host, "teams");
   const more = host.getByRole("button", { name: `${team}的更多工具` });
@@ -96,6 +106,7 @@ export async function answerCorrectly(host: Page) {
   const mcStatus = host.getByTestId("host-mc-status");
   await expect(judge.or(mcStatus)).toBeVisible();
   if (await judge.isVisible()) {
+    await hostCheckSettled(host);
     await expect(judge).toBeEnabled();
     return judge.click();
   }
@@ -150,7 +161,7 @@ export async function nextQuestion(host: Page) {
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; question?: { checkFirst?: true } | null; stageBeat?: string; pendingRoll?: unknown; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
@@ -166,6 +177,8 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
     host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
     // A team walks into the boss room only once 下一題 closes its dish (#364), so read its question after the reveal closes.
     await expect.poll(() => cur().reveal ?? null, { timeout: JUDGE_LANDS_MS }).toBeNull();
+    // A fill-in rolls its check by itself first; the room refuses a judgment until it and its card are done.
+    await expect.poll(() => !!cur().question?.checkFirst || !!cur().stageBeat || !!cur().pendingRoll, { timeout: JUDGE_LANDS_MS }).toBe(false);
     const t = cur().view.teams[0];
     const qid = t.inBossPhase ? cur().view.bossCurrentQuestionId : t.currentQuestionId;
     host.send(JSON.stringify({ type: "HOST_JUDGE", teamId: t.id, questionId: qid, correct: true }));
