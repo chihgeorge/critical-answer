@@ -1,9 +1,9 @@
 // All dice text of the how-to-play pages 2–3 (persuasion check, crit die, class dice table): the class-dice rework edits only this file.
-import { ABILITY_USES, CHECK_BONUS, CHECK_DC, CHEF_MULTIPLIERS, SKILL_SUCCESS, SNEAK_REWARD_MULTIPLIER, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CHECK_BONUS, CHECK_DC, CHEF_MULTIPLIERS, SKILL_SUCCESS, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, type ClassId } from "@/lib/game-state";
 
 const OK = SKILL_SUCCESS;
-// WARRIOR_HIT_SHARE is 0.8; the lobby says 八成 too (play page CLASS_HINTS).
-const WAR = "八成";
+// 0.8 → 八成, as the lobby says (play page CLASS_HINTS).
+const WAR = `${"零一二三四五六七八九"[Math.round(WARRIOR_HIT_SHARE * 10)]}成`;
 
 /** Page 2 (說服檢定與暴擊骰) and page 3 (各職業什麼時候擲骰): topic, big text, owl line and host script. */
 export const DICE_PAGES = [
@@ -36,5 +36,5 @@ export const DICE_ROWS: [ClassId, string, string][] = [
   ["cleric", "答錯後按「祈禱」", "這回合再答一次"],
   ["warrior", "輪到時「擲骰代替答題」", `算答對拿${WAR}（20 雙倍・1 扣整題）`],
   ["thief", "先「偷襲」，答對看答對骰", `獎勵 ×${SNEAK_REWARD_MULTIPLIER}（20 ×2）`],
-  ["chef", "不用按，答對看答對骰", `獎勵 ×${CHEF_MULTIPLIERS[2]}（20 ×${CHEF_MULTIPLIERS[3]}・1 ×${CHEF_MULTIPLIERS[0]}）`],
+  ["chef", "不用按，答對看答對骰", `獎勵 ×${CHEF_MULTIPLIERS[2]}（20 ×${CHEF_MULTIPLIERS[3]}，選擇題連暴擊共 ×3）`],
 ];
