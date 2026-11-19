@@ -3,14 +3,14 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type Ref, type SyntheticEvent } from "react";
-import { biteSprite, classicArtRequested, drawEmptyPlate, DUNGEON_ART, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneLights, type SceneTheme } from "@/lib/pixel-art";
+import { biteSprite, drawEmptyPlate, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneLights, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import type { ClassId } from "@/lib/game-state";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
 import { loadCaptions, syncZhCaptions, youtubeEmbedUrl, type CaptionPlayer } from "@/lib/youtube";
 import { loadYoutubeApi } from "@/components/youtube-player";
-import { boxLine, firstChange, resumeFrom, sequenceStart } from "@/lib/narration/client";
+import { boxLine, firstChange, jumpLine, resumeFrom, sequenceStart } from "@/lib/narration/client";
 import type { PublicMediaContent } from "@/lib/protocol";
 
 const cx = (...parts: (string | false | undefined)[]) => parts.filter(Boolean).join(" ");
@@ -234,19 +234,12 @@ export function Sprite({
 
 /* ---------- Scene background ---------- */
 
-const noSubscribe = () => () => {};
-/** The big screen's old look (`?art=classic`, or DUNGEON_ART off). The query never changes while the page is open. */
-export function useClassicArt(): boolean {
-  return useSyncExternalStore(noSubscribe, () => classicArtRequested(location.search), () => !DUNGEON_ART);
-}
-
 export function SceneBackground({
   theme,
   cols = 160,
   rows = 90,
   arch = true,
   lights = false,
-  classic,
   className = "absolute inset-0",
 }: {
   theme: SceneTheme;
@@ -256,14 +249,12 @@ export function SceneBackground({
   arch?: boolean | "fork";
   /** Which torches' light to bake in (lib/pixel-art.ts SCENE_TORCHES); the same value the torch sprites use. */
   lights?: SceneLights;
-  /** The look from before the torch-lit dungeon (`?art=classic`); unset follows DUNGEON_ART. */
-  classic?: boolean;
   className?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (ref.current) drawScene(ref.current, theme, cols, rows, arch, { lights, classic });
-  }, [theme, cols, rows, arch, lights, classic]);
+    if (ref.current) drawScene(ref.current, theme, cols, rows, arch, { lights });
+  }, [theme, cols, rows, arch, lights]);
   return <canvas ref={ref} className={cx("px-sprite h-full w-full", className)} />;
 }
 
@@ -396,39 +387,51 @@ const subscribeVisibility = (cb: () => void) => {
   return () => document.removeEventListener("visibilitychange", cb);
 };
 
-function Sequence({ lines, onRead, voiceLine, readTo = 0 }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number; readTo?: number }) {
+function Sequence({ lines, onRead, voiceLine, readTo = 0, jump }: { lines: string[]; onRead?: (count: number) => void; voiceLine?: number; readTo?: number; jump?: number }) {
   const [start] = useState(() => sequenceStart(readTo, lines.length));
   const [i, setI] = useState(start.line);
   const [typed, setTyped] = useState(start.typed);
   const [seen, setSeen] = useState(lines);
   const hidden = useSyncExternalStore(subscribeVisibility, () => document.hidden, () => false);
+  const [jumped, setJumped] = useState(jump);
+  /** Line i has been typed and up for the reading pause: the box may move on (boxLine). */
+  const [rested, setRested] = useState(false);
+  const go = (to: number, isTyped = false) => {
+    setI(to);
+    setTyped(isTyped);
+    setRested(false);
+  };
+  let moved = false;
   if (firstChange(seen, lines) !== -1) {
     const from = resumeFrom(seen, lines, i);
     setSeen(lines);
     if (from !== null) {
-      setI(Math.min(from, lines.length - 1));
-      setTyped(false);
+      go(Math.min(from, lines.length - 1));
+      moved = true;
     }
   }
-  const want = boxLine(i, lines.length, voiceLine, hidden);
-  if (want !== i || (hidden && !typed)) {
-    setI(want);
-    setTyped(hidden);
+  // A line that overrides one already said goes up at once, without the reading pause (#405).
+  if (jump !== jumped) {
+    setJumped(jump);
+    const to = jumpLine(i, jump, lines.length);
+    if (to !== null) {
+      go(to);
+      moved = true;
+    }
   }
+  const want = boxLine(i, lines.length, voiceLine, hidden, rested);
+  if (!moved && (want !== i || (hidden && !typed))) go(want, hidden);
   const last = i >= lines.length - 1;
   const read = useEffectEvent((count: number) => onRead?.(count));
   useEffect(() => {
     if (typed) read(i + 1);
   }, [typed, i]);
   useEffect(() => {
-    // The voice reading this narration moves the box on (voiceLine), so the words on screen are the words heard.
-    if (!typed || last || voiceLine !== undefined) return;
-    const id = setTimeout(() => {
-      setI((c) => c + 1);
-      setTyped(false);
-    }, LINE_PAUSE_MS);
+    // The reading pause runs whether or not a voice reads the line: boxLine also waits for the voice to move past it.
+    if (!typed || last) return;
+    const id = setTimeout(() => setRested(true), LINE_PAUSE_MS);
     return () => clearTimeout(id);
-  }, [typed, last, voiceLine]);
+  }, [typed, last, i]);
   return (
     <>
       <Typewriter key={`${i}\n${lines[i]}`} text={lines[i] ?? ""} onDone={() => setTyped(true)} />
@@ -448,6 +451,7 @@ export function DialogueBox({
   onRead,
   voiceLine,
   read,
+  jump,
 }: {
   /** Played in order with a ▼ between them. Ignored while `loading`. */
   lines: string[];
@@ -469,6 +473,8 @@ export function DialogueBox({
   /** Lines of `id` already read when the box starts on it: it starts after them (#351). Read once: the box remounts
    * for each new `id`. */
   read?: number;
+  /** A line of `id` that overrides one already said (NARRATION `jump`): the box moves to it now (#405). */
+  jump?: number;
 }) {
   const portrait = compact ? 56 : 84; // multiples of the owl's 28px, so pixels stay square
   const shown = lines.length > 0 ? lines : [""];
@@ -495,7 +501,7 @@ export function DialogueBox({
           …
         </span>
       ) : (
-        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} readTo={read} />
+        <Sequence key={id !== undefined ? `id:${id}` : shown.join("\n")} lines={shown} onRead={onRead} voiceLine={voiceLine} readTo={read} jump={jump} />
       )}
     </Panel>
   );

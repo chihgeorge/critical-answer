@@ -61,11 +61,14 @@ import {
   drinkPotion,
   potionArmed,
   spendPotion,
+  luckyDieFits,
+  skillRolledOn,
   resolveFortune,
   type ClassId,
   type Difficulty,
   type GameState,
   hostRejudge,
+  type GameConfig,
   type RoomTemplate,
   teamMonsterId,
   allTapped,
@@ -145,6 +148,29 @@ describe("createGame", () => {
     expect(g.boss.phases[1].questionIds).toEqual(["p2-easy", "p2-hard"]);
     expect(g.bossDifficulties).toEqual(marked);
     expect(createGame(teams, ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first)).not.toHaveProperty("bossDifficulties");
+  });
+
+  it("首領題隨機順序: off keeps the bank order; on shuffles each phase within a difficulty only", () => {
+    const teams = [{ id: "T0", name: "A" }];
+    const boss = ["h1", "e1", "e2", "e3", "h2", "h3"];
+    const later = [{ maxHp: 2, questionIds: ["p1", "p2", "p3", "p4"] }];
+    const marked = { e1: 2, e2: 2, e3: 2 } as const;
+    const played = ["e1", "h3"];
+    const make = (config: GameConfig, rng: () => number) => createGame(teams, ...deck(3, 1, 2), boss, config, 2, rng, undefined, {}, later, undefined, played, marked);
+    const off = make({ bossThreshold: 3 }, first);
+    expect(off.boss.questionIds).toEqual(["e2", "e3", "e1", "h1", "h2", "h3"]);
+    expect(off.boss.phases[1].questionIds).toEqual(["p1", "p2", "p3", "p4"]);
+    // rng 0 swaps index i with 0 at every step, so the shuffle visibly moves every list.
+    const on = make({ bossThreshold: 3, bossShuffle: true }, first);
+    const ids = on.boss.questionIds;
+    expect(ids).not.toEqual(off.boss.questionIds);
+    expect(ids.slice(0, 3).sort()).toEqual(["e1", "e2", "e3"]); // easiest difficulty still first
+    expect(ids[2]).toBe("e1"); // played last game: still last within its difficulty
+    expect(ids[5]).toBe("h3");
+    expect(ids.slice(3, 5).sort()).toEqual(["h1", "h2"]);
+    expect(on.boss.currentQuestionId).toBe(ids[0]);
+    expect(on.boss.phases[1].questionIds).not.toEqual(["p1", "p2", "p3", "p4"]);
+    expect([...on.boss.phases[1].questionIds].sort()).toEqual(["p1", "p2", "p3", "p4"]);
   });
 
   it("repeats an earlier game's questions once nothing else is left", () => {
@@ -1980,6 +2006,9 @@ describe("class dice: every tier per class", () => {
     for (const v of [1, 4, 12]) expect(() => startSneak(sneak(v).game, "T0")).toThrow(/sneak_used/);
     // A press whose die never landed (a restart cut the beat) rolls again without a second use.
     expect(startSneak(startSneak(g0, "T0"), "T0").teams[0].abilityUses).toBe(2);
+    // So does the last use's press (#416): the reroll costs nothing, so it needs no use left.
+    const last = { ...g0, teams: g0.teams.map((t) => (t.id === "T0" ? { ...t, abilityUses: 1 } : t)) };
+    expect(startSneak(startSneak(last, "T0"), "T0").teams[0]).toMatchObject({ abilityUses: 0, sneakTry: { questionId: q0(g0) } });
     // A wrong answer pays no sneak bonus.
     expect(answerQuestion(sneak(12).game, "T0", q0(g0), false, "retry").game.teams[0].reward).toBe(30);
   });
@@ -2801,7 +2830,33 @@ describe("⚔️ 最後衝刺 (docs/designs/last-sprint.md)", () => {
   });
 });
 
-describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
+describe("🍀 lucky die (docs/designs/lucky-potion.md)", () => {
+  // Value: protects=the owner's 甲2 (2026-11-19): a skill die while uses are left, else the dish die, never the check or
+  // the kill; fails_when=luckyDieFits takes any next die again, or a chef / no-class team never gets it on the dish die
+  it("luckyDieFits: a class skill die; the dish die only with no skill uses left; never the check or the kill", () => {
+    for (const kind of ["mage", "cleric", "warrior", "thief"]) expect(luckyDieFits({ classId: "mage", abilityUses: 0 }, kind)).toBe(true);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 1 }, "dish")).toBe(false);
+    expect(luckyDieFits({ classId: "warrior", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: "chef", abilityUses: 0 }, "dish")).toBe(true);
+    expect(luckyDieFits({ classId: undefined, abilityUses: 3 }, "dish")).toBe(true);
+    for (const kind of ["check", "kill"]) expect(luckyDieFits({ classId: undefined, abilityUses: 0 }, kind)).toBe(false);
+  });
+
+  // Value: protects=the owner's PR 422 ruling (2026-11-19): a lucky die is used before a roll, so once the skill die rolled on
+  // a question it is closed there, never moved to the dish die; fails_when=skillRolledOn misses a class or a question
+  it("skillRolledOn: a mage's cast, a thief's landed sneak die, a cleric's prayer close that question only", () => {
+    const at = { questionId: "q1", mageCasts: { [checkKey("q1", "t1")]: true } };
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 2 }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 2 }, { questionId: "q2", mageCasts: at.mageCasts })).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1", value: 12 } }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "thief", abilityUses: 2, sneakTry: { questionId: "q1" } }, at)).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "cleric", abilityUses: 0, prayedOn: "q1" }, at)).toBe(true);
+    expect(skillRolledOn({ id: "t1", classId: "cleric", abilityUses: 0, prayedOn: "q1" }, { questionId: "q2" })).toBe(false);
+    expect(skillRolledOn({ id: "t1", classId: "warrior", abilityUses: 2 }, at)).toBe(false);
+    // Used up on that question still closes it: the dish die does not take it there.
+    expect(skillRolledOn({ id: "t1", classId: "mage", abilityUses: 0 }, at)).toBe(true);
+  });
+
   it("giveItem: gives one, refuses a second while held, and refuses a finished game", () => {
     const g = giveItem(makeGame(), "T1");
     expect(g.teams[1]).toMatchObject({ item: "luckyPotion", potionsGiven: 1 });
@@ -2817,6 +2872,9 @@ describe("🧪 lucky potion (docs/designs/lucky-potion.md)", () => {
     expect(g.teams[0].itemArmedFor).toBe(g.teams[0].currentQuestionId);
     expect(potionArmed(g, "T0")).toBe(true);
     expect(() => drinkPotion(g, "T0")).toThrow(/already_drunk/);
+    const q = held.teams[0].currentQuestionId;
+    const cast = { ...held, mageCasts: { [checkKey(q, "T0")]: true as const }, teams: held.teams.map((t, i) => (i === 0 ? { ...t, classId: "mage" as const, abilityUses: 0 } : t)) };
+    expect(() => drinkPotion(cast, "T0")).toThrow(/skill_rolled/);
   });
 
   it("a question left without a roll keeps the potion, no longer armed; spendPotion takes it and counts it", () => {

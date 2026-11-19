@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
 import { tapScreen } from "./tts";
 
 closeLeftoverContexts();
@@ -56,6 +56,7 @@ test("the big screen plays the wrong-answer effect when the host marks an answer
   await expect.poll(async () => (await oscTypes(screen)).length).toBeGreaterThan(0); // the music is playing
   expect(await oscTypes(screen)).not.toContain("sawtooth");
 
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect.poll(() => oscTypes(screen)).toContain("sawtooth");
 });

@@ -53,7 +53,9 @@ function lobby(storage?: RoomStorage) {
   const narrations = () => all().filter((m) => m.type === "NARRATION");
   const start = (fields: object) => send(room, host, { type: "HOST_START", aiNarration: false, ...fields });
   const page = (n: number) => send(room, host, { type: "HOST_INTRO", page: n });
-  return { room, io, host, phone, state, lobbyMsg, narrations, start, page };
+  // The STATE that opened the game: a fill-in's persuasion check rolls itself in the STATE after it.
+  const started = () => all().find((m) => m.type === "STATE" && m.eventId === 1);
+  return { room, io, host, phone, state, started, lobbyMsg, narrations, start, page };
 }
 
 describe("how-to-play intro in the room", () => {
@@ -61,7 +63,7 @@ describe("how-to-play intro in the room", () => {
     const g = lobby();
     g.start({});
     await tick();
-    expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
+    expect(g.started()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.state().question).not.toBeNull();
     expect(g.state().intro).toBeUndefined();
     expect(g.narrations()).toHaveLength(1);
@@ -96,7 +98,7 @@ describe("how-to-play intro in the room", () => {
     expect(g.narrations()).toHaveLength(0);
     g.page(INTRO_PAGES + 1);
     await tick();
-    expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
+    expect(g.started()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.state().intro).toBeUndefined();
     expect(g.state().question).not.toBeNull();
     expect(g.narrations()).toHaveLength(1);
@@ -121,7 +123,7 @@ describe("how-to-play intro in the room", () => {
     g.page(INTRO_PAGES + 1);
     g.page(INTRO_PAGES + 1); // double tap: the intro is over
     await tick();
-    expect(g.state()).toMatchObject({ cue: "start", eventId: 1 });
+    expect(g.started()).toMatchObject({ cue: "start", eventId: 1 });
     expect(g.narrations()).toHaveLength(1);
   });
 

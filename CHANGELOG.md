@@ -2,6 +2,75 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.109.0.0] - 2026-11-20
+
+### Changed
+- The persuasion check now rolls by itself: when a team's fill-in turn opens outside the boss room, the room rolls the d20 on the big screen with no button to press. The phone reads 「🎲 說服骰馬上自動擲・過了給第一個字」 until it lands. A pass still gives the first character, a 20 still lets the team skip the question (with a dish die), and a 1 still halves the points. The phone's 「🎲 擲骰說服」 button and the host's 「好像卡住了」 / 「替○○擲骰」 row are gone. An older phone that still sends the roll gets a harmless refusal. Right after the host judges the previous team's fill-in wrong, the next team's check waits 5 seconds first, so the host can still press 改判答對 before a 20 lets that team through; an undo in those 5 seconds hands the turn back and that check never rolls.
+- The lucky potion is now the 🍀 幸運骰 (lucky die), and it still has to be pressed (「🍀 用幸運骰」). It goes on the team's next class skill die (洞悉, 祈禱, 衝鋒, 偷襲). A chef, a team with no class, or a team with no skill uses left puts it on its next dish die. It never goes on the persuasion check. A lucky die is used before a roll: once a mage has cast 洞悉 on the question, a cleric has prayed on it, or a thief's sneak die has landed on it, the lucky die cannot be used for the rest of that question (the button greys out with 「這題洞悉骰擲過了・下一題再用」) and does not move to the dish die; it works again on the next question. When that die does not roll, the team keeps the lucky die. The host's give, the fortune teller and the wrongful-catch compensation still hand it out. The podium title is now 「🍀 骰子成癮」 (most lucky dice used), and the fortune condition is 「用最多顆幸運骰的隊伍」.
+- Every user-facing 幸運藥水／藥水 is renamed to 幸運骰 (host page, phone, big screen, map, narration, rules, hosting guide, DESIGN.md), with the 🍀 icon.
+- How-to-play page 3 now says the persuasion die rolls by itself. Page 6 explains the lucky die (skill die, or the dish die when there is no skill to use). The owl on page 3 now says 「填空題先說服，說服成功有提示！擲到 20 免答，擲到 1 只拿一半！」, and on page 8 「答錯別慌！等等還能再試一次喔。準備好了嗎？主持人再按一次 ▶，冒險開始！」.
+
+### Fixed
+- `scripts/balance-sim.ts` now spends a potion on the die it doubled. Before, it was drunk in an inline argument, so it was never consumed. The sim now models the new rules: the check rolls itself, and the lucky die goes on the skill die, or on the dish die when no skill uses are left.
+
+## [0.108.1.0] - 2026-11-20
+
+### Fixed
+- The big screen's narration no longer shows its next line before the voice has finished the one before it on the 叉路, 神秘房 and 占卜 screens and on the end screen: like the turn screen, each line waits for the voice, or for its safety timeout when a voice hangs. A line also stays up at least as long as it does with no voice (typed, then the reading pause), so a voice that ends or fails every line at once (some TVs) never flashes the lines past. With 🔊 off or no voice, the lines keep their usual pace.
+
+## [0.108.0.0] - 2026-11-20
+
+### Added
+- Lobby option 「首領題隨機順序（同難度內）」 (off by default): every boss phase's questions come in a random order within each difficulty, still easiest difficulty first and with last game's revealed answers last within their difficulty. Off keeps the bank order.
+
+## [0.107.2.1] - 2026-11-20
+
+### Fixed
+- A room alarm that ran a few milliseconds before its own time set that same time again. The platform treats an unchanged alarm as handled and deletes it, so the room then never closed idle connections or expired. It now sets the next check 1 ms later (#396).
+
+## [0.107.2.0] - 2026-11-20
+
+### Removed
+- The big screen's old flat dungeon look and its switches: `?art=classic` on the big screen's URL, `DUNGEON_ART` in `lib/pixel-art.ts`, the stone/moss room alternation and the cloud fog on the map strip. The torch-lit dungeon is the only look; it draws exactly as before.
+
+## [0.107.1.0] - 2026-11-20
+
+### Fixed
+- During the boss's 「首領被擊敗了！」 beat, before the four kill dice roll, the host page and the phones stay held as they are during the dice: their judge and ability buttons no longer reopen for two seconds. The big screen still shows the defeated boss first (#394).
+- 🚨 成立 sends the one 逃跑 value the room now uses; the accused team still flees and keeps its monster. The anti-cheating design note no longer mentions 逃跑・同房.
+- The idle-close e2e test (`e2e/lifecycle.spec.ts`) checks the close codes separately and waits for the second idle close until the room's end instead of a fixed 15 s. It also keeps the test worker's log in `test-results/` so the next CI failure can be read (#396).
+
+## [0.107.0.0] - 2026-11-20
+
+### Changed
+- The how-to-play slideshow is now 8 pages instead of 4: taking turns, multiple choice, fill-in (with the persuasion check), sort questions, the dish die after a correct answer, the lucky potion, the class dice (when each class rolls and the shared 1／2–6／7–19／20 scale, no per-class table) and a wrong answer and how to win (one 逃跑: another monster, an easier question). Each page keeps its picture, big text, owl line and host script.
+- A dish die of 2–6 no longer looks like a failure for a team that is not a chef: the big screen shows the same plain 「成功：上菜，獎勵不變」 as 7–19 (no red bar), the phone reads 「🍳 料理骰 N：上菜」, the dish keeps its own name and the narrator uses the served lines. A chef's 2–6 reads 「沒加成」 in plain cream, not red.
+- A class die's 2–6 is now called 「失敗」 instead of 「小失敗」 on the big screen, in the rules and in the how-to-play slideshow, so every place reads 1 大失敗／2–6 失敗／7–19 成功／20 大成功.
+- Every how-to-play page now opens with a title ribbon showing its topic (page 1 reads 「輪到：藍鯨隊」), the dice in the pictures are the game's own D20, page 3 (fill-in) is shorter, page 7 shows only each class's skill name and the 1／2–6／7–19／20 scale.
+- Skills are renamed everywhere (phone, lobby, big screen, narration, rules, README): the mage's 施法 is now 「洞悉」 (Insight), the warrior's roll instead of answering is 「衝鋒」 (Charge, ⚔️ on the phone), the chef's passive is 「提鮮」 (Seasoning); 「祈禱」 (Pray) and 「偷襲」 (Sneak Attack) stay. The die stays 料理骰.
+- A natural 20 now looks special wherever a d20 lands on it (dish die, class dice, persuasion, potion, initiative, the boss kill): the die turns gold, glows and four pixel sparkles blink around it (they stay still under reduced motion). A tumbling die never flashes a 20 before it lands.
+- A potion's kept die keeps its normal colours and gets a green outline and a ✓ badge; the dropped die fades. Before, the kept die was only pale yellow.
+- How-to-play: page 1 is shorter, page 2 shows the phone before and after the reveal (answer green ✓, a wrong pick red ✗), page 3 shows the hint 「💡 提示：海」 on the phone and ① 看提示 ② 打字，按「送出」, page 7's owl says 「每個職業都有職業技能」, and page 8 shows a small champion podium (the end screen's look, the winner crowned) at the slime's pixel scale.
+
+## [0.106.2.0] - 2026-11-20
+
+### Fixed
+- While an answer is revealed, the big screen and the phones no longer receive the next question's text early: STATE blanks it until 下一題, and the host page still previews it (#362).
+- The answer countdown on a phone, the big screen or the host page stands still while that page is disconnected, and jumps to the room's figure on reconnect. The rules now say the time keeps running during a server restart (#406).
+- After a boss-entry dish, the narrator says the entrance (and its 最後衝刺 line) before handing over to the next team, also after a restart; a failed beat restore is now logged (#394).
+- During an answer reveal the big screen reads this turn's narration in step with the phones; only the handoff to the next team still waits for 下一步. A line that overrides one already read (sending a team to the boss, taking a ruling back) shows at once instead of after the reading pause (#405).
+
+## [0.106.1.0] - 2026-11-19
+
+### Fixed
+- A thief whose last 偷襲 never rolled its sneak die (the room restarted in the beat) can press 偷襲 again on that question. It still costs no second use.
+- A caught 偷襲 (sneak die 1) now writes its deduction to the transcript, next to the 修正 lines, because no judgment records it.
+- A game saved before the class-dice rework keeps its chef and thief 改判 rows: after a restart, 改成答對 on one of them rolls the dish die. Older rows still pay the plain reward they were judged with.
+- The potion's "two bad dice" and "saved" lines no longer fire on a dish die of 2–6, which pays ×1 like 7–19.
+- After a cleric's prayer die stands (7–19 or 20) outside the boss room, the narrator no longer adds 「聖光降臨，再答一次！」-style lines (those are removed). The prayer die's own line already says the team answers again, so the retry gets a single atmosphere line. The AI narrator is told the same.
+- The host's cleric waiting row uses as many columns as it has buttons, so a cleric with no prayers left gets no empty column.
+- `scripts/balance-sim.ts` plays the reworked dice through lib (a dish die on every correct turn-based answer and on a warrior's hit, and the real sneak die). The `REWORK`, `DISHALL`, `DISHM`, `SNEAK1*`, `SNEAKLOSE`, `CHEF*`, `HIDECRIT`, `HIDEDIE`, `CHEFFIX` and `NODIE` what-ifs are removed. Tooling only.
+
 ## [0.106.0.0] - 2026-11-19
 
 ### Changed

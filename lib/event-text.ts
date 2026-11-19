@@ -36,14 +36,14 @@ export const BOON_TEXT: Record<Boon, string> = {
 /** A change with its sign: 「+3」, 「−5」 (a chef below a success takes some away). */
 export const signed = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n)}`;
 
-/** What the event did, in one line: 「+20 飽足感（廚師 +3）」, 「職業能力 +1 次」, 「下次答對獎勵減半」. */
+/** What the event did, in one line: 「+20 飽足感（提鮮 +3）」, 「職業能力 +1 次」, 「下次答對獎勵減半」. */
 export function eventEffectLine(r: Pick<EventResult, "satiety" | "chefBonus" | "abilityUse" | "boon">): string {
   if (r.abilityUse) return "職業能力 +1 次";
   if (r.boon === "curse") return "下次答對獎勵減半";
   if (r.boon === "blessing") return "下次答對多拿一半";
   // A rotten dish on an empty belly takes nothing.
   if (r.satiety === 0) return "飽足感已經見底，沒被扣";
-  const chef = r.chefBonus ? `（廚師 ${signed(r.chefBonus)}）` : "";
+  const chef = r.chefBonus ? `（提鮮 ${signed(r.chefBonus)}）` : "";
   return `${r.satiety >= 0 ? "+" : "−"}${Math.abs(r.satiety)} 飽足感${chef}`;
 }
 
@@ -52,7 +52,7 @@ export const FORTUNE_CONDITION_TEXT: Record<FortuneCondition, { text: string; un
   natural20s: { text: "擲出最多次 20 的隊伍", unit: "次" },
   natural1s: { text: "擲出最多次 1 的隊伍", unit: "次" },
   flees: { text: "逃跑最多次的隊伍", unit: "次" },
-  potions: { text: "喝最多瓶藥水的隊伍", unit: "瓶" },
+  potions: { text: "用最多顆幸運骰的隊伍", unit: "顆" },
   wrong: { text: "答錯最多題的隊伍", unit: "題" },
   correct: { text: "答對最多題的隊伍", unit: "題" },
   mystery: { text: "開最多次神秘房的隊伍", unit: "次" },
@@ -65,7 +65,7 @@ export const FORTUNE_CONDITION_TEXT: Record<FortuneCondition, { text: string; un
 export const FORTUNE_EFFECT_TEXT: Record<FortuneEffect, { icon: string; name: string; line: string; tone: "good" | "bad" | "swap" }> = {
   blessing: { icon: "✨", name: "祝福", line: "下一題答對多拿獎勵", tone: "good" },
   curse: { icon: "💀", name: "詛咒", line: "下一題答對獎勵變少", tone: "bad" },
-  potion: { icon: "🧪", name: "藥水", line: "送一瓶，已有就沒效", tone: "good" },
+  potion: { icon: "🍀", name: "幸運骰", line: "送一顆，已有就沒效", tone: "good" },
   tribute: { icon: "🙇", name: "進貢", line: "其他隊各給他們 10", tone: "swap" },
   relief: { icon: "🎁", name: "救濟", line: "給飽足感最少的隊伍", tone: "swap" },
   stun: { icon: "💫", name: "暈眩", line: "跳過下一回合，搶答時停一首", tone: "bad" },

@@ -104,19 +104,13 @@ test("an unfolded map shows no room label at all", async ({ page }) => {
 });
 
 // Value: protects=the torch-lit look's floor chip names the room on stage (by depth, never a count) outside the map,
-// the unreached way is solid dark rock, and ?art=classic brings back the old map with no chip
-// (docs/designs/dungeon-scene.md); fails_when=the chip reads the wrong room, lands in the map (D8: no digits there), or
-// the revert query stops working; why_new=new look and revert switch; seam=none; no_claim=how dark it reads on the TV
-test("the floor chip names the room on stage, and ?art=classic brings the old map back", async ({ page }) => {
+// and the unreached way is solid dark rock (docs/designs/dungeon-scene.md); fails_when=the chip reads the wrong room or
+// lands in the map (D8: no digits there); why_new=new look; seam=none; no_claim=how dark it reads on the TV
+test("the floor chip names the room on stage", async ({ page }) => {
   await fakeRoom(page, state([team(0, 2), team(1, 0)], 1));
   await page.goto("/room/LMAP/screen");
   const map = page.getByTestId("map-strip");
   await expect(page.getByTestId("screen-floor")).toHaveText("地下 3 樓・苔蘚水道");
   await expect(map.getByTestId("map-dark")).toHaveCount(1);
   await expect(map).not.toContainText(/\d/);
-
-  await page.goto("/room/LMAP/screen?art=classic");
-  await expect(map.getByRole("img", { name: "紅隊（輪到）" })).toBeVisible();
-  await expect(page.getByTestId("screen-floor")).toHaveCount(0);
-  await expect(map.getByTestId("map-dark")).toHaveCount(0);
 });

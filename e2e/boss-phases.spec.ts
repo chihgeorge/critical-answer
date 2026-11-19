@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { hostCheckSettled, advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -52,13 +52,14 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
 
+  await hostCheckSettled(host); // 送王房 waits for a fill-in's own check, like a judgment
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();
 
   // Phase 1 looks like any boss; only the host sees there is more. The boss room rolls no persuasion check (#364).
-  await expect(team.getByTestId("roll-check")).toHaveCount(0);
+  await expect(team.getByTestId("check-waiting")).toHaveCount(0);
   await expect(screen.getByText("題目 phase1-a")).toBeVisible();
   await expect(screen.getByText("最後的挑戰！")).toBeVisible();
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 1/2 階段・下一階段：主題曲之謎");
@@ -88,7 +89,10 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 2/2 階段・最後階段");
 
   await host.getByRole("button", { name: "答對！" }).click();
-  // The defeated boss shows first (#364), then the kill's 4d20; the podium waits for both (docs/designs/kill-roll.md).
+  // The defeated boss shows first (#364), with no dice yet (STATE carries the kill roll during this card, #394), then
+  // the kill's 4d20; the podium waits for both (docs/designs/kill-roll.md).
+  await expect(screen.getByTestId("screen-kill-defeated")).toBeVisible();
+  await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toHaveCount(0);
   await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible({ timeout: 10_000 });
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
   await advanceAwards(host);

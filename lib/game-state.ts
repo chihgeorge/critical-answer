@@ -51,6 +51,16 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   chef: "廚師",
 };
 
+/** Each class's skill name (owner 2026-11-19): the phone buttons, the lobby, the big screen's roll chips and the
+ * how-to-play slides all say these. The chef's is its passive; 「料理骰」 stays the die every team rolls. */
+export const CLASS_SKILLS: Record<ClassId, string> = {
+  mage: "洞悉",
+  cleric: "祈禱",
+  warrior: "衝鋒",
+  thief: "偷襲",
+  chef: "提鮮",
+};
+
 export const CLASS_ICONS: Record<ClassId, string> = {
   mage: "🔮",
   cleric: "✝️",
@@ -70,7 +80,7 @@ export function abilityUsesFor(classId: ClassId | undefined): number {
 
 /* ---------- Class dice (docs/designs/class-abilities.md 「職業技能擲骰」) ---------- */
 
-/** One d20's tier, the same for every class: 0 大失敗 (1), 1 小失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
+/** One d20's tier, the same for every class: 0 大失敗 (1), 1 失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
 export type SkillTier = 0 | 1 | 2 | 3;
 export function skillTier(value: number): SkillTier {
   return value <= 1 ? 0 : value < SKILL_SUCCESS ? 1 : value <= 19 ? 2 : 3;
@@ -78,7 +88,7 @@ export function skillTier(value: number): SkillTier {
 /** The lowest value of the success tier (7). */
 export const SKILL_SUCCESS = 7;
 /** Each tier's name, for the screens and the narrator. */
-export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
+export const TIER_LABELS = ["大失敗", "失敗", "成功", "大成功"] as const;
 
 /** The thief's Sneak Attack die (docs/designs/class-dice-rework.md), rolled when 偷襲 is pressed: on 7–19 a correct answer
  * gives SNEAK_REWARD_MULTIPLIER times the reward (rounded half up) and the boss loses 2 hearts; on a 20 SNEAK_CRIT_MULTIPLIER
@@ -97,6 +107,13 @@ export const CHEF_DISH_LEGEND_MULTIPLIER = 2;
 /** The dish die's multiplier per tier (1, 2–6, 7–19, 20) for a team that is not a chef, and for a chef. */
 export const DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, 1, DISH_LEGEND_MULTIPLIER] as const;
 export const CHEF_DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, CHEF_DISH_SUCCESS_MULTIPLIER, CHEF_DISH_LEGEND_MULTIPLIER] as const;
+
+/** The dish die's tier as players see it: for a team that is not a chef 2–6 pays the same as 7–19, so it reads as the
+ * same plain result (owner 2026-11-18), never as a failure; a chef's 2–6 stays tier 1 (no bonus). */
+export function dishTier(value: number, chef: boolean): SkillTier {
+  const t = skillTier(value);
+  return t === 1 && !chef ? 2 : t;
+}
 
 /** The dish die `value`'s multiplier for a chef or anyone else. */
 export function dishMultiplier(chef: boolean, value: number): number {
@@ -223,6 +240,8 @@ export interface Team {
   /** The thief's last 偷襲: on which question (once per question, whatever its die said), the die once it landed and
    * what a 1 took. */
   sneakTry?: SneakTry;
+  /** The question the cleric last prayed on (pray): its prayer die rolled there, so no lucky die for the rest of it. */
+  prayedOn?: string;
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
   typedAnswer?: string;
@@ -382,6 +401,8 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
+  /** 首領題隨機順序 (lobby): each boss phase's questions shuffled within one difficulty. Absent keeps the bank order. */
+  bossShuffle?: true;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -785,7 +806,16 @@ export function createGame(
   const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
   // Easiest first; within one difficulty, an answer the last game showed goes last (a stable sort keeps freshFirst's order).
   const difficulty = (id: string) => (Object.hasOwn(bossDifficulties, id) ? bossDifficulties[id] : DEFAULT_BOSS_DIFFICULTY);
-  const bossOrder = (ids: string[]) => freshFirst(ids).sort((a, b) => difficulty(a) - difficulty(b));
+  // Shuffled before the stable sort, so 首領題隨機順序 moves questions only within their difficulty. Off draws no rng.
+  const shuffled = (ids: string[]) => {
+    const a = [...ids];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = pickIndex(rng, i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const bossOrder = (ids: string[]) => freshFirst(config.bossShuffle ? shuffled(ids) : ids).sort((a, b) => difficulty(a) - difficulty(b));
   bossQuestionIds = bossOrder(bossQuestionIds);
   laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];
@@ -1105,8 +1135,8 @@ function pickDue(game: GameState, open: boolean): boolean {
   return !open && !buzz.open && !buzz.teamId;
 }
 
-/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
- * order. `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
+/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in phase
+ * order (random each game under 首領題隨機順序). `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
 export function pickableCategories(game: GameState, categoryOf: Record<string, string | undefined>, open: boolean): string[] {
   const buzz = currentBuzz(game);
   if (!pickDue(game, open) || !buzz.picker || buzz.hostPicked) return [];
@@ -1114,7 +1144,7 @@ export function pickableCategories(game: GameState, categoryOf: Record<string, s
   return [...new Set(found.filter((c): c is string => !!c))];
 }
 
-/** The question types of the phase, in bank order, `left` false once all of that type are revealed (#321: shown greyed).
+/** The question types of the phase, in phase order, `left` false once all of that type are revealed (#321: shown greyed).
  * `typeOf` maps a question id to its questionType. Empty when no pick is due or no type has a question left. Offered
  * to the host even without a winner. */
 export function pickableTypes(game: GameState, typeOf: Record<string, string | undefined>, open: boolean): { type: string; left: boolean }[] {
@@ -1834,7 +1864,7 @@ export function pray(game: GameState, teamId: string): GameState {
   return {
     ...game,
     pendingWrong: { ...game.pendingWrong!, prayed: true, praying: true },
-    teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1 })),
+    teams: patchTeam(game.teams, teamId, (t) => ({ abilityUses: t.abilityUses - 1, prayedOn: game.pendingWrong!.questionId })),
   };
 }
 
@@ -1926,23 +1956,50 @@ export interface RoomEvent {
   fortune?: FortuneDraw;
 }
 export type Boon = "curse" | "blessing";
-/** 🧪 幸運藥水: the only item so far (docs/designs/lucky-potion.md). */
+/** 🍀 幸運骰 (once the lucky potion; the id stays for saved games): the only item so far (docs/designs/lucky-potion.md). */
 export type Item = "luckyPotion";
 
-/** 🧪 給藥水: the host gives `teamId` a potion, at any time of the game (premise 1). One at a time (premise 4). */
+/** 🍀 給幸運骰: the host gives `teamId` a lucky die, at any time of the game (premise 1). One at a time (premise 4). */
 export function giveItem(game: GameState, teamId: string): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   if (getTeam(game, teamId).item) throw new InvalidActionError("item_held");
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: "luckyPotion", potionsGiven: (t.potionsGiven ?? 0) + 1 })) };
 }
 
-/** Whether `teamId`'s potion doubles its next die (check, class die or dish die; class-dice-rework.md): drunk on the question it faces now, this turn (E1). */
+/** Whether `teamId`'s lucky die is armed: used on the question it faces now, this turn (E1). Which die it doubles: luckyDieFits. */
 export function potionArmed(game: GameState, teamId: string): boolean {
   const t = getTeam(game, teamId);
   return !!t.item && t.itemArmedFor === currentQuestionIdOf(game, teamId) && t.itemArmedTurn === (t.turns ?? 0);
 }
 
-/** 🧪 喝下: the team arms its potion for its current question. The room checks the turn and D6's cases first. */
+/** 🍀 用幸運骰 (甲2, owner 2026-11-19): an armed lucky die goes on the team's next class skill die (洞悉, 祈禱, 衝鋒, 偷襲);
+ * a team with no skill uses left at all (a chef, no class, or all 3 used) puts it on its next dish die instead. Never on
+ * the persuasion check (it rolls itself) or a kill's dice. The room calls it after spending the use, so a class die always fits. */
+export function luckyDieFits(team: SkillTeam, kind: string): boolean {
+  if (kind === "mage" || kind === "cleric" || kind === "warrior" || kind === "thief") return true;
+  return kind === "dish" && !hasSkillUses(team);
+}
+
+type SkillTeam = Pick<Team, "classId" | "abilityUses"> & Partial<Pick<Team, "id" | "sneakTry" | "prayedOn">>;
+/** The question the lucky die would be for, and the game's (or view's) mageCasts. */
+type SkillAt = { questionId: string; mageCasts?: Record<string, unknown> };
+
+/** A class with a skill die and a use of it left: its lucky die waits for that die, not the dish die. */
+export function hasSkillUses(team: SkillTeam): boolean {
+  return (team.classId === "mage" || team.classId === "cleric" || team.classId === "warrior" || team.classId === "thief") && team.abilityUses > 0;
+}
+
+/** The team's skill die already rolled on `at`'s question: a mage cast 洞悉 there, a thief's 偷襲 die landed there, or a
+ * cleric prayed there. A lucky die is used before a roll, so it stays closed for the rest of that question (owner 2026-11-19). */
+export function skillRolledOn(team: SkillTeam, at: SkillAt): boolean {
+  if (team.id === undefined) return false;
+  if (team.classId === "mage") return !!at.mageCasts?.[checkKey(at.questionId, team.id)];
+  if (team.classId === "thief") return team.sneakTry?.questionId === at.questionId && team.sneakTry.value !== undefined;
+  if (team.classId === "cleric") return team.prayedOn === at.questionId;
+  return false;
+}
+
+/** 🍀 用幸運骰: the team arms its lucky die for its current question. The room checks the turn and D6's cases first. */
 export function drinkPotion(game: GameState, teamId: string): GameState {
   assertPlaying(game);
   assertTurn(game, teamId);
@@ -1950,6 +2007,7 @@ export function drinkPotion(game: GameState, teamId: string): GameState {
   if (!getTeam(game, teamId).item) throw new InvalidActionError("no_item");
   if (potionArmed(game, teamId)) throw new InvalidActionError("already_drunk");
   const questionId = currentQuestionIdOf(game, teamId);
+  if (skillRolledOn(getTeam(game, teamId), { questionId, mageCasts: game.mageCasts })) throw new InvalidActionError("skill_rolled");
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ itemArmedFor: questionId, itemArmedTurn: t.turns ?? 0 })) };
 }
 
@@ -2657,6 +2715,8 @@ export interface SpectatorView {
     sneakCrit?: true;
     /** The thief's last 偷襲 (its button stays grey on that question) and what its die did. */
     sneakTry?: SneakTry;
+    /** The question the cleric last prayed on: its lucky die stays grey there (skillRolledOn). Absent from an older server. */
+    prayedOn?: string;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
@@ -2735,6 +2795,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
       ...(t.sneakArmed && t.sneakCrit ? { sneakCrit: true as const } : {}),
       ...(t.sneakTry ? { sneakTry: t.sneakTry } : {}),
+      ...(t.prayedOn ? { prayedOn: t.prayedOn } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       // A boss team's question is the boss's, not its stale room question.

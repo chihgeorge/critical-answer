@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { boxLine, editedLine, firstChange, handoffAdded, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, sequenceStart, voiceNarration } from "./client";
+import { boxLine, editedLine, firstChange, handoffAdded, jumpLine, keepLatest, isPending, narrationCanSpeak, narrationSummary, readCount, resumeFrom, revealDialogue, revealLines, sequenceStart, voiceLineOf, voiceNarration } from "./client";
 
 // Value: protects=the next-team line added after 下一題 is spoken, a late line over a reveal is not (#350, #352);
 // fails_when=handoffAdded ignores the reveal or the tracked narration, or voiceNarration voices the served dish's own lines.
@@ -31,31 +31,70 @@ describe("sequenceStart (where the dialogue box starts)", () => {
   it("never starts below 0 on an empty box", () => expect(sequenceStart(0, 0)).toEqual({ line: 0, typed: false }));
 });
 
-describe("narration on a reveal", () => {
-  it("shows only the result before the host advances, not the ingredient narration", () => {
+describe("narration on a reveal (#405)", () => {
+  // Value: protects=the big screen reads this turn's narration with the phones over a reveal; fails_when=it goes back to 「答對！」 only
+  it("reads this turn's narration once it is in, and says 答對！ or …… only while it is on its way", () => {
     expect(revealDialogue(true)).toBe("答對！");
     expect(revealDialogue(false)).toBe("……");
+    const n = { eventId: 4, lines: ["甲隊打倒史萊姆", "史萊姆滾走了"], rev: 0 };
+    expect(revealLines(n, 4, true)).toEqual({ lines: n.lines, narrated: true });
+    expect(revealLines(n, 5, true)).toEqual({ lines: ["答對！"], narrated: false });
+    expect(revealLines(null, 4, false)).toEqual({ lines: ["……"], narrated: false });
   });
-  it("waits for the reveal and video to close and drops a line from an older room event", () => {
-    expect(narrationCanSpeak(4, 4, true, false)).toBe(false);
-    expect(narrationCanSpeak(4, 4, false, true)).toBe(false);
-    expect(narrationCanSpeak(5, 4, false, false)).toBe(false);
-    expect(narrationCanSpeak(4, 4, false, false)).toBe(true);
+  it("speaks over a reveal; waits only for a playing video, and drops a line from an older room event", () => {
+    expect(narrationCanSpeak(4, 4, true)).toBe(false);
+    expect(narrationCanSpeak(5, 4, false)).toBe(false);
+    expect(narrationCanSpeak(4, 4, false)).toBe(true);
+  });
+});
+
+describe("jumpLine (#405)", () => {
+  // Value: protects=a line that overrides one already said (送王房) goes up at once; fails_when=the box waits LINE_PAUSE_MS or jumps back
+  it("moves to the overriding line when it is ahead, and stays otherwise", () => {
+    expect(jumpLine(1, 2, 3)).toBe(2);
+    expect(jumpLine(0, 2, 3)).toBe(2);
+    expect(jumpLine(2, 2, 3)).toBeNull();
+    expect(jumpLine(2, 1, 3)).toBeNull();
+    expect(jumpLine(1, undefined, 3)).toBeNull();
+    expect(jumpLine(1, 3, 3)).toBeNull();
   });
 });
 
 describe("boxLine (#365)", () => {
-  // Value: protects=the words on screen are the words heard, and a hidden tab keeps up with the room; fails_when=the box types on its own clock under the voice
-  it("follows the voice's line, never goes back, and stops at the last line", () => {
-    expect(boxLine(0, 3, undefined, false)).toBe(0);
-    expect(boxLine(0, 3, 2, false)).toBe(2);
-    expect(boxLine(2, 3, 1, false)).toBe(2);
-    expect(boxLine(0, 3, 5, false)).toBe(2);
+  // Value: protects=the next line waits for both the reading pause and the voice, one line at a time; fails_when=the box shows line 2 while line 1 is still spoken, or a voice failing every line at once flashes them past
+  it("with no voice, moves on once the line has rested", () => {
+    expect(boxLine(0, 3, undefined, false, false)).toBe(0);
+    expect(boxLine(0, 3, undefined, false, true)).toBe(1);
+    expect(boxLine(2, 3, undefined, false, true)).toBe(2);
+  });
+  it("waits for the voice to move past the line, even after the pause", () => {
+    expect(boxLine(0, 3, 0, false, true)).toBe(0);
+    expect(boxLine(0, 3, 1, false, true)).toBe(1);
+    expect(boxLine(2, 3, 1, false, true)).toBe(2);
+  });
+  it("a voice that ends or fails at once never rushes the box: the pause still holds, one line at a time", () => {
+    expect(boxLine(0, 3, 2, false, false)).toBe(0);
+    expect(boxLine(0, 3, 2, false, true)).toBe(1);
+    expect(boxLine(0, 3, 5, false, true)).toBe(1);
   });
   it("shows the last line at once on a hidden tab", () => {
-    expect(boxLine(0, 3, undefined, true)).toBe(2);
-    expect(boxLine(0, 3, 0, true)).toBe(2);
-    expect(boxLine(0, 0, undefined, true)).toBe(0);
+    expect(boxLine(0, 3, undefined, true, false)).toBe(2);
+    expect(boxLine(0, 3, 0, true, false)).toBe(2);
+    expect(boxLine(0, 0, undefined, true, false)).toBe(0);
+  });
+});
+
+describe("voiceLineOf", () => {
+  // Value: protects=a narration box on any screen (叉路, 神秘房, 占卜, end screen) waits for the voice before its next line; fails_when=the box shows line 2 while line 1 is still being spoken
+  it("is the voice's line for the narration it reads, else undefined (the box keeps its own pace)", () => {
+    expect(voiceLineOf({ eventId: 4, at: 1 }, 4)).toBe(1);
+    expect(voiceLineOf({ eventId: 3, at: 1 }, 4)).toBeUndefined();
+    expect(voiceLineOf(null, 4)).toBeUndefined();
+    expect(voiceLineOf({ eventId: 4, at: 0 }, undefined)).toBeUndefined();
+  });
+  it("counts from the box's first line (the end screen picks up where the game screen was)", () => {
+    expect(voiceLineOf({ eventId: 4, at: 2 }, 4, 1)).toBe(1);
+    expect(voiceLineOf({ eventId: 4, at: 0 }, 4, 1)).toBe(0); // the voice still behind: the box holds its first line
   });
 });
 

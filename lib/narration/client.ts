@@ -22,9 +22,9 @@ export function isPending(stateEventId: number, narration: NarrationState): bool
   return stateEventId > (narration?.eventId ?? 0);
 }
 
-/** A reveal owns the screen until the host advances, and a clip owns its sound while playing. */
-export function narrationCanSpeak(sceneEventId: number, narrationEventId: number, revealing: boolean, videoPlaying: boolean): boolean {
-  return sceneEventId === narrationEventId && !revealing && !videoPlaying;
+/** A clip owns its sound while playing. A reveal no longer holds the narration: it is read with the phones (#405). */
+export function narrationCanSpeak(sceneEventId: number, narrationEventId: number, videoPlaying: boolean): boolean {
+  return sceneEventId === narrationEventId && !videoPlaying;
 }
 
 /** A NARRATION for the narration this screen already tracks, after the reveal closed: a line the room added then (the
@@ -45,15 +45,41 @@ export function sequenceStart(read: number, count: number): { line: number; type
   return { line: Math.max(0, Math.min(read, count - 1)), typed: read > 0 && read >= count };
 }
 
-/** The line the dialogue box shows: never behind the voice reading it (subtitles follow speech), and the last line at
- * once on a hidden tab, whose throttled timers would leave the typing (and the room's progress) far behind (#365). */
-export function boxLine(i: number, count: number, voiceLine: number | undefined, hidden: boolean): number {
+/** The line the dialogue box shows, from line `i` (#365). One line at a time: line `i` stays up until it has `rested`
+ * (typed, then the reading pause: the pace with no voice) and, while the voice reads this narration, until the voice has
+ * moved past it too. So the next line waits for the line's speech, and a voice that ends or fails every line at once
+ * (some TVs) never rushes the box. A hidden tab shows the last line at once: its throttled timers would leave the typing
+ * (and the room's progress) far behind. */
+export function boxLine(i: number, count: number, voiceLine: number | undefined, hidden: boolean, rested: boolean): number {
   const last = Math.max(0, count - 1);
   if (hidden) return last;
-  return voiceLine === undefined ? i : Math.min(Math.max(i, voiceLine), last);
+  if (i >= last || !rested || (voiceLine !== undefined && voiceLine <= i)) return Math.min(i, last);
+  return i + 1;
+}
+
+/** The narration line the screen's voice is reading: `at` of narration `eventId`, or null when it reads none. */
+export type VoiceAt = { eventId: number; at: number } | null;
+
+/** The `voiceLine` for a dialogue box showing narration `eventId` from its line `from` (#365): every screen's narration
+ * box waits for the voice, not only the turn screen's. Undefined when the voice is not reading that narration (🔊 off,
+ * no voice, a replay), so the box keeps its own pace. */
+export function voiceLineOf(voiceAt: VoiceAt, eventId: number | undefined, from = 0): number | undefined {
+  return voiceAt && voiceAt.eventId === eventId ? Math.max(0, voiceAt.at - from) : undefined;
 }
 
 export const revealDialogue = (scored: boolean): string => scored ? "答對！" : "……";
+
+/** Where the dialogue box goes for a NARRATION `jump` (#405): to line `jump`, the line that overrides one already
+ * said, when it is ahead of line `i`; null to stay. */
+export function jumpLine(i: number, jump: number | undefined, count: number): number | null {
+  return jump !== undefined && jump > i && jump < count ? jump : null;
+}
+
+/** What the big screen's box says over an answer reveal (#405): this turn's narration once it has come in (the room
+ * holds the handoff back until 下一題), else 「答對！」 or 「……」 while it is on its way. */
+export function revealLines(narration: NarrationState, eventId: number, scored: boolean): { lines: string[]; narrated: boolean } {
+  return narration && narration.eventId === eventId ? { lines: narration.lines, narrated: true } : { lines: [revealDialogue(scored)], narrated: false };
+}
 
 /** The first index where two sets of lines differ (a length change counts), or -1 when they are the same. */
 export function firstChange(prev: readonly string[], next: readonly string[]): number {

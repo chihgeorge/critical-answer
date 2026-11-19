@@ -30,9 +30,10 @@ function memoryStorage() {
 }
 
 /** Three teams (甲 on turn) and a host, the switch on unless `off`. */
-function started({ qs = MCS, off = false, start = {}, storage = memoryStorage(), rng = () => 0 }: { qs?: object[]; off?: boolean; start?: object; storage?: RoomStorage; rng?: () => number } = {}) {
+function started({ qs = MCS, off = false, start = {}, storage = memoryStorage(), rng = () => 0, holdCheck = false }: { qs?: object[]; off?: boolean; start?: object; storage?: RoomStorage; rng?: () => number; holdCheck?: boolean } = {}) {
   const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const room = new DungeonRoom(io, rng, { bank: bank(qs), epilogueDelayMs: 0 });
+  (room as unknown as { holdCheck: boolean }).holdCheck = holdCheck;
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -94,8 +95,6 @@ describe("the switch", () => {
 describe("the answering window", () => {
   it("refuses a catch and the oracle while the previous answer's reveal is up", () => {
     const g = started({ qs: TEXTS });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: true, eventId: g.state().eventId });
     expect(g.state().reveal).toBeTruthy();
     g.catchBy(2, g.room.game!.teams[1].currentQuestionId);
@@ -104,12 +103,11 @@ describe("the answering window", () => {
     expect(g.lastTo(g.phones[1])).toMatchObject({ detail: "not_now" });
   });
 
-  it("refuses both before a fill-in's persuasion check; lets a catch in while a typed answer waits, not the oracle", () => {
-    const g = started({ qs: TEXTS });
+  it("refuses both during a fill-in's persuasion check; lets a catch in while a typed answer waits, not the oracle", () => {
+    const g = started({ qs: TEXTS, holdCheck: true });
     g.catchBy(1, "t1");
     expect(g.lastTo(g.phones[1])).toMatchObject({ detail: "not_now" });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // the check's beat
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "答", eventId: g.state().eventId });
     send(g.room, g.phones[0], { type: "TEAM_ORACLE", questionId: "t1" });
     expect(g.lastTo(g.phones[0])).toMatchObject({ detail: "not_now" });
@@ -165,8 +163,6 @@ describe("the trust boundary", () => {
 describe("an open catch", () => {
   it("rejects every move on the accused turn with catch_pending; the switch and the ruling still work", () => {
     const g = started({ qs: TEXTS });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     g.catchBy(1, "t1");
     const eventId = g.state().eventId;
     const tries: [Conn & { send: ReturnType<typeof vi.fn> }, object][] = [
@@ -259,13 +255,9 @@ describe("the rulings", () => {
 
   it("an open 改判答對 is cleared by the catch: key 0 does nothing after 成立", () => {
     const g = started({ qs: TEXTS });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
     vi.advanceTimersByTime(10_000);
     expect(g.state().undoWrong).toMatchObject({ teamId: A, questionId: "t1" });
-    send(g.room, g.phones[1], { type: "TEAM_ROLL_CHECK", questionId: "t2", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     g.catchBy(2, "t2");
     expect(g.state().undoWrong).toBeUndefined();
     g.rule(true);
@@ -320,14 +312,10 @@ describe("review follow-ups", () => {
 
   it("改判答對 keeps an oracle asked since, and switching on keeps 改判答對 open", () => {
     const g = started({ qs: TEXTS, off: true });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });
     vi.advanceTimersByTime(10_000);
     send(g.room, g.host, { type: "HOST_ANTI_CHEAT", on: true });
     expect(g.state().undoWrong).toMatchObject({ teamId: A, questionId: "t1" });
-    send(g.room, g.phones[1], { type: "TEAM_ROLL_CHECK", questionId: "t2", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.phones[1], { type: "TEAM_ORACLE", questionId: "t2" });
     expect(g.state().view.teams[1]).toMatchObject({ oracle: true, oracleLeft: 0 });
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: "t1", eventId: g.state().eventId });
@@ -342,8 +330,6 @@ describe("review follow-ups", () => {
       const teamId = g.state().view.currentTurnTeamId;
       const i = IDS.indexOf(teamId);
       const questionId = g.qid();
-      send(g.room, g.phones[i], { type: "TEAM_ROLL_CHECK", questionId, eventId: g.state().eventId });
-      vi.advanceTimersByTime(2000);
       vi.advanceTimersByTime(2000); // successful persuasion is announced before the question opens
       if (oracle) send(g.room, g.phones[i], { type: "TEAM_ORACLE", questionId });
       send(g.room, g.host, { type: "HOST_JUDGE", teamId, questionId, correct: false, fleeChoice: "flee", eventId: g.state().eventId });
@@ -490,8 +476,6 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
 
   it("改判答對 never takes a ruling back: right after 冤枉 on a fill-in there is no undoWrong and HOST_UNDO_WRONG is refused", () => {
     const g = started({ qs: TEXTS });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     g.catchBy(1, "t1");
     g.rule(false);
     expect(g.state().undoWrong).toBeUndefined();
@@ -502,8 +486,6 @@ describe("撤回裁決 (the host takes a ruling back)", () => {
 
   it("is never 改判答對: a 答錯 after 冤枉 undoes to after the ruling, not before the catch", () => {
     const g = started({ qs: TEXTS });
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     g.catchBy(1, "t1");
     g.rule(false);
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: "t1", correct: false, fleeChoice: "retry", eventId: g.state().eventId });

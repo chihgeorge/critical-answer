@@ -1,5 +1,5 @@
 import { test, expect, type Page, type WebSocketRoute } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -68,8 +68,10 @@ test("a phone that drops on its own turn shows it's offline, then that its turn 
 
   // The turn stays with the offline team until the host explicitly skips it.
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  await hostCheckSettled(host); // 跳過 is refused while 甲隊's fill-in check rolls itself (an offline team's too)
   await host.getByRole("button", { name: /跳過這隊的回合/ }).click();
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
+  await hostCheckSettled(host); // 乙隊's fill-in check rolls itself first
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
 
   // Back online: the notice goes, and the team learns its turn was skipped.

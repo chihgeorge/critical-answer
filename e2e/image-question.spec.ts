@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame, rollCheck, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, startGame, checkLanded, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -70,7 +70,7 @@ test("image-content question: renders on /play, /screen, and the host's own prev
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
 
   // The <img> renders on all three surfaces with the URL the server built (base + key) —
   // /play, /screen, and now the host's own small preview (added so judging an image question
@@ -126,7 +126,7 @@ test("image-content question: a broken image URL hides itself on every surface, 
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
 
   // The broken-image fallback hides only the image, on every surface that renders it (host's
   // own preview included) — never a blank or crashed question.
@@ -173,7 +173,7 @@ test("youtube-content question: the big screen plays it, the phone and the host 
 
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
-  await rollCheck(team); // check first, question after: the question and its media show once the check is rolled
+  await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
 
   await expect(host.getByText("▶ 影片題（看大螢幕）")).toBeVisible();
   await expect(host.locator("iframe")).toHaveCount(0);
@@ -221,6 +221,7 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await expect(screen.getByText("正解：揭曉答案")).toHaveCount(0);
   await expect(screen.getByText("因為這是補充說明")).toHaveCount(0);
 
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答對！" }).click();
   for (const page of [screen, team]) {
     await expect(page.getByText("正解：揭曉答案")).toBeVisible();
@@ -228,9 +229,8 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   }
 
   // The reveal takes the question's place (D7) and the host can't judge until they press 下一題.
-  // Judged before the persuasion check, the question was never shown, so it comes only inside the reveal.
-  await expect(screen.getByText("揭曉測試題")).toHaveCount(1);
-  await expect(screen.getByTestId("reveal-question")).toHaveText("揭曉測試題");
+  // The check rolls itself before the host can judge, so the question was shown: the reveal does not repeat it.
+  await expect(screen.getByTestId("reveal-question")).toHaveCount(0);
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
   // The only team is next, but the reveal holds the room: its phone says it is next, not that it can answer (#263).
   await expect(team.getByText("下一個是我們！")).toBeVisible();
@@ -253,15 +253,17 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
   const { host, screen, team } = await startWithExplanation(browser, request, { kind: "youtube", value: "dQw4w9WgXcQ" });
 
   // A wrong answer (retry) never reveals it (D5).
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(screen.getByTitle("詳解影片")).toHaveCount(0);
-  await expect(team.getByTitle("詳解影片")).toHaveCount(0);
+  await expect(team.locator('iframe[src*="dQw4w9WgXcQ"]')).toHaveCount(0);
 
   await host.getByRole("button", { name: "答對！" }).click();
   // Revealed explanations open with Chinese captions (youtube-questions.md): the embed carries the caption vars.
   const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?rel=0&iv_load_policy=3&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW$/;
   await expect(screen.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
-  await expect(team.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
+  // The phone's embed is found by its video, not its title: once the YouTube API loads it may retitle the iframe.
+  await expect(team.locator('iframe[src*="dQw4w9WgXcQ"]')).toHaveAttribute("src", embedSrc);
 });
 
 /** Seeds room 0 with host-judged questions, starts a 2-team game, and returns the host and both
@@ -305,7 +307,7 @@ test("media question: the picture comes before the team card, on our own turn an
   // where this key does not exist, so the 404 hides the <img> (display:none, top 0) at a racy moment.
   const slot = (page: import("@playwright/test").Page) => img(page).locator("..");
   const card = (page: import("@playwright/test").Page, name: string) => page.getByText(name, { exact: true });
-  await rollCheck(a); // check first, question after: the picture is up once the team on turn has rolled
+  await checkLanded(a); // check first, question after: the picture is up once the team on turn has rolled
   await expect(img(a)).toBeAttached();
   await expect(img(b)).toBeAttached();
   await expect(a.getByRole("heading")).toHaveCount(0); // a picture question has no text strip
@@ -315,7 +317,7 @@ test("media question: the picture comes before the team card, on our own turn an
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(b.getByText("輪到我們了！")).toBeVisible();
   await expect(a.getByText("輪到：乙隊")).toBeVisible();
-  await rollCheck(b);
+  await checkLanded(b);
   expect(await top(slot(a))).toBeLessThan(await top(card(a, "甲隊")));
   expect(await top(slot(b))).toBeLessThan(await top(card(b, "乙隊")));
 });
@@ -326,15 +328,14 @@ test("host-judged text question: only the answering phone shows it, and it moves
   const { host, a, b } = await startTwoTeams(browser, request, [spoken(1), spoken(2)]);
 
   const question = (page: import("@playwright/test").Page) => page.getByRole("heading", { name: /口答測試題/ });
-  // Check first, question after: not even the answering phone has it before its roll.
-  await expect(a.getByTestId("roll-check")).toBeVisible();
+  // Check first, question after: not even the answering phone has it before its check lands.
   await expect(question(a)).toHaveCount(0);
-  await rollCheck(a);
+  await checkLanded(a);
   await expect(question(a)).toBeVisible();
   await expect(question(b)).toHaveCount(0);
 
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
-  await rollCheck(b);
+  await checkLanded(b);
   await expect(question(b)).toBeVisible();
   await expect(question(a)).toHaveCount(0);
 

@@ -87,7 +87,7 @@ test("the host takes everyone back to the lobby and starts another game", async 
   await expect(team.getByText("0 飽足感")).toBeVisible();
 });
 
-/** The how-to-play intro (docs/designs/how-to-play.md): on by default in a new room, four pages the host turns
+/** The how-to-play intro (docs/designs/how-to-play.md): on by default in a new room, eight pages the host turns
  * with buttons or keys, the phone's status line following along, and off by default after 再玩一場. */
 test("the host plays the how-to-play intro, and it starts unchecked after 再玩一場", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
@@ -100,33 +100,36 @@ test("the host plays the how-to-play intro, and it starts unchecked after 再玩
   await expect(intro).toBeChecked();
   await clickStart(host);
 
-  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
-  await expect(team.getByTestId("phone-intro")).toContainText("第 1／4 頁：輪流上陣・用手機作答");
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/8");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 1／8 頁：輪流上陣・用手機作答");
   await expect(host.getByRole("button", { name: "◀ 上一頁" })).toHaveCount(0);
 
   // Each page turn holds the buttons and keys for a beat (a double-tap must not skip a page), so a
   // key waits for 下一頁 to come back.
   const next = host.getByRole("button", { name: "下一頁 ▶" });
   await next.click();
-  await expect(team.getByTestId("phone-intro")).toContainText("第 2／4 頁：說服檢定與料理骰");
+  await expect(team.getByTestId("phone-intro")).toContainText("第 2／8 頁：選擇題");
   // A key acts on the host's own page, so wait for the host to show it too.
   const hostIntro = host.getByTestId("host-intro");
-  await expect(hostIntro).toContainText("2/4");
+  await expect(hostIntro).toContainText("2/8");
   await expect(next).toBeEnabled();
   await host.keyboard.press("ArrowLeft");
-  await expect(screen.getByTestId("how-to-play")).toContainText("1/4");
-  await expect(hostIntro).toContainText("1/4");
+  await expect(screen.getByTestId("how-to-play")).toContainText("1/8");
+  await expect(hostIntro).toContainText("1/8");
   await expect(next).toBeEnabled();
   await host.keyboard.press("ArrowRight");
-  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
-  await expect(hostIntro).toContainText("2/4");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/8");
+  await expect(hostIntro).toContainText("2/8");
   await expect(next).toBeEnabled();
   await host.keyboard.press("Enter");
-  await expect(screen.getByTestId("how-to-play")).toContainText("3/4");
-  // Page 3 is the class dice table.
-  await expect(hostIntro).toContainText("各職業什麼時候擲骰");
-  await next.click();
-  await expect(screen.getByTestId("how-to-play")).toContainText("4/4");
+  await expect(screen.getByTestId("how-to-play")).toContainText("3/8");
+  await expect(hostIntro).toContainText("填空題");
+  for (let n = 4; n <= 8; n++) {
+    await expect(next).toBeEnabled();
+    await next.click();
+    await expect(screen.getByTestId("how-to-play")).toContainText(`${n}/8`);
+  }
+  await expect(hostIntro).toContainText("答錯與怎麼贏");
   await host.screenshot({ path: ".gstack/tmp/host-intro.png" });
   await screen.screenshot({ path: ".gstack/tmp/screen-intro.png" });
 

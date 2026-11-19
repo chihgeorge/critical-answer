@@ -248,8 +248,9 @@ export type ClientMessage =
    * so a host page from before the intro can't get stuck on a page it has no button for (eng D2). */
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
   /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off.
-   * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number }
+   * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's.
+   * `bossShuffle`: 首領題隨機順序 (GameConfig.bossShuffle); missing keeps the bank order. */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number; bossShuffle?: boolean }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -324,7 +325,7 @@ export type ClientMessage =
   | { type: "HOST_FORTUNE_RANDOM"; eventId: number }
   /** Host override: take a team into the boss room (docs/designs/scoring-and-score-pools.md S13). */
   | { type: "HOST_SEND_TO_BOSS"; teamId: string }
-  /** 🧪 給藥水 (docs/designs/lucky-potion.md): the host gives a team a potion, at any time of the game; refused while it holds one. */
+  /** 🍀 給幸運骰 (docs/designs/lucky-potion.md): the host gives a team a lucky die, at any time of the game; refused while it holds one. */
   | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** ⚙ 更多's 修正 (game-state hostFix): one correction to a team, recorded in its game log. No line, no cue on the big screen. */
   | { type: "HOST_FIX"; teamId: string; fix: HostFix }
@@ -411,12 +412,9 @@ export type ClientMessage =
   | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
   /** The team that drew the fortune teller picks an effect (docs/designs/fortune-teller.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_CHOOSE_FORTUNE"; effect: FortuneEffect; eventId: number }
-  /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
-  | { type: "TEAM_ROLL_CHECK"; questionId: string; eventId: number }
-  /** 替○○擲骰: the host's stuck row when the team on turn has not rolled its check; the room rolls it as for TEAM_ROLL_CHECK. */
-  | { type: "HOST_ROLL_CHECK"; teamId: string; questionId: string; eventId: number }
-  /** 🧪 喝下幸運藥水 on the team's own turn: its next die on `questionId` (a check, a class die or the dish die) rolls twice, keeping the higher
-   * (lucky-potion.md). `eventId`: the STATE it was pressed under. */
+  /** 🍀 用幸運骰 on the team's own turn (wire name kept from the potion it was): its next class skill die on `questionId`,
+   * or its dish die when it has no skill uses left, rolls twice, keeping the higher (lucky-potion.md). `eventId`: the STATE
+   * it was pressed under. The persuasion check rolls itself, so an older phone's TEAM_ROLL_CHECK is a bad_message now. */
   | { type: "TEAM_DRINK_POTION"; questionId: string; eventId: number }
   /** 🔮 公開問神諭 on the team's own room question (anti-ai-cheating.md). */
   | { type: "TEAM_ORACLE"; questionId: string }
@@ -473,8 +471,8 @@ export const REACT_ROOM_MAX = MAX_TEAMS - 1;
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
  * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
  * `dc`; nothing of its result is decided before the beat ends), or the boss kill's 4d20 (`values`, the four dice;
- * `value`, the bonus they score; docs/designs/kill-roll.md). Any die but the kill's rolled with a 🧪
- * potion has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
+ * `value`, the bonus they score; docs/designs/kill-roll.md). A skill or dish die rolled with a 🍀
+ * lucky die has `values`, its two dice, and `value`, the higher (lucky-potion.md E6). Absent from an older server: a warrior's.
  * Class dice: a mage's skill die, a cleric's prayer die, and the thief's sneak die (`penalty`: what its 1 takes);
  * `rejudge`: the dish die is the host's 改成答對, paid when it lands. */
 export interface PendingRoll {
@@ -644,7 +642,9 @@ export type ServerMessage =
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
    * `rev` is absent from older servers (0); /screen echoes it in SCREEN_NARRATION_PROGRESS so a report about the old
    * text never locks the new one (host-narration-edit.md D14). */
-  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number }
+  /** `jump`: the last line overrides one already said (送王房, 撤回裁決): the big screen shows it at once, without its
+   * reading pause (#405). */
+  | { type: "NARRATION"; eventId: number; lines: string[]; rev?: number; jump?: true }
   /** `replay`: set when onConnect resends an epilogue that was already broadcast, so /screen
    * doesn't speak it again; absent on the live broadcast. Older servers never set it. */
   | { type: "EPILOGUE"; text: string; replay?: true }
@@ -710,7 +710,8 @@ export type ServerMessage =
   /** Host-only: the answer to the question now in play. Sent with sendTo, never broadcast. */
   /** `typed`: in a buzzer phase, what the team that buzzed typed (`fields`: a music question's boxes, "" for a blank).
    * STATE also carries the submitted text for the big screen; structured fields stay host-only.
-   * `question`: the whole question while STATE holds it back for the persuasion check (`checkFirst`); absent after. */
+   * `question`: the whole question while STATE holds it back (the persuasion check's `checkFirst`, a memory question,
+   * the #370 pick, or blank text under a reveal, #362); absent after. */
   /** `tap`: a timing question's round as only the host sees it: teams tapped of those that may (timing-tap.md). */
   | { type: "HOST_ANSWER"; questionId: string; answer: string; typed?: { teamId: string; text: string; fields?: string[] }; question?: PublicQuestion; tap?: { count: number; eligible: number } }
   /** Host-only, sent with every STATE: what the host may queue (HOST_QUEUE_QUESTION) and what is queued.
@@ -849,7 +850,7 @@ export const DEFAULT_BANK_ENTRY = { id: "default", name: "預設題庫" } as con
 /** HOST_NEXT_LINE's limit: the AI may add a few characters around it and still fit MAX_LINE. */
 export const MAX_EDIT_LINE = 40;
 /** How-to-play pages before the first question (docs/designs/how-to-play.md D4). */
-export const INTRO_PAGES = 4;
+export const INTRO_PAGES = 8;
 /** A host's handoff code lasts this long (docs/designs/team-handoff.md); the host page hides it then too. */
 export const HANDOFF_MS = 5 * 60 * 1000;
 
@@ -918,6 +919,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.initiative !== undefined && typeof m.initiative !== "boolean") return null;
       if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
       if (m.bossThreshold !== undefined && !isBossThreshold(m.bossThreshold)) return null;
+      if (m.bossShuffle !== undefined && typeof m.bossShuffle !== "boolean") return null;
       return {
         type: "HOST_START",
         aiNarration: m.aiNarration,
@@ -925,6 +927,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         ...(m.initiative ? { initiative: true } : {}),
         ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
         ...(m.bossThreshold !== undefined ? { bossThreshold: m.bossThreshold } : {}),
+        ...(m.bossShuffle ? { bossShuffle: true } : {}),
       };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
@@ -1205,17 +1208,6 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     case "TEAM_ROLL_INITIATIVE":
     case "HOST_ROLL_INITIATIVE":
       return { type: m.type };
-    case "TEAM_ROLL_CHECK": {
-      const questionId = str(m.questionId, MAX_ID);
-      if (questionId === null || !(Number.isInteger(m.eventId) && (m.eventId as number) >= 0)) return null;
-      return { type: "TEAM_ROLL_CHECK", questionId, eventId: m.eventId as number };
-    }
-    case "HOST_ROLL_CHECK": {
-      const questionId = str(m.questionId, MAX_ID);
-      const teamId = str(m.teamId, MAX_ID);
-      if (questionId === null || teamId === null || !isCount(m.eventId)) return null;
-      return { type: "HOST_ROLL_CHECK", teamId, questionId, eventId: m.eventId };
-    }
     case "TEAM_SUBMIT_TEXT": {
       const questionId = str(m.questionId, MAX_ID);
       const text = str(m.text, MAX_RAW_TEXT);

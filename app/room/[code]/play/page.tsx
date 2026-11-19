@@ -10,7 +10,7 @@ import { joinRejection, type JoinRejection } from "@/lib/join-rejection";
 import { getOrCreateTeamId, getOrCreateTeamKey, storeTeam } from "@/lib/room-code";
 import { joinPasswordFor } from "@/lib/stored";
 import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAnswer, scoreName, type ClientMessage, type Reaction, type LobbyTeams, type CalibrateRun, type PublicQuestion, type StateMessage, type EventReveal } from "@/lib/protocol";
-import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, type ClassId } from "@/lib/game-state";
+import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, hasSkillUses, skillRolledOn, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
 import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
@@ -36,11 +36,11 @@ import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABE
 /** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
  * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  mage: "刪掉錯的選項／看第一個字",
-  cleric: "答錯可以當場再答一次",
-  warrior: "不會的題，擲骰代替作答",
-  thief: "先擲偷襲骰，成功的話答對加碼",
-  chef: "料理骰加成更多，不用按",
+  mage: "洞悉：刪掉錯的選項／看第一個字",
+  cleric: "祈禱：答錯可以當場再答一次",
+  warrior: "衝鋒：不會的題，擲骰代替作答",
+  thief: "偷襲：先擲偷襲骰，成功的話答對加碼",
+  chef: "提鮮：料理骰加成更多，不用按",
 };
 
 /** The lobby's class picker (D10=A): one row per class, then 不選. */
@@ -113,29 +113,32 @@ function LookPicker({ me, teams, send }: { me: string; teams: { id: string; name
   );
 }
 
-/** 🧪 喝下幸運藥水 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. It doubles the team's next die
- * on this question, whichever it is (class-dice-rework.md); this hides it in a buzzer phase, without a potion, or once drunk. */
-function PotionButton({ game, teamId, questionId, die, send }: { game: StateMessage; teamId: string; questionId: string; die: "dish" | "check" | "mage" | "cleric"; send: (m: ClientMessage) => void }) {
+/** 🍀 用幸運骰 (docs/designs/lucky-potion.md D2, D6), right above the control it affects. It doubles the team's next skill die,
+ * or its dish die with no skill uses left at all (luckyDieFits); hidden in a buzzer phase, without one, or once used. Grey
+ * for the rest of a question its skill die already rolled on (skillRolledOn): a lucky die is used before a roll. */
+function PotionButton({ game, teamId, questionId, send }: { game: StateMessage; teamId: string; questionId: string; send: (m: ClientMessage) => void }) {
   const me = game.view.teams.find((t) => t.id === teamId);
   if (!me?.item || me.itemArmed || game.view.buzz) return null;
-  const classDie = die === "dish" && me.abilityUses > 0 && (me.classId === "warrior" || me.classId === "mage" || me.classId === "thief");
+  const rolled = skillRolledOn(me, { questionId, mageCasts: game.view.mageCasts });
   return (
-    <PixelButton data-testid="drink-potion" className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
-      🧪 喝下幸運藥水<small className="text-[13px]">{POTION_DIE[die]}</small>
-      {classDie ? <small className="text-[13px]">先用職業技能的話，用在職業骰</small> : null}
+    <PixelButton data-testid="drink-potion" disabled={rolled} className="!m-0 mt-1 flex !min-h-[56px] flex-col !text-[20px]" onClick={() => send({ type: "TEAM_DRINK_POTION", questionId, eventId: game.eventId })}>
+      🍀 用幸運骰<small className="text-[13px]">{rolled ? `這題${LUCKY_SKILL[me.classId as keyof typeof LUCKY_SKILL]}骰擲過了・下一題再用` : `${luckyDieTarget(me)}擲兩顆取高`}</small>
     </PixelButton>
   );
 }
 
-/** Which die a potion drunk now doubles: the next one this team rolls (class-dice-rework.md). */
-const POTION_DIE = { dish: "答對時的料理骰擲兩次取高", check: "說服檢定擲兩次取高", mage: "法師技能骰擲兩次取高", cleric: "祈禱骰擲兩次取高" } as const;
+/** Which die the team's lucky die doubles: its skill die while it has a use left, else the dish die (luckyDieFits). */
+function luckyDieTarget(team: Parameters<typeof hasSkillUses>[0]): string {
+  return hasSkillUses(team) ? `下一顆${LUCKY_SKILL[team.classId as keyof typeof LUCKY_SKILL]}骰` : "下一顆料理骰";
+}
+const LUCKY_SKILL = { mage: "洞悉", cleric: "祈禱", warrior: "衝鋒", thief: "偷襲" } as const;
 
-/** The team card's potion line (D2, D4, D5): held, drunk on the question it faces now, or back after a question with no roll
- * (E2: until the team's next turn). */
+/** The team card's lucky-die line (D2, D4, D5): held, used on the question it faces now, or back after a question whose die
+ * never rolled (E2: until the team's next turn). */
 function potionLine(team: StateMessage["view"]["teams"][number] | undefined, myTurn: boolean): { text: string; drunk?: true } | null {
   if (!team?.item) return null;
-  if (team.itemArmed) return { text: "🧪 已喝下：這題的下一顆骰擲兩次取高", drunk: true };
-  return { text: team.itemArmedFor && !myTurn ? "🧪 藥水還在：這題沒擲到骰" : "🧪 有一瓶幸運藥水" };
+  if (team.itemArmed) return { text: `🍀 幸運骰準備好了：這題${luckyDieTarget(team)}擲兩顆取高`, drunk: true };
+  return { text: team.itemArmedFor && !myTurn ? "🍀 幸運骰還在：這題沒擲到骰" : "🍀 有一顆幸運骰" };
 }
 
 /** The team's class ability on its own turn (D11=A: under 鎖定答案). The warrior's button or its die
@@ -148,7 +151,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   const gone = (q && game.view.eliminated?.[q.id]) ?? [];
   // Which question this phone's mage press was for and how many options were out before it: the bar counts the rest.
   const [cast, setCast] = useState<{ qid: string; eventId: number; before: number } | null>(null);
-  const ready = !!me && me.abilityUses > 0 && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
+  // A 偷襲 whose die never landed (a restart cut its beat) rolls again for free (startSneak), even on the last use.
+  const unrolledSneak = me?.classId === "thief" && !!q && me.sneakTry?.questionId === q.id && me.sneakTry.value === undefined;
+  const ready = !!me && (me.abilityUses > 0 || unrolledSneak) && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
   const button = (icon: string, label: string, sub: string, background: string, onClick: () => void) => (
     <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background }} onClick={onClick}>
       {icon} {label}
@@ -189,7 +194,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     return null;
   } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && !me.inBossPhase && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2); the boss room has none (#364).
-    body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
+    body = button("⚔️", "衝鋒", `擲 d20 代替答題：${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief" && !q.checkFirst && (me.sneakTry?.questionId !== q.id || me.sneakTry.value === undefined)) {
     // Not before the check: 偷襲 rolls once the question is up, once per question.
     body = button("🗡️", "偷襲：先擲偷襲骰", `7 以上答對 ×${SNEAK_REWARD_MULTIPLIER}、20 ×${SNEAK_CRIT_MULTIPLIER}・擲 1 扣一成・剩 ${me.abilityUses} 次`, "#ff8787", use);
@@ -198,17 +203,17 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     return null;
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The skill die decides how many go (class dice); the bar after counts what went.
-    body = button("🔮", "施法：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+    body = button("🔮", "洞悉：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
   } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
-    body = button("🔮", "施法：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && !q.checkFirst && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // Not before the check (the question is not up yet); after it, only when it gave no first character.
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
-    body = button("🔮", "施法：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else return null;
   return body;
 }
@@ -347,7 +352,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         <ClassAbility game={game} teamId={teamId} send={send} />
       ) : bossMiss && canPray ? (
         <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />
+        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <div className="mt-1 flex gap-2">
           <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
             ✝️ 祈禱<small className="text-[13px]">擲 d20，7 以上立刻答新題・剩 {me!.abilityUses} 次</small>
@@ -361,7 +366,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         <div className="px-bar mt-1" role="status">首領要換題了 ▶</div>
       ) : wrong ? (
         <>
-          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />}
+          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />}
           {canPray && (
             <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
               ✝️ 祈禱<small className="text-[13px]">擲 d20，7 以上現在再答一次・剩 {me!.abilityUses} 次</small>
@@ -378,7 +383,7 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
       ) : (
         <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} die="dish" send={send} />
+        <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />
         <PixelButton
           variant="ok"
           disabled={!pickable}
@@ -562,7 +567,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             <span aria-hidden className="inline-flex h-7 w-7 items-center justify-center border-[3px] border-[var(--k)] bg-[var(--danger)] text-[14px] text-white">✕</span>
             答錯了！要怎麼辦？
           </div>
-          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} die="cleric" send={send} />}
+          {canPray && <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />}
           <div className="mt-1 flex gap-2">
             {canPray && (
               <PixelButton className="!m-0 flex !min-h-[72px] flex-1 flex-col !text-[23px]" style={{ background: "#ffe066" }} onClick={() => send({ type: "TEAM_USE_ABILITY", questionId: q.id })}>
@@ -577,20 +582,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
           <FleeButtons questionId={q.id} send={send} boss={!!me?.inBossPhase} />
         </>
       ) : needCheck && sent === null ? (
-        // The die's beat: nothing to press, the roll banner above says to watch the big screen.
-        rolling ? null : <>
-        <PotionButton game={game} teamId={teamId} questionId={q.id} die="check" send={send} />
-        <PixelButton
-          variant="ok"
-          data-testid="roll-check"
-          className="!m-0 mt-1 flex !min-h-[72px] flex-col !text-[23px]"
-          disabled={offline}
-          onClick={() => send({ type: "TEAM_ROLL_CHECK", questionId: q.id, eventId: game.eventId })}
-        >
-          🎲 擲骰說服
-          <small className="text-[13px]">必擲・不花次數・過了給第一個字</small>
-        </PixelButton>
-        </>
+        // The check rolls itself (the room's autoCheck); in its beat the roll banner above says to watch the big screen.
+        rolling ? null : <div className="px-bar mt-1" role="status" data-testid="check-waiting">🎲 說服骰馬上自動擲・過了給第一個字</div>
       ) : sent !== null ? (
         <div className="px-bar mt-1 [overflow-wrap:anywhere]" role="status" data-testid="typed-answer-sent">
           {sent ? `已送出：${sent}` : "已送出"}・等主持人判
@@ -657,9 +650,8 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
         </form>
         </>
       )}
-      {/* A mage's skill die may still take a potion once the check is done (class dice), before its hint shows. */}
-      {/* Anyone else's potion waits for its next die: the warrior's or thief's own, else the dish die (class-dice-rework.md). */}
-      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && (me?.classId === "mage" && me.abilityUses > 0 && !game.view.mageCasts?.[checkKey(q.id, teamId)] && game.view.mageHints[q.id] === undefined && !check?.hint ? <PotionButton game={game} teamId={teamId} questionId={q.id} die="mage" send={send} /> : <PotionButton game={game} teamId={teamId} questionId={q.id} die="dish" send={send} />)}
+      {/* The lucky die waits for the team's next skill die, else its dish die with no skill uses left at all (luckyDieFits); never the check. */}
+      {!buzzed && sent === null && !inFlight && !wrong && !needCheck && <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />}
       {!buzzed && sent === null && !inFlight && !wrong && <ClassAbility game={game} teamId={teamId} send={send} noHint={noHint} />}
     </Panel>
   );
@@ -1262,7 +1254,7 @@ export default function PlayPage() {
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon
             color={isMyTurn ? undefined : "#6ab4ff"}
-            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" /> : undefined}
+            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" paused={disconnected} /> : undefined}
           >
             {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
@@ -1354,7 +1346,7 @@ export default function PlayPage() {
         {/* Our own dish die, once its answer is scored (and its dish served): what it did to the reward. */}
         {game && !finished && revealed?.scored?.teamId === teamId && revealed.scored.dishDie !== undefined && (!revealed.dish || revealed.served) && (
           <div data-testid="dish-roll-row" className="px-bar mt-1 !text-[19px]" role="status" style={revealed.scored.dishDie === 1 ? { background: "var(--danger)", color: "#fff" } : revealed.scored.dishDie === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -5px 0 var(--orange)" } : undefined}>
-            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine))}
+            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine), game.view.teams.find((t) => t.id === teamId)?.classId === "chef")}
           </div>
         )}
 
@@ -1437,7 +1429,7 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
         <LabelChip>❓ 神秘房</LabelChip>
         <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
         <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
-        {reveal.chefBonus ? <div className="text-[15px]">（廚師 {signed(reveal.chefBonus)}）</div> : null}
+        {reveal.chefBonus ? <div className="text-[15px]">（提鮮 {signed(reveal.chefBonus)}）</div> : null}
       </Panel>
       <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
     </div>

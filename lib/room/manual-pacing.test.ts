@@ -231,7 +231,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
   it("the kill's 4d20, then the podium: the reveal waits though its lines are in", async () => {
     const s = setup({ teams: 1 });
     toLastHit(s);
-    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, hold: { kind: "kill-defeated" } });
+    expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, hold: { kind: "kill-defeated" } });
     step(s);
     expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
     await vi.advanceTimersByTimeAsync(LONG);
@@ -535,8 +535,7 @@ describe("#364: beats that hold the turn", () => {
 
   it("a passed check holds its beat in manual until 下一步, then the question shows", () => {
     const s = setup({ teams: 1, fixedDie: 18 });
-    send(s.room, s.phones[0], { type: "TEAM_ROLL_CHECK", questionId: s.room.game!.teams[0].currentQuestionId, eventId: state(s.room).eventId });
-    step(s); // the check die's beat
+    // The check rolled itself at the start, and its die landed (sendSettled).
     expect(state(s.room)).toMatchObject({ stageBeat: "check-success", hold: { kind: "check-success" }, question: null });
     step(s);
     expect(state(s.room).stageBeat).toBeUndefined();

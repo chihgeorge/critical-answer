@@ -151,7 +151,7 @@ describe("占卜師 in the room", () => {
     const card = state(s.room);
     expect(card.fortune).toEqual({ teamId: T1, condition: "dishes", step: "card", effect: "potion", value: 1, matchIds: [T1, T2] });
     expect(card.view.currentTurnTeamId).toBe(T2);
-    expect(narrations(s.room).at(-1).lines.join("")).toMatch(/藥水/);
+    expect(narrations(s.room).at(-1).lines.join("")).toMatch(/幸運骰/);
     // The drawing team matched itself: the mocking line.
     expect(narrations(s.room).at(-1).lines.join("")).toMatch(/自己/);
     // The card holds the room until 下一題.
@@ -226,7 +226,7 @@ describe("占卜師 in the room", () => {
     expect(state(s.room).fortune.matchIds).toEqual([T1, T2]);
   });
 
-  // Value: protects=the paused rules (E3, E5): judging, 送王房, 給藥水, a late team and 改判答對 wait; fails_when=one slips
+  // Value: protects=the paused rules (E3, E5): judging, 送王房, 給幸運骰, a late team and 改判答對 wait; fails_when=one slips
   // through and changes the matching teams or the turn; no_claim=none
   it("while a fortune runs the host cannot judge, send to the boss, give a potion or let a late team in", async () => {
     vi.useFakeTimers();

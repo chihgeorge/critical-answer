@@ -347,6 +347,22 @@ describe("the window while expire() is clearing storage", () => {
 });
 
 describe("when the platform misbehaves", () => {
+  it("an alarm that runs a moment before its own time sets a later one, not the same time again (issue 396)", async () => {
+    // A Durable Object alarm can run while Date.now() is still short of its time. Re-setting the same time writes
+    // nothing, and the platform then deletes the alarm that ran: the room would never rest or expire.
+    const { room, storage, closeAll, clock } = setup();
+    const host = conn("h");
+    send(room, host, { type: "HOST_CLAIM", token: TOKEN });
+    const due = storage.alarms.at(-1)!;
+    clock.t = due - 1;
+    await room.onAlarm();
+    expect(closeAll).not.toHaveBeenCalled();
+    expect(storage.alarms.at(-1)).toBeGreaterThan(due);
+    clock.t = storage.alarms.at(-1)!;
+    await room.onAlarm();
+    expect(closeAll).toHaveBeenCalledWith(CLOSE_IDLE, "idle");
+  });
+
   it("a failing setAlarm is tried again by the next message, so the 6 hour close is not lost", () => {
     const { room, storage, clock } = setup();
     const host = conn("h");

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, skipInitiative, rollCheck, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, skipInitiative, checkLanded, screenUrl, clickStart, openSettings, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -36,7 +36,7 @@ test("the host's 30 秒 shows on the TV, the phone and the host page, and sendin
   // A fill-in counts only once its persuasion check is rolled and the question is up.
   await expect(host.getByTestId("host-check-first")).toBeVisible();
   for (const page of [screen, team, host]) await expect(page.getByTestId("answer-clock")).toHaveCount(0);
-  await rollCheck(team);
+  await checkLanded(team);
 
   for (const page of [screen, team, host]) {
     const clock = page.getByTestId("answer-clock");

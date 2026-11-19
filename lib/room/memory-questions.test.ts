@@ -40,8 +40,9 @@ function makeRoom(storage: RoomStorage, b: ReturnType<typeof bank>) {
 }
 
 /** Two teams (甲 mage, 乙), a host and a keyed big screen; A is on turn with the bank's first question. */
-function started(b: ReturnType<typeof bank>, fields: object = {}) {
+function started(b: ReturnType<typeof bank>, fields: object = {}, holdCheck = false) {
   const g = makeRoom(memoryStorage(), b);
+  (g.room as unknown as { holdCheck: boolean }).holdCheck = holdCheck;
   const host = makeConn("host");
   g.room.onConnect(host);
   send(g.room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -125,8 +126,6 @@ describe("記憶題 with a clip", () => {
     send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "m1" });
     g.judge(false); // A misses: B's turn on its own clip question
     expect(g.state().question.id).toBe("v2");
-    send(g.room, g.phones[1], { type: "TEAM_ROLL_CHECK", questionId: "v2", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     send(g.room, g.screen, { type: "SCREEN_CLIP_ENDED", questionId: "v2" });
     g.judge(false);
     expect(g.state().question).toMatchObject({ id: "m1", content: { kind: "text", value: "影片裡有幾隻貓？" } });
@@ -172,7 +171,6 @@ describe("記憶題 with a clip", () => {
   // Value: protects=the reveal payoff; fails_when=the reveal of a memory question shows no question or media.
   it("the reveal carries the whole question with its media", () => {
     const g = started(bank(memText("t1")));
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
     vi.advanceTimersByTime(7000);
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "咪咪" });
     g.judge(true);
@@ -193,11 +191,9 @@ describe("記憶題 with an image", () => {
   });
 
   it("a fill-in is check first, then the image, then the question", () => {
-    const g = started(bank(memText("t1")));
+    const g = started(bank(memText("t1")), {}, true);
     expect(g.state().question).toMatchObject({ checkFirst: true, content: { kind: "text", value: "" } });
-    vi.advanceTimersByTime(30000); // no seconds run before the check
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
+    vi.advanceTimersByTime(2000); // the check's beat; no image seconds run before it lands
     expect(g.state().question).toMatchObject({ memorize: true, memoryLeft: 5000, content: { kind: "image" } });
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "咪咪" });
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "memorizing" });
@@ -302,8 +298,6 @@ describe("記憶題 with an image", () => {
   it("holds a mage hint on the question while its media plays", () => {
     const g = started(bank(memText("t1")));
     g.room.game = { ...g.room.game!, mageHints: { t1: "咪" } };
-    send(g.room, g.phones[0], { type: "TEAM_ROLL_CHECK", questionId: "t1", eventId: g.state().eventId });
-    vi.advanceTimersByTime(2000);
     expect(g.state().question.memorize).toBe(true);
     expect(g.state().view.mageHints.t1).toBeUndefined();
     vi.advanceTimersByTime(5000);

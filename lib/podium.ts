@@ -110,8 +110,8 @@ const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, t
   { id: "fate", icon: "🔮", title: "命運之子", value: (t, teams) => fortuneHits(t, teams) || null, reason: (n) => `被命運選中 ${n} 次` },
   { id: "rotten", icon: "🤢", title: "腐肉品嚐家", value: (t) => outcomes(t, "rotten") || null, reason: (n) => `吃到 ${n} 次腐肉` },
   { id: "flees", icon: "🏃", title: "逃跑大師", value: (t) => t.flees || null, reason: (n) => `逃跑 ${n} 次` },
-  // 🧪 lucky potions drunk (docs/designs/lucky-potion.md E8).
-  { id: "potions", icon: "🧪", title: "藥水成癮", value: (t) => t.potionsDrunk || null, reason: (n) => `喝了 ${n} 瓶幸運藥水` },
+  // 🍀 lucky dice used (docs/designs/lucky-potion.md E8).
+  { id: "potions", icon: "🍀", title: "骰子成癮", value: (t) => t.potionsDrunk || null, reason: (n) => `用了 ${n} 顆幸運骰` },
   { id: "dishes", icon: "🍲", title: "大胃王", value: (t) => t.dishes?.length || null, reason: (n) => `吃了 ${n} 道料理` },
   // Only a team that answered its way in (earned): one sent by the host or let through an open door is not quick.
   { id: "rush", icon: "⚡", title: "閃電突擊", value: (t) => (t.bossAt?.earned ? t.bossAt.turns : null), reason: (n) => `${n} 回合就進魔王房`, fewest: true },

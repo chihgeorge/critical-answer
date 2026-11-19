@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { NEXT_WAIT_MS, textOnlyBank, startGame, closeLeftoverContexts } from "./answer";
+import { NEXT_WAIT_MS, hostCheckSettled, textOnlyBank, startGame, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -21,10 +21,12 @@ test("the host judges with the keyboard: 2 marks a wrong answer, 1 a correct one
   }
   await startGame(host);
   await expect(host.getByText("輪到：甲隊")).toBeVisible();
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
 
   await host.keyboard.press("2"); // wrong, retry: the turn moves to 乙隊
   await expect(host.getByText("輪到：乙隊")).toBeVisible();
+  await hostCheckSettled(host);
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();
 
   await host.keyboard.press("1"); // correct: the answer goes up on the big screen

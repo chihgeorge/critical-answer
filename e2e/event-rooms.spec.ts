@@ -70,7 +70,7 @@ test("a team at a fork opens ❓ from its phone, the door opens, everyone sees t
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-side", "right");
   // ❓ draws the chest, the statue or the fortune teller (fortune-teller.md); the fortune teller shows her own screen.
   const fortune = screen.getByTestId("fortune-screen");
-  await expect(screen.getByTestId("event-result").or(fortune)).toBeVisible({ timeout: 5000 });
+  await expect(screen.getByTestId("event-result").or(fortune)).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   if (await fortune.isVisible()) {
     // The effect buttons wait out her ~3 s intro. ✨ blessing, not 💫 stun, which would skip Plain's turn below.
     await eventTeam.getByTestId("phone-fortune-blessing").click();
@@ -121,7 +121,7 @@ test("a team at a fork takes ⚔️ and then faces the room's monster", async ({
   await expect(screen.getByTestId("fork-door-open")).toHaveAttribute("data-door", "monster");
   await expect(screen.getByTestId("fork-door-open")).toContainText("⚔️ 怪物房");
   expect(await answerUpDuringOpening).toBe(false); // resolves when the opening ends
-  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 });
+  await expect(host.getByRole("button", { name: "答對！" })).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, not checkLanded
   await expect(screen.getByTestId("fork-doors")).toHaveCount(0);
   await expect(host.getByText("輪到：EventTeam")).toBeVisible();
 });
