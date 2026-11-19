@@ -7,7 +7,7 @@ export type DishKind = "dish-jelly" | "dish-stew" | "dish-tower" | "dish-ice" | 
 export type SpriteKind = "slime" | "slime-lost" | "slime-king" | "ghost" | "ghost-cry" | "dragon"
   // The catalog roster, PR2 (docs/designs/monster-catalog.md R4).
   | "mushroom" | "bat" | "skeleton" | "mimic" | "spider" | "snail" | "wisp" | "golem" | "jellyfish" | "frog" | "candle" | "mandrake" | "eyeball" | "crab" | "dice" | "pumpkin" | "cactus" | "kraken" | "phoenix"
-  | "owl" | "hero" | "crown" | "heart" | "torch" | "campfire" | "door" | "cloud" | "zz"
+  | "owl" | "hero" | "crown" | "heart" | "torch" | "campfire" | "door" | "zz"
   // Cooking (docs/designs/monster-cuisine.md, cooking R6/R7): the pot, its smoke, and one dish per monster sprite.
   | "pot" | "smoke" | DishKind
   // The chef's d20: a natural 20 serves the dish's legendary version, a 1 serves the burnt remains.

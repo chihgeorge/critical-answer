@@ -3,7 +3,7 @@
 // Shared pixel-dungeon components (see DESIGN.md). Styles live in app/globals.css.
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type CSSProperties, type ReactNode, type Ref, type SyntheticEvent } from "react";
-import { biteSprite, classicArtRequested, drawEmptyPlate, DUNGEON_ART, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneLights, type SceneTheme } from "@/lib/pixel-art";
+import { biteSprite, drawEmptyPlate, drawHomeScene, drawScene, drawSprite, HEAD_ANCHOR, homeSceneCell, SPRITE_SIZE, type HomeSceneAnchors, type SceneLights, type SceneTheme } from "@/lib/pixel-art";
 import type { Accessory } from "@/lib/monster-catalog";
 import type { ClassId } from "@/lib/game-state";
 import { MONSTER_SPRITES, type MonsterSprite, type SpriteKind } from "@/lib/sprite-kind";
@@ -234,19 +234,12 @@ export function Sprite({
 
 /* ---------- Scene background ---------- */
 
-const noSubscribe = () => () => {};
-/** The big screen's old look (`?art=classic`, or DUNGEON_ART off). The query never changes while the page is open. */
-export function useClassicArt(): boolean {
-  return useSyncExternalStore(noSubscribe, () => classicArtRequested(location.search), () => !DUNGEON_ART);
-}
-
 export function SceneBackground({
   theme,
   cols = 160,
   rows = 90,
   arch = true,
   lights = false,
-  classic,
   className = "absolute inset-0",
 }: {
   theme: SceneTheme;
@@ -256,14 +249,12 @@ export function SceneBackground({
   arch?: boolean | "fork";
   /** Which torches' light to bake in (lib/pixel-art.ts SCENE_TORCHES); the same value the torch sprites use. */
   lights?: SceneLights;
-  /** The look from before the torch-lit dungeon (`?art=classic`); unset follows DUNGEON_ART. */
-  classic?: boolean;
   className?: string;
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (ref.current) drawScene(ref.current, theme, cols, rows, arch, { lights, classic });
-  }, [theme, cols, rows, arch, lights, classic]);
+    if (ref.current) drawScene(ref.current, theme, cols, rows, arch, { lights });
+  }, [theme, cols, rows, arch, lights]);
   return <canvas ref={ref} className={cx("px-sprite h-full w-full", className)} />;
 }
 

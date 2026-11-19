@@ -66,26 +66,13 @@
 
 **What:** 在活動用的電視或投影機上開大螢幕，看題目畫面、大廳和首領房，也按一次主持人的 🌑 螢幕變暗。牆、拱門、地圖列的房間和棋子要從觀眾的位置看得清楚。
 
-**Why:** v0.81 把場景壓暗、加了火把光（`docs/designs/dungeon-scene.md`）。PNG 和 `lib/scene-classic.test.ts` 只保證牆不比舊畫面加 🌑 更暗，電視會不會把暗部糊成一片，只能實機看。
+**Why:** v0.81 把場景壓暗、加了火把光（`docs/designs/dungeon-scene.md`）。PNG 和 `lib/scene.test.ts` 只保證牆不比舊畫面加 🌑 更暗，電視會不會把暗部糊成一片，只能實機看。
 
-**Context:**
-- 看不清楚就用 `/room/代碼/screen?art=classic#s=…` 開大螢幕（`?art=classic` 要放在 `#` 前面），這台螢幕就回到舊畫面，不用部署。
-- 要永久退回：`lib/pixel-art.ts` 的 `DUNGEON_ART` 改成 `false`。
-- 手機和主持人頁不受 `?art=classic` 影響。
+**Context:** 舊畫面和 `?art=classic` 已在 #281 刪掉，看不清楚就調 `lib/pixel-art.ts` 的 `ART` 調色盤或 `amb`。
 
 **Effort/Priority:** S（人工約 15 分鐘，要真機）/ P1，期限 2026-11-21 活動前
 
 **Depends on:** v0.81 上線。
-
----
-
-## 活動後：火把地城和舊畫面只留一個
-
-**What:** 活動後決定留新畫面還是舊畫面，刪掉另一條路：`drawClassicScene`、`ROOM_THEMES`、地圖列的雲、`?art=classic`，或反過來刪 `drawLitScene`。
-
-**Why:** 兩套畫法是活動前的保險，留著就是每次改場景都要顧兩份。
-
-**Effort/Priority:** S / P3，活動後
 
 ---
 

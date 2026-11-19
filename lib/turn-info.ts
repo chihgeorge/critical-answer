@@ -3,7 +3,7 @@
 
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
 import type { PublicQuestion, StateMessage } from "./protocol";
-import { DUNGEON_ART, type SceneTheme } from "./pixel-art";
+import type { SceneTheme } from "./pixel-art";
 import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
 
@@ -40,8 +40,6 @@ const LOOK: Record<MonsterSprite, { scale: number; float?: boolean }> = {
 export const FALLBACK_MONSTER: Monster = { kind: "slime", name: "…", scale: 6, hue: 0 };
 export const BOSS_THRESHOLD = DEFAULT_GAME_CONFIG.bossThreshold;
 
-/** The old look's backdrops, alternating (`classic`). */
-const ROOM_THEMES: SceneTheme[] = ["stone", "moss", "stone", "moss", "stone"];
 /** Going down (docs/designs/dungeon-scene.md C): each depth has its own biome, the boss room last. */
 const DEPTHS: { from: number; theme: SceneTheme; name: string }[] = [
   { from: 0, theme: "stone", name: "入口石牆" },
@@ -57,10 +55,10 @@ export function monsterLook(m: PublicQuestion["monster"], hueShift = 0): Monster
   return { ...LOOK[kind], kind, name: m.name, hue: (m.hue + hueShift) % 360, ...(m.accessory ? { accessory: m.accessory } : {}) };
 }
 
-/** A room's backdrop; `null` is the boss room. `classic`: the old alternation (the revert switch). */
-export function roomTheme(room: number | null, classic = !DUNGEON_ART): SceneTheme {
+/** A room's backdrop; `null` is the boss room. */
+export function roomTheme(room: number | null): SceneTheme {
   if (room === null) return "crimson";
-  return classic ? ROOM_THEMES[room % ROOM_THEMES.length] : depth(room).theme;
+  return depth(room).theme;
 }
 
 /** The big screen's floor chip: how deep the room on stage is, never how many are left (live map D8). */

@@ -300,7 +300,7 @@ body {
 @keyframes px-fall { from { transform: translateY(-40px) rotate(0); } to { transform: translateY(560px) rotate(180deg); } }
 .px-confetti { position: absolute; width: 8px; height: 8px; animation: px-fall 3.6s steps(9) infinite; }
 /* Live map (docs/designs/live-map.md D13-D16): a pawn hops into a room (or vanishes, then appears in the
-   boss room) and that room's outline flashes; clouds drift. Two-frame steps(). */
+   boss room) and that room's outline flashes. Two-frame steps(). */
 .px-turn { outline: 3px solid var(--turn2); outline-offset: -1px; } /* inside the room's bottom border */
 @keyframes px-hop-in { 0% { transform: translateY(-8px); } 50% { transform: none; } }
 .px-hop-in { animation: px-hop-in 0.6s steps(2) 1; }
@@ -308,10 +308,7 @@ body {
 .px-charge { animation: px-charge 0.6s steps(2) 1; }
 @keyframes px-room-flash { 0% { outline: 3px solid var(--turn2); } 100% { outline-color: transparent; } }
 .px-room-flash { animation: px-room-flash 0.6s steps(2) 1; }
-@keyframes px-drift { 50% { transform: translateX(4px); } }
-.px-drift { animation: px-drift 2.4s steps(1) infinite; }
-.px-drift2 { animation: px-drift 2.4s steps(1) infinite reverse; }
-/* The fog reveal (docs/designs/immersion.md PR3): the clouds on a newly opened room slide off and fade in 4 hard steps,
+/* The fog reveal (docs/designs/immersion.md PR3): the dark cover on a newly opened room slides off and fades in 4 hard steps,
    then the room pulses bright once (one take from the shared flash budget). Both end at the plain look. */
 @keyframes px-fog-blow { 100% { transform: translateX(40px); opacity: 0; } }
 .px-fog-blow { animation: px-fog-blow 0.8s steps(4) 1 forwards; }
@@ -386,9 +383,9 @@ body {
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-nat20-spark, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-drift, .px-drift2, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-nat20-spark, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
   .px-tf2 { opacity: 0; }
-  /* The fog reveal's clouds never show: only the brightened room (the page takes no flash under reduced motion). */
+  /* The fog reveal's cover never shows: only the brightened room (the page takes no flash under reduced motion). */
   .px-fog-cloud { display: none; }
   /* .px-room-flash keeps running (D13: a pawn must not change rooms unseen). */
 }
