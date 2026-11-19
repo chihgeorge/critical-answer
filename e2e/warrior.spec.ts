@@ -63,11 +63,15 @@ test("dish die: a right lock shows the die on the big screen after 公布答案,
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await host.getByRole("button", { name: /公布答案/ }).click();
 
-  // After the reveal's 2 s and the dish intro's 2 s (#364), the dish die: nothing is judged yet.
+  // After the reveal's 2 s the answer shows first, with no die yet; the host's 🎲 擲料理骰 then rolls it: nothing is judged yet.
   const overlay = screen.getByTestId("roll-overlay");
-  await expect(overlay).toHaveAttribute("data-kind", "dish", { timeout: 10_000 });
-  await expect(team.getByText(/答對！擲料理骰中/)).toBeVisible();
-  await expect(host.getByText("料理隊擲出了骰子…")).toBeVisible();
+  const roll = host.getByRole("button", { name: "🎲 擲料理骰", exact: true });
+  await expect(roll).toBeEnabled({ timeout: 10_000 });
+  await expect(screen.getByTestId("answer-reveal")).toBeVisible();
+  await expect(overlay).toHaveCount(0);
+  await roll.click();
+  await expect(overlay).toHaveAttribute("data-kind", "dish");
+  await expect(host.getByRole("button", { name: "🎲 擲料理骰中…", exact: true })).toBeDisabled();
   await expect(screen.getByTestId("roll-result")).toHaveText(/^\d+ (大失敗|失敗|成功|大成功)：/); // the tier and its effect once it lands (#364)
 
   // The die's 2 s: then the room judges the answer and the overlay goes.

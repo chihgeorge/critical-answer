@@ -511,10 +511,11 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
     });
     if (over) break;
     await step(name("next-turn"), async () => {
+      const roll = host.getByRole("button", { name: "🎲 擲料理骰", exact: true });
       const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
       const next = host.getByRole("button", { name: "下一題", exact: true });
       const prevTeam = ribbonTeam(key);
-      // Press 🍲 上菜 / 下一題 until the reveal is gone and the host shows another turn: a dish holds 下一題 while it
+      // Press 🎲 擲料理骰 (a correct answer's reveal comes before its dish die) / 🍲 上菜 / 下一題 until the reveal is gone and the host shows another turn: a dish holds 下一題 while it
       // cooks, and a random room event (mystery room, fortune teller) or a boss phase card needs another 下一題.
       // The host's ribbon moves on at the judgment, so the turn has passed only once the host's key changed and
       // nothing is left to close, twice in a row: between 上菜 and the dish's 下一題 nothing shows for a moment.
@@ -526,7 +527,8 @@ async function round(browser: Browser, { base, turns, boss }: Options, r: number
             // The big screen is back on a turn: no answer or phase card up, and its ribbon names a turn, not the team eating.
             const closed =
               (await screen.locator(SCREEN_HOLDS).count()) === 0 && /輪到：|搶答|卡點題/.test((await screen.locator(".px-ribbon").first().textContent({ timeout: 500 }).catch(() => "")) ?? "");
-            if (await visible(serve)) await serve.click().catch(() => {});
+            if (await visible(roll)) await roll.click().catch(() => {});
+            else if (await visible(serve)) await serve.click().catch(() => {});
             else if (await visible(next)) await next.click({ timeout: 500 }).catch(() => {}); // disabled while the dish cooks
             else if (closed && (await hostKey()) !== key) return ++clear >= 2;
             clear = 0;

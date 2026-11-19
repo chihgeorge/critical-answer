@@ -52,16 +52,18 @@ function started(first: object = mc("m1"), classes: (string | null)[] = [null, n
   const lastTo = (conn: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(conn.send.mock.calls).at(-1);
   const give = (id: string) => send(room, host, { type: "HOST_GIVE_ITEM", teamId: id });
   const drink = (i = 0, eventId = state().eventId, questionId = state().question.id) => send(room, phones[i], { type: "TEAM_DRINK_POTION", questionId, eventId });
-  /** 甲 locks the right option and the host reveals it: the dish die rolls. */
+  /** 🎲 擲料理骰 under the answer's reveal: the dish die rolls (and is left in its beat). */
+  const rollDish = () => room.onMessage(JSON.stringify({ type: "HOST_NEXT", eventId: state().eventId }), host);
+  /** 甲 locks the right option and the host reveals it, then rolls the dish die. */
   const lockRight = () => {
     const q = state().question.id;
     send(room, phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: room.game!.optionOrder[q].indexOf(0) });
     send(room, phones[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     send(room, host, { type: "HOST_REVEAL", teamId: A, questionId: q });
-    vi.advanceTimersByTime(2000);
-    vi.advanceTimersByTime(2000); // correct answer introduction before the dish die
+    vi.advanceTimersByTime(2000); // the lock's beat: the answer's reveal comes first
+    rollDish();
   };
-  return { room, io, host, phones, dice, all, state, team, lastTo, give, drink, lockRight };
+  return { room, io, host, phones, dice, all, state, team, lastTo, give, drink, lockRight, rollDish };
 }
 
 beforeEach(() => {
@@ -144,6 +146,7 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.team(A).item).toBeUndefined();
     g.dice.push(9);
     vi.advanceTimersByTime(2000);
+    g.rollDish();
     expect(g.state().pendingRoll).toMatchObject({ kind: "dish", value: 9 });
     expect(g.state().pendingRoll.values).toBeUndefined();
   });

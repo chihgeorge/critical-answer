@@ -106,7 +106,10 @@ test("a game survives the server being killed and started again", async () => {
       await wait(() => last(host, "STATE")?.pendingLock, "the lock is in");
       host.ws.send(JSON.stringify({ type: "HOST_REVEAL", teamId: onTurn, questionId: q.questionId }));
     } else host.ws.send(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q.questionId, correct: true }));
-    // A right lock is judged after its beats (reveal, dish intro, dish die), so wait for the score itself.
+    // The answer's reveal comes first; 🎲 擲料理骰 (HOST_NEXT) rolls the dish die, and the judgment lands after it.
+    await wait(() => last(host, "STATE")?.reveal?.dishNext, "the answer's reveal, before the dish die");
+    host.ws.send(JSON.stringify({ type: "HOST_NEXT", eventId: last(host, "STATE").eventId }));
+    // A right lock is judged after its beats (reveal, dish die), so wait for the score itself.
     await wait(() => last(a, "STATE")?.view.teams.some((t: any) => t.score > 0), "the judgment is applied");
     const before = last(a, "STATE");
     const scoresBefore = before.view.teams.map((t: any) => [t.id, t.score]);

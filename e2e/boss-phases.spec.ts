@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore, rollDish } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -69,6 +69,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
   await expect(screen.getByText("主題曲之謎")).toHaveCount(0);
 
+  await rollDish(host); // the answer first, then the dish die (a boss hit cooks no dish)
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByTestId("phase-card")).toContainText("第二階段：主題曲之謎");
   await expect(screen.getByTestId("phase-card")).toContainText("聽前奏，說出這首是哪部作品的主題曲");
@@ -126,6 +127,7 @@ test("a phase that runs out of questions moves on to the next one", async ({ bro
     // #339: under the reveal the turn has moved on, but the host sees no answer beside the revealed one.
     await expect(host.getByTestId("host-reveal")).toBeVisible();
     await expect(host.getByTestId("host-answer")).toHaveCount(0);
+    await rollDish(host);
     await host.getByRole("button", { name: "下一題", exact: true }).click();
   }
   await expect(team.getByTestId("phone-phase-card")).toContainText("主題曲之謎");

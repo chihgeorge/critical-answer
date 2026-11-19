@@ -40,7 +40,7 @@ The 「節奏」 (pacing) group in 「⚙ 更多」 has the 「自動｜⏸ 手�
 In manual, none of the pauses below ends by itself. The host page shows a dashed panel, 「⏸ 停在這裡：接下來是……」 (held here: next is ...), and the game goes on only when the host presses 「▶ 下一步」 (next step; keyboard `1` or Enter):
 
 - Initiative roll: no countdown while the teams roll, and 「下一步」 rolls for the teams that have not; once the order is up, one more press brings the first question.
-- The reveal after 「公布答案」, the card after a correct answer saying the dish die comes next, the dish die, the persuasion check, the persuasion-success card, the warrior's die, the defeated-boss card and the kill dice after it, a boss miss, and the boss's phase card.
+- The reveal after 「公布答案」, the dish die, the persuasion check, the persuasion-success card, the warrior's die, the defeated-boss card and the kill dice after it, a boss miss, and the boss's phase card.
 - A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door. Once the door is open, one more press enters the room.
 - The podium after the game (in auto too): each title, tie-break roll and place takes one press of 「下一步」, and one more press shows the full result and the epilogue; the host turns the epilogue's pages as before. After a reconnect or a room restart it goes on from the last step shown.
 

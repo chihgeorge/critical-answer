@@ -178,6 +178,9 @@ export type AnswerReveal = {
   };
   /** The host pressed 🍲 上菜 (HOST_SERVE): the panel goes away and the screen cooks the monster. Only with `dish`. */
   served?: true;
+  /** A correct answer's reveal before its dish die: answer and explanation first, nothing scored yet (no `scored` or
+   * `dish`). The host's 🎲 擲料理骰 (HOST_NEXT) rolls the die over it; the scored reveal replaces it once the die lands. */
+  dishNext?: true;
 };
 
 /** 上菜's cooking on the big screen (monster-cuisine.md cooking R7): monster 0–0.4 s, pot to 1.2 s, smoke to 1.6 s, then the dish. */

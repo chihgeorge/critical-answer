@@ -72,6 +72,13 @@ function serveNext(room: DungeonRoom, conn: ReturnType<typeof makeConn>, eventId
   send(room, conn, { type: "HOST_NEXT", eventId });
 }
 
+/** 🎲 擲料理骰 (HOST_NEXT) under a correct answer's reveal (dishNext): the dish die rolls and is left in its beat.
+ * Nothing when no such reveal is up, so it never closes a scored one. */
+function rollDish(room: DungeonRoom) {
+  const host = [...(room as any).hostConns.values()][0];
+  if ((room as any).reveal?.dishNext && host) room.onMessage(JSON.stringify({ type: "HOST_NEXT", eventId: seqOf(room) }), host);
+}
+
 /** The host's 公布答案 for whatever lock is pending (host-reveal.md): what every lock waited for before its beat. */
 function reveal(room: DungeonRoom) {
   const lock = (room as any).pendingLock;
@@ -858,7 +865,8 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     expect(room.game!.revealedQuestionIds).toContain("r0-q1");
   });
 
-  it("includes the explanation when the question has one, using room.env.R2_PUBLIC_BASE_URL for an image explanation", () => {
+  /** One team on a room whose only question has an image explanation, judged by the host. */
+  function explanationGame() {
     const bankWithExplanation = parseBank({
       rooms: [
         {
@@ -884,9 +892,53 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     claim(explanationRoom, hostConn2);
     const { ids: teamIds } = joinTeams(explanationRoom, hostConn2, 1);
     send(explanationRoom, hostConn2, { type: "HOST_START" });
+    return { explanationRoom, hostConn2, teamIds };
+  }
+  const EXPLANATION = { kind: "image", url: "https://pub.example.r2.dev/66666666-6666-6666-6666-666666666666" };
+
+  it("includes the explanation when the question has one, using room.env.R2_PUBLIC_BASE_URL for an image explanation", () => {
+    const { explanationRoom, hostConn2, teamIds } = explanationGame();
     send(explanationRoom, hostConn2, { type: "HOST_JUDGE", teamId: teamIds[0], questionId: "r0-q1", correct: true });
     const revealed = revealOf(explanationRoom);
-    expect(revealed.explanation).toEqual({ kind: "image", url: "https://pub.example.r2.dev/66666666-6666-6666-6666-666666666666" });
+    expect(revealed.explanation).toEqual(EXPLANATION);
+  });
+
+  // Value: protects=the owner's order (2026-11-19): the answer and its 詳解 first, then the dish die, then 上菜's cooking;
+  // fails_when=the die rolls, scores or cooks before the explanation is up, or the explanation is gone once it lands;
+  // seam=none; no_claim=the big screen's drawing (e2e, PNGs in the PR)
+  it("shows the answer and its explanation before the dish die, which rolls on 🎲 擲料理骰; the cooking comes after it", () => {
+    vi.useFakeTimers();
+    try {
+      const { explanationRoom: room, hostConn2: host, teamIds } = explanationGame();
+      const raw = (msg: object) => room.onMessage(JSON.stringify(msg), host); // unsettled: the die keeps its beat
+      raw({ type: "HOST_JUDGE", teamId: teamIds[0], questionId: "r0-q1", correct: true });
+      const first = broadcastsOf(room).findLast((m) => m.type === "STATE");
+      expect(first).toMatchObject({ pendingRoll: null, reveal: { questionId: "r0-q1", answer: "答案", explanation: EXPLANATION, dishNext: true } });
+      expect(first.reveal.scored).toBeUndefined();
+      expect(first.reveal.dish).toBeUndefined();
+      expect(room.game!.teams[0]).toMatchObject({ score: 0, reward: 0 });
+      // However long the explanation runs, nothing rolls by itself, and 上菜 has nothing to serve yet.
+      vi.advanceTimersByTime(10 * 60_000);
+      raw({ type: "HOST_SERVE", eventId: seqOf(room) });
+      expect((room as any).pendingRoll).toBeNull();
+      expect(revealOf(room).served).toBeUndefined();
+      // 🎲 擲料理骰: the die rolls over the explanation, which stays up.
+      raw({ type: "HOST_NEXT", eventId: seqOf(room) });
+      const rolling = broadcastsOf(room).findLast((m) => m.type === "STATE");
+      expect(rolling).toMatchObject({ pendingRoll: { kind: "dish", teamId: teamIds[0], questionId: "r0-q1" }, reveal: { explanation: EXPLANATION, dishNext: true } });
+      expect(room.game!.teams[0].score).toBe(0);
+      vi.advanceTimersByTime(2000);
+      // It lands: scored (the rng's 1 burns the dish), the explanation still up, the dish waiting for 上菜.
+      const scored = revealOf(room);
+      expect(scored).toMatchObject({ explanation: EXPLANATION, scored: { teamId: teamIds[0], points: 1, dishDie: 1 }, dish: { dishDie: 1, look: "burnt" } });
+      expect(scored.dishNext).toBeUndefined();
+      expect(scored.served).toBeUndefined();
+      expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 1 });
+      raw({ type: "HOST_SERVE", eventId: seqOf(room) });
+      expect(revealOf(room).served).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reveals the boss question on a correct boss hit (the correct-boss-hit branch, not just room advances)", () => {
@@ -942,7 +994,8 @@ describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
     send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true });
     const late = makeConn("late-screen");
     room.onConnect(late);
-    expect(lastSentTo(late)).toMatchObject({ type: "STATE", reveal: { questionId: "r0-q1" } });
+    const states = (late.send as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE");
+    expect(states.at(-1)).toMatchObject({ reveal: { questionId: "r0-q1" } });
   });
 
   it("a stale HOST_NEXT (for an older STATE) doesn't close a newer reveal", () => {
@@ -1075,12 +1128,15 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useFakeTimers();
       const { room, lockAndReveal } = critGame();
       lockAndReveal(1, 1);
-      vi.advanceTimersByTime(6000);
+      vi.advanceTimersByTime(2000);
+      rollDish(room);
+      vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ scored: { points: 1, dishDie: 1 }, dish: { look: "burnt", dishDie: 1, dishBonus: -9 } });
       expect(room.game!.teams[0].reward).toBe(1);
     });
 
-    it("rolls only after a right reveal, holds it for 2 s with no score, answer or reveal, then serves a 20 as ×1.5", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    // Owner, 2026-11-19: the answer and its explanation come before the dish die and the cooking, never after.
+    it("reveals the answer first with nothing scored, rolls on 🎲 擲料理骰, holds the die 2 s, then serves a 20 as ×1.5", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const { room, hostConn, ids, lockAndReveal } = critGame();
@@ -1088,20 +1144,29 @@ describe("TEAM_SELECT_OPTION", () => {
       const asked = lastBroadcast(room).question.monster;
       lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
-      // The beat sends no question, but keeps the room's monster on stage (#401).
-      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "dish-intro", pendingRoll: null, question: null, stageMonster: asked });
-      vi.advanceTimersByTime(2000);
+      // The answer's reveal: the green tile without points, the room's monster still on stage, no die and no score yet.
+      const first = lastBroadcast(room);
+      expect(first).toMatchObject({ pendingLock: null, pendingRoll: null, reveal: { questionId: "r0-mc1", answer: "B", dishNext: true, choice: { correctIndex: 1, points: 0 }, at: { monster: asked } } });
+      expect(first.reveal.scored).toBeUndefined();
+      expect(first.reveal.dish).toBeUndefined();
+      expect(first.view.teams[0].score).toBe(0);
+      expect(seqOf(room)).toBe(seq + 1);
+      expect(log.mock.calls.some((c) => String(c[0]).includes('"event":"roll"'))).toBe(false);
+      // It waits for the host, however long the explanation runs.
+      vi.advanceTimersByTime(10 * 60_000);
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      rollDish(room);
       const held = lastBroadcast(room);
-      expect(held.pendingLock).toBeNull();
       expect(held.pendingRoll).toEqual({ teamId: ids[0], questionId: "r0-mc1", value: 20, kind: "dish" }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-      expect(held.reveal).toBeNull();
+      expect(held.reveal).toMatchObject({ questionId: "r0-mc1", dishNext: true });
       expect(held.view.teams[0].score).toBe(0);
-      expect(JSON.stringify(held)).not.toContain("correctIndex");
       expect(seqOf(room)).toBe(seq + 1);
       const rolls = log.mock.calls.filter((c) => String(c[0]).includes('"event":"roll"')).map((c) => JSON.parse(String(c[0])));
       expect(rolls).toEqual([{ event: "roll", kind: "dish", value: 20 }]); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      rollDish(room); // a second press while it rolls rolls nothing more
+      expect(log.mock.calls.filter((c) => String(c[0]).includes('"event":"roll"'))).toHaveLength(1);
       room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-mc1", correct: true, eventId: seqOf(room) }), hostConn); // unsettled: the die is still in its beat
-      expect(lastSentTo(hostConn)?.detail).toBe("roll_pending");
+      expect(lastSentTo(hostConn)?.detail).toBe("reveal_pending");
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).pendingRoll).toBeNull();
       // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
@@ -1123,25 +1188,28 @@ describe("TEAM_SELECT_OPTION", () => {
     it("the big screen gets roll, then crit for a 20 or fumble for a 1, each with a new cueSeq", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       for (const [value, cue] of [[20, "crit"], [1, "fumble"], [7, "correct"]] as const) { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-        const { lockAndReveal, states } = critGame();
+        const { room, lockAndReveal, states } = critGame();
         const start = states().at(-1).cueSeq;
         lockAndReveal(1, value);
         vi.advanceTimersByTime(2000);
-        expect(states().at(-1)).toMatchObject({ stageBeat: "dish-intro" });
-        vi.advanceTimersByTime(2000);
+        expect(states().at(-1)).toMatchObject({ reveal: { dishNext: true } });
+        rollDish(room);
         expect(states().at(-1)).toMatchObject({ cue: "roll", cueSeq: start + 1 });
         vi.advanceTimersByTime(2000);
         expect(states().at(-1)).toMatchObject({ cue, cueSeq: start + 2 });
       }
     });
 
-    it("a team whose phone closes during the die keeps its right answer, then shows offline", () => {
+    it("a team whose phone closes under its answer's reveal or during the die keeps its right answer, then shows offline", () => {
       vi.useFakeTimers();
       const { room, ids, conns, lockAndReveal } = critGame(2);
       lockAndReveal(1, 9);
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(2000);
       room.onClose(conns[0]);
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      expect(room.game!.teams[0].online).toBe(true);
+      rollDish(room);
+      expect((room as any).pendingRoll).toMatchObject({ kind: "dish", teamId: ids[0] });
       vi.advanceTimersByTime(2000);
       expect(room.game!.teams[0]).toMatchObject({ score: 1, reward: 10 });
       expect(room.game!.teams[0].online).toBe(false);
@@ -1154,9 +1222,22 @@ describe("TEAM_SELECT_OPTION", () => {
       const { room, hostConn, conns, lockAndReveal } = critGame(2);
       lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
+      rollDish(room);
       room.onClose(conns[0]);
       send(room, hostConn, { type: "HOST_END_GAME" });
       vi.advanceTimersByTime(2000);
+      expect((room as any).pendingRoll).toBeNull();
+      expect(room.game?.teams[0]).toMatchObject({ score: 0, online: false });
+    });
+
+    it("ending the game under the answer's reveal, before its die, drops it unscored and shows a closed phone offline", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, conns, lockAndReveal } = critGame(2);
+      lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).reveal).toMatchObject({ dishNext: true });
+      room.onClose(conns[0]);
+      send(room, hostConn, { type: "HOST_END_GAME" });
       expect((room as any).pendingRoll).toBeNull();
       expect(room.game?.teams[0]).toMatchObject({ score: 0, online: false });
     });
@@ -1584,7 +1665,7 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
     reveal(room);
     vi.advanceTimersByTime(2000);
-    vi.advanceTimersByTime(2000); // the crit introduction
+    rollDish(room); // 🎲 擲料理骰 under the answer's reveal
     vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
     vi.useRealTimers();
     const next = room.game!.teams[0].currentQuestionId; // the room's only question, redealt
@@ -1615,7 +1696,7 @@ describe("TEAM_SELECT_OPTION", () => {
     send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: q });
     reveal(room);
     vi.advanceTimersByTime(2000);
-    vi.advanceTimersByTime(2000); // the crit introduction
+    rollDish(room); // 🎲 擲料理骰 under the answer's reveal
     vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
     vi.useRealTimers();
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap
@@ -1739,7 +1820,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(1999);
       expect(room.game!.teams[0].score).toBe(0);
       vi.advanceTimersByTime(1);
-      vi.advanceTimersByTime(2000); // the crit introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       const out = lastBroadcast(room);
       expect(out.pendingLock).toBeNull();
@@ -1897,7 +1978,7 @@ describe("TEAM_SELECT_OPTION", () => {
       reveal(room);
       expect(lastSentTo(hostConn as never)?.detail).not.toBe("reveal_pending");
       vi.advanceTimersByTime(2000);
-      vi.advanceTimersByTime(2000); // the crit introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).pendingLock).toBeNull();
       expect(states().at(-1).reveal).not.toBeNull();
@@ -1924,7 +2005,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
       reveal(room);
       vi.advanceTimersByTime(2000);
-      vi.advanceTimersByTime(2000); // the crit introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).reveal).toMatchObject({ questionId: "r0-mc1" });
       expect(room.game!.teams.find((t) => t.id === ids[0])!.online).toBe(false);
@@ -1946,7 +2027,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
       reveal(room);
       vi.advanceTimersByTime(2000);
-      vi.advanceTimersByTime(2000); // the crit introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect((room as any).reveal).not.toBeNull();
     });
@@ -1976,7 +2057,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
       expect(lastBroadcast(room).pendingLock).toMatchObject({ revealing: true });
       vi.advanceTimersByTime(2000);
-      vi.advanceTimersByTime(2000); // the dish die's introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       expect(room.game!.teams[0].reward).toBe(1); // the rng's 1 burns the dish: a tenth of 10
       expect(lastBroadcast(room).reveal.choice).toMatchObject({ correctIndex: 1, points: 1 });
@@ -2007,7 +2088,9 @@ describe("TEAM_SELECT_OPTION", () => {
       press(hostConn);
       press(hostConn);
       expect(lastSentTo(hostConn)).toMatchObject({ detail: "reveal_pending" });
-      vi.advanceTimersByTime(6000);
+      vi.advanceTimersByTime(2000);
+      rollDish(room);
+      vi.advanceTimersByTime(2000);
       expect(room.game!.teams[0].reward).toBe(1); // the rng's 1 burns the dish: a tenth of 10
       expect(seqOf(room)).toBe(seq + 2);
     });
@@ -2067,6 +2150,8 @@ describe("TEAM_SELECT_OPTION", () => {
       r = 19 / 20; // a 20
       send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-mc1" });
       vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).reveal).toMatchObject({ dishNext: true, choice: { correctIndex: 1, points: 0 } });
+      rollDish(room);
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "dish", warrior: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal).toMatchObject({ questionId: "r0-mc1", choice: { correctIndex: 1 } });
@@ -2099,7 +2184,9 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "r0-mc1" });
       r = 11 / 20; // the dish die: a 12, ×1.2 for a chef
       send(room, hostConn, { type: "HOST_REVEAL", teamId: ids[0], questionId: "r0-mc1" });
-      vi.advanceTimersByTime(6000);
+      vi.advanceTimersByTime(2000);
+      rollDish(room);
+      vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).reveal.choice).toMatchObject({ teamId: ids[0], points: 12 });
       expect(lastBroadcast(room).reveal.dish).toMatchObject({ dishDie: 12, dishBonus: 2 });
     });
@@ -2123,7 +2210,7 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, conns[0], { type: "TEAM_LOCK_OPTION", questionId: "boss-mc1" });
       reveal(room);
       vi.advanceTimersByTime(2000);
-      vi.advanceTimersByTime(2000); // the crit introduction
+      rollDish(room); // 🎲 擲料理骰 under the answer's reveal
       vi.advanceTimersByTime(2000); // then the dish die's beat (class-dice-rework.md)
       vi.advanceTimersByTime(6000); // defeat card, then the kill's 4d20 (kill-roll.md)
       const reward = room.game!.teams.find((t) => t.id === ids[0])!.reward;
@@ -2347,6 +2434,8 @@ describe("narration (T5-T7)", () => {
     (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
   const sentMsgs = (conn: ReturnType<typeof makeConn>) =>
     (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  /** The line the answer's reveal says before its dish die (「…答對了！接下來擲料理骰…」): one more NARRATION, left out here. */
+  const judged = (m: { type: string; lines?: string[] }) => m.type === "NARRATION" && !m.lines?.some((l) => l.includes("接下來擲料理骰"));
 
   function narrRoom(opts: ConstructorParameters<typeof DungeonRoom>[2] = { holdMs: 30, epilogueDelayMs: 0 }) {
     const room = new DungeonRoom(makeRoom() as any, () => 0, opts);
@@ -2498,14 +2587,15 @@ describe("narration (T5-T7)", () => {
     judgeCorrect(room, hostConn);
     // STATE for the judgment (carrying the reveal, since judgeCorrect always judges correctly)
     // is out synchronously, before any narration for it.
+    // Event 2 is the answer's reveal before its dish die, with its own line; the judgment is event 3.
     const afterJudge = all(room);
-    expect(afterJudge.at(-1)).toMatchObject({ type: "STATE", eventId: 2, reveal: { questionId: expect.any(String) } });
+    expect(afterJudge.at(-1)).toMatchObject({ type: "STATE", eventId: 3, reveal: { questionId: expect.any(String) } });
     await flush();
     judgeCorrect(room, hostConn);
     await flush();
     // rev 0 is each judgment's own NARRATION; 下一題 adds the held handoff to the one on show as rev 1.
-    const narr = all(room).filter((m) => m.type === "NARRATION" && m.rev === 0);
-    expect(narr.map((m) => m.eventId)).toEqual([1, 2, 3]);
+    const narr = all(room).filter((m) => judged(m) && m.rev === 0);
+    expect(narr.map((m) => m.eventId)).toEqual([1, 3, 5]);
     for (const n of narr) expect(n.lines[0].length).toBeGreaterThan(0);
   });
 
@@ -2659,7 +2749,7 @@ describe("narration (T5-T7)", () => {
     await flush();
     pending[1]("舊的一行");
     await flush();
-    const narr = all(room).filter((m) => m.type === "NARRATION");
+    const narr = all(room).filter(judged);
     expect(narr.map((m) => m.lines[0])).toEqual(["開場的一行", "新的一行"]);
     const late = makeConn("late");
     room.onConnect(late);
@@ -2678,7 +2768,7 @@ describe("narration (T5-T7)", () => {
     await flush();
     pending[1]("接下來輪到乙隊");
     await flush();
-    expect(all(room).filter((m) => m.type === "NARRATION").map((m) => m.lines[0])).toEqual(["開場的一行"]);
+    expect(all(room).filter(judged).map((m) => m.lines[0])).toEqual(["開場的一行"]);
   });
 
   it("survives a provider that throws", async () => {
@@ -2736,7 +2826,7 @@ describe("narration (T5-T7)", () => {
       send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
       const t = sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT");
       expect(t.entries.length).toBe(2); // start + one judgment
-      expect(t.entries[1]).toMatchObject({ eventId: 2, provider: "scripted", event: { type: "correct" } });
+      expect(t.entries[1]).toMatchObject({ eventId: 3, provider: "scripted", event: { type: "correct" } }); // 2: the reveal's line
       expect(t.entries[1].scores).toEqual({ "Team 0": 10, "Team 1": 0 });
       const intruder = makeConn("nope");
       send(room, intruder, { type: "HOST_GET_TRANSCRIPT" });
@@ -2794,16 +2884,17 @@ describe("LLM narration and director (T8-T10)", () => {
     joinTeams(r.room, r.hostConn, teams);
     send(r.room, r.hostConn, ai === undefined ? { type: "HOST_START" } : { type: "HOST_START", aiNarration: ai });
   }
-  function judge(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) {
+  function judge(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, correct = true) {
     const g = room.game!;
     const teamId = g.turnOrder[g.currentTurnIndex];
     const t = g.teams.find((x) => x.id === teamId)!;
     const qid = t.inBoss ? g.boss.currentQuestionId : t.currentQuestionId;
     serveNext(room, hostConn, seqOf(room)); // close the previous reveal (D7); no-op if none
-    send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct: true });
+    send(room, hostConn, { type: "HOST_JUDGE", teamId, questionId: qid, correct, ...(correct ? {} : { fleeChoice: "retry" }) });
     landKill(room);
   }
-  const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION");
+  // Not the scripted line under a correct answer's reveal, before its dish die: these tests count the judgments' own.
+  const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION" && !m.lines.some((l: string) => l.includes("接下來擲料理骰")));
   const transcript = (room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) => {
     send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
     return sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
@@ -2876,6 +2967,8 @@ describe("LLM narration and director (T8-T10)", () => {
     begin(r);
     await sleep(30);
     judge(r.room, r.hostConn);
+    // Its line lands before the next correct answer's reveal line, which would make it an older event and drop it.
+    await sleep(30);
     judge(r.room, r.hostConn);
     await sleep(30);
     expect(r.calls).toHaveLength(1); // start only; later events never reached the API
@@ -2884,7 +2977,7 @@ describe("LLM narration and director (T8-T10)", () => {
     // The refused key is dropped (the host page asks for another), so later events go straight to scripted lines.
     expect(t.slice(-2).every((e: any) => e.provider === "scripted")).toBe(true);
     expect(sentMsgs(r.hostConn).findLast((m) => m.type === "HOST_AI_STATUS")).toMatchObject({ keyMissing: true, error: "invalid_key" });
-    expect(narrations(r.room)).toHaveLength(3); // still exactly one per event
+    expect(new Set(narrations(r.room).map((n) => n.eventId)).size).toBe(3); // still exactly one per event (下一題 may add a handoff rev)
   });
 
   it("opens the breaker after three failures in a row", async () => {
@@ -3150,7 +3243,8 @@ describe("LLM narration and director (T8-T10)", () => {
         await sleep(30);
         send(r.room, r.hostConn, { type: "HOST_NEXT_LINE", line: "珍珠能吃嗎" });
         judge(r.room, r.hostConn); // narration 1 carries the line and waits
-        judge(r.room, r.hostConn); // narration 2 must not carry it too
+        // A wrong answer: a correct one's reveal line, before its dish die, would make narration 1 an older event and drop it.
+        judge(r.room, r.hostConn, false); // narration 2 must not carry it too
         releases[0]();
         await sleep(10);
         releases[1]();
@@ -3648,13 +3742,13 @@ describe("sound cues (big-screen effects)", () => {
     const g = room.game!;
     const t = g.teams.find((x) => x.id === g.turnOrder[g.currentTurnIndex])!;
     send(room, hostConn, { type: "HOST_JUDGE", teamId: t.id, questionId: t.currentQuestionId, correct: true });
-    expect(states(room).at(-1)).toMatchObject({ eventId: 2, cue: "correct" });
+    expect(states(room).at(-1)).toMatchObject({ eventId: 3, cue: "correct" }); // 2: the answer's reveal, before its dish die
 
     serveNext(room, hostConn, seqOf(room));
     const g2 = room.game!;
     const t2 = g2.teams.find((x) => x.id === g2.turnOrder[g2.currentTurnIndex])!;
     send(room, hostConn, { type: "HOST_JUDGE", teamId: t2.id, questionId: t2.currentQuestionId, correct: false, fleeChoice: "retry" });
-    expect(states(room).at(-1)).toMatchObject({ eventId: 3, cue: "retry" });
+    expect(states(room).at(-1)).toMatchObject({ eventId: 4, cue: "retry" });
   });
 
   it("sends no cue before any event", () => {
@@ -3726,13 +3820,15 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     roll(WARRIOR_TARGET);
     expect(err(conns[0])).toBe("answer_pending");
     vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).reveal).toMatchObject({ questionId: q, dishNext: true }); // the answer first
+    rollDish(room);
     expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "dish", warrior: WARRIOR_TARGET }); // a hit's dish die
     vi.advanceTimersByTime(2000);
     const out = lastBroadcast(room);
     expect(out.pendingRoll).toBeNull();
-    expect(out.reveal).toMatchObject({ questionId: q });
+    expect(out.reveal).toMatchObject({ questionId: q, scored: { points: 8 } });
     expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, roomIndex: 1 });
-    expect(seqOf(room)).toBe(seq + 1);
+    expect(seqOf(room)).toBe(seq + 2);
   });
 
   // Value: protects=the warrior's own sound (TODOS: 戰士骰有自己的音效); fails_when=the warrior's roll sets the shared
@@ -3767,7 +3863,9 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     await vi.advanceTimersByTimeAsync(2000);
     expect(said()).toMatch(/^戰士擲出 5 點，沒打中。/);
     roll(17);
-    await vi.advanceTimersByTimeAsync(4000); // the roll's beat, then its hit's dish die
+    await vi.advanceTimersByTimeAsync(2000); // the roll's beat; the answer's reveal comes first
+    rollDish(room);
+    await vi.advanceTimersByTimeAsync(2000); // its hit's dish die
     expect(said()).toMatch(/^戰士擲出 17 點，命中！/);
   });
 
@@ -4481,6 +4579,7 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     try {
       const { room, hostConn, ids } = cookRoom(BANK, "chef");
       room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-q1", correct: true }), hostConn);
+      rollDish(room);
       expect((room as any).pendingRoll).toMatchObject({ kind: "dish", value: 1 }); // rng 0: a 1, ×0.1
       await vi.advanceTimersByTimeAsync(2000);
       expect(states(room).at(-1).reveal.dish).toMatchObject({ points: 1, dishBonus: -9, dishDie: 1, look: "burnt" });
@@ -5172,11 +5271,13 @@ describe("sort questions", () => {
     expect(lastSentTo(conns[0])).toMatchObject({ type: "ERROR", error: "invalid_action" });
   });
 
-  it("the right order rolls the dish die, then scores and reveals the order", () => {
+  it("the right order reveals the order, then rolls the dish die and scores", () => {
     const { room, conns } = sortGame();
     lockOrder(room, conns[0], RIGHT);
-    expect(lastBroadcast(room).stageBeat).toBe("dish-intro");
-    vi.advanceTimersByTime(2000);
+    // The order first, nothing scored; 🎲 擲料理骰 then rolls the dish die.
+    expect(lastBroadcast(room).reveal).toMatchObject({ dishNext: true, answer: "A → B → C → D", sorted: { items: ["A", "B", "C", "D"], teamId: T1, points: 0 } });
+    expect(room.game!.teams[0].reward).toBe(0);
+    rollDish(room);
     expect((room as any).pendingRoll).toMatchObject({ kind: "dish" });
     vi.advanceTimersByTime(2000);
     expect(room.game!.teams[0].reward).toBeGreaterThan(0);
@@ -5216,6 +5317,7 @@ describe("sort questions", () => {
     send(room, conns[0], { type: "TEAM_USE_ABILITY", questionId: "r0-s1" });
     expect((room as any).pendingRoll).toMatchObject({ kind: "warrior", value: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
+    rollDish(room);
     expect((room as any).pendingRoll).toMatchObject({ kind: "dish", warrior: 20 }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
     vi.advanceTimersByTime(2000);
     // pregate-literal: MAX_BOSS_HP=20 not the HP cap

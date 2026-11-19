@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { startGame, screenUrl, closeLeftoverContexts, openMore, rollDish } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -77,6 +77,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
     await expect(host.getByTestId("host-answer")).toHaveText("答案 buzz-p1", { timeout: 2_000 });
   }).toPass();
   await host.getByRole("button", { name: "答對！" }).click();
+  await rollDish(host); // a turn-based boss hit: its answer first, then the dish die
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByTestId("phase-card")).toContainText("最終決戰");
   await host.getByRole("button", { name: "下一題", exact: true }).click();

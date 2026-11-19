@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts, openMore, rollDish } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -68,8 +68,9 @@ test("thief: the sneak die rolls on the big screen as 偷襲 is pressed, and its
   await option(team, "綠色").click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  // Judged after the reveal beat, the dish intro and the dish die (2 s each).
+  // The answer after the reveal beat (2 s); judged once 🎲 擲料理骰 has rolled the dish die (2 s).
   await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 });
+  await rollDish(host);
   await expect(screen.getByText("🗡️ 偷襲就位！答對 ×1.5、首領 −2")).toHaveCount(0);
   await expect(hostChip).toHaveCount(0);
   await expect(team.getByText("盜賊・剩 2 次")).toBeVisible();

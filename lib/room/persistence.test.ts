@@ -122,8 +122,9 @@ describe("saving", () => {
     const storage = memoryStorage(log);
     const { room } = makeRoom(storage, {}, log);
     const { host, a } = startedGame(room);
-    // 答對 rolls the dish die first: the judgment lands when it does (class-dice-rework.md).
+    // 答對 opens the answer's reveal, and 🎲 擲料理骰 rolls the dish die: the judgment lands when it does (class-dice-rework.md).
     room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: T1, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: true }), host);
+    room.onMessage(JSON.stringify({ type: "HOST_NEXT", eventId: (room as unknown as { eventSeq: number }).eventSeq }), host);
     void a;
     log.length = 0;
     settleDish(room);
@@ -687,6 +688,31 @@ describe("restoring after a restart", () => {
     expect(lastOf(after, "STATE").question).not.toBeNull();
   });
 
+  // Value: protects=a restart under a correct answer's reveal, before its dish die, loses nothing and scores nothing twice
+  // (the reveal is memory only, like the die's beat); fails_when=the room comes back stuck on the pinned turn or with the
+  // answer half scored; seam=none; no_claim=real Durable Object storage (memory storage)
+  it("a restart under a correct answer's reveal, before its dish die, comes back unscored: the team answers again", async () => {
+    const storage = memoryStorage();
+    const first = makeRoom(storage);
+    const { host } = startedGame(first.room);
+    const q = lastOf(host, "HOST_ANSWER").questionId;
+    const onTurn = first.room.game!.turnOrder[first.room.game!.currentTurnIndex];
+    first.room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q, correct: true }), host);
+    expect((first.room as unknown as { reveal: { dishNext?: true } | null }).reveal?.dishNext).toBe(true);
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    expect(second.room.game!.teams.every((t) => t.score === 0)).toBe(true);
+    expect(currentTurnTeamId(second.room.game!)).toBe(onTurn);
+    expect(second.room.game!.teams.find((t) => t.id === onTurn)!.currentQuestionId).toBe(q);
+    const host2 = makeConn("host2");
+    send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
+    rejoin(second.room, T1, TEAM_KEY, "a-again");
+    rejoin(second.room, T2, TEAM_KEY + "2", "b-again");
+    send(second.room, host2, { type: "HOST_JUDGE", teamId: onTurn, questionId: q, correct: true });
+    expect(second.room.game!.teams.find((t) => t.id === onTurn)!.score).toBe(1);
+  });
+
   it("the event counter continues, so narration ids never repeat", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage);
@@ -705,7 +731,8 @@ describe("restoring after a restart", () => {
     const teamOnTurn = second.room.game!.turnOrder[second.room.game!.currentTurnIndex];
     send(second.room, host2, { type: "HOST_JUDGE", teamId: teamOnTurn, questionId: q.questionId, correct: true });
     const state = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).findLast((m) => m.type === "STATE");
-    expect(state.eventId).toBe(seq + 1);
+    // The answer's reveal says its line first (seq + 1), then the judgment narrates (seq + 2).
+    expect(state.eventId).toBe(seq + 2);
   });
 
   it("the multi-segment narration (lines[]) survives a restart and is replayed whole to a late connection", async () => {
@@ -896,7 +923,9 @@ describe("restoring after a restart", () => {
     expect(storage.data.get(SNAPSHOT_KEY)).not.toHaveProperty("bank");
     const before = keys.length;
     judgeCorrect(room, host, T1);
-    expect(keys.slice(before)).toEqual([SNAPSHOT_KEY]);
+    // The answer's reveal and the judgment after its dish die each save the room, never the bank.
+    expect(keys.slice(before).length).toBeGreaterThan(0);
+    expect(keys.slice(before).every((k) => k === SNAPSHOT_KEY)).toBe(true);
   });
 
   // Value: protects=a failed bank write is retried, not believed saved; fails_when=persist()'s failure path keeps
@@ -1097,6 +1126,9 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     const { room, io } = makeRoom(storage, { now: clock, epilogueDelayMs: 4000, holdMs: 5 });
     const { host } = startedGame(room);
     judgeCorrect(room, host, room.game!.turnOrder[0]);
+    // The line under the answer's reveal counts as read: these tests are about the podium's own clock.
+    const n = (room as unknown as { lastNarration: { lines: string[]; done: number } | null }).lastNarration;
+    if (n) n.done = n.lines.length;
     send(room, host, { type: "HOST_END_GAME" });
     return { room, io, host };
   }
@@ -1204,6 +1236,9 @@ describe("the podium reveal (podium-reveal.md eng D20)", () => {
     (room as unknown as { runner: { run: () => Promise<void> } }).runner.run = () => Promise.reject(new Error("boom"));
     const { host } = startedGame(room);
     judgeCorrect(room, host, room.game!.turnOrder[0]);
+    // The line under the answer's reveal counts as read: this test is about the podium's own clock.
+    const n = (room as unknown as { lastNarration: { lines: string[]; done: number } | null }).lastNarration;
+    if (n) n.done = n.lines.length;
     send(room, host, { type: "HOST_END_GAME" });
     await vi.waitFor(() => expect(lastState(io).podium.beats).not.toBeNull());
     const beats = lastState(io).podium.beats as Beat[];

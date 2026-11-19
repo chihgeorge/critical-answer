@@ -2,7 +2,7 @@
 // (docs/designs/timing-tap.md) on all three pages. YouTube is blocked everywhere: no real video loads, and the big
 // screen's player fails the way a blocked network does.
 import { test, expect, type APIRequestContext, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { startGame, screenUrl, closeLeftoverContexts, openMore, rollDish } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -74,6 +74,7 @@ async function intoBuzzerPhase(browser: Browser) {
     await expect(host.getByTestId("host-answer")).toHaveText("答案 pick-p1", { timeout: 2_000 });
   }).toPass();
   await host.getByRole("button", { name: "答對！" }).click();
+  await rollDish(host); // a turn-based boss hit: its answer first, then the dish die
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByTestId("phase-card")).toContainText("最終決戰");
   return { host, screen, a: phones[0], b: phones[1] };

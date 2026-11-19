@@ -388,7 +388,7 @@ export default function HostPage() {
               : msg.detail === "stale_game"
                 ? "剛才那句「下一句這樣說」是上一局打的，沒有排進這一局"
               : msg.detail === "reveal_pending"
-                ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : "下一題"}」`
+                ? `大螢幕正在揭曉，先按「${toServe ? "🍲 上菜" : toRoll ? "🎲 擲料理骰" : "下一題"}」`
                 : msg.detail === "late_closed"
                 ? "現在不能收這隊：首領戰開始了，或大螢幕還在開場、開門"
                 : msg.detail === "duplicate_name"
@@ -504,6 +504,9 @@ export default function HostPage() {
   // A dish reveal takes 🍲 上菜 first (monster-cuisine.md cooking R5); serving swaps it for 上菜中… then 下一題.
   const toServe = game?.phase === "playing" && !!game.reveal?.dish && !game.reveal.served;
   const servedUp = !!game?.reveal?.served;
+  // A correct answer's reveal comes before its dish die: 下一題's slot rolls it, and waits while it rolls.
+  const toRoll = game?.phase === "playing" && !!game.reveal?.dishNext;
+  const rolling = toRoll && !!game?.pendingRoll;
   // A manual room's hold (manual-pacing.md) is one more: ▶ 下一步 takes the slot, and each new hold arms it again.
   const hold = game?.hold;
   const pauseKey = hold ? `hold-${hold.id}` : game?.reveal ? `reveal-${game.eventId}${servedUp ? "-served" : ""}` : game?.phaseCard ? `card-${game.eventId}` : game?.fortune ? `fortune-${game.eventId}-${game.fortune.step}` : game?.forkBeat ? `fork-${game.eventId}` : game?.eventReveal ? `event-${game.eventId}` : game?.intro ? introPauseKey(game.intro.page) : buzz?.teamId ? `buzz-${buzz.teamId}-${game!.eventId}` : "";
@@ -654,7 +657,7 @@ export default function HostPage() {
         if (!ready || !lock) return;
         send({ type: "HOST_REVEAL", teamId: lock.teamId, questionId: lock.questionId });
       } else if (action === "next") {
-        if (!ready || !swapArmed) return;
+        if (!ready || !swapArmed || rolling) return;
         send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId });
       } else {
         if (!canJudge || !turn?.team || !turn.questionId) return;
@@ -752,8 +755,8 @@ export default function HostPage() {
           )}
         </Panel>
       )}
-      <PixelButton variant="ok" disabled={!ready || !swapArmed} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
-        {!connected ? "重新連線中" : toServe ? "🍲 上菜" : servedUp && !swapArmed ? `🍲 上菜中… ${serveSeconds}` : "下一題"}
+      <PixelButton variant="ok" disabled={!ready || !swapArmed || rolling} onClick={() => send({ type: toServe ? "HOST_SERVE" : "HOST_NEXT", eventId: game.eventId })}>
+        {!connected ? "重新連線中" : toServe ? "🍲 上菜" : rolling ? "🎲 擲料理骰中…" : toRoll ? "🎲 擲料理骰" : servedUp && !swapArmed ? `🍲 上菜中… ${serveSeconds}` : "下一題"}
         <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
       </PixelButton>
     </>

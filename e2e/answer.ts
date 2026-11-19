@@ -97,7 +97,8 @@ export async function answerCorrectly(host: Page) {
   await expect(judge.or(mcStatus)).toBeVisible();
   if (await judge.isVisible()) {
     await expect(judge).toBeEnabled();
-    return judge.click();
+    await judge.click();
+    return rollDish(host);
   }
   const answer = (await host.getByTestId("host-answer").textContent())!;
   const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
@@ -114,11 +115,27 @@ export async function answerCorrectly(host: Page) {
     await phone.getByRole("button", { name }).click();
     await phone.getByRole("button", { name: "鎖定答案" }).click();
     await revealLock(host);
-    // A right lock is judged after two beats: the reveal (2 s), then the dish die (2 s). Wait them out here, so
-    // callers see the judged state with their own default timeouts.
-    return expect(host.getByTestId("host-mc-status")).toHaveCount(0, { timeout: 10_000 });
+    // A right lock shows its answer after the lock's beat (2 s); 🎲 擲料理骰 then rolls the dish die (2 s), and only then is
+    // it judged. Wait them out here, so callers see the judged state with their own default timeouts.
+    await expect(host.getByTestId("host-mc-status")).toHaveCount(0, { timeout: 10_000 });
+    return rollDish(host);
   }
   throw new Error(`no phone in room ${code} is on turn`);
+}
+
+/** 🎲 擲料理骰: a correct answer's reveal shows the answer and its explanation first and waits for the host, then the dish
+ * die rolls (2 s) and the answer is scored. A no-op when no such reveal comes up (a wrong answer, a persuasion 20, the
+ * finishing blow, a buzz): it waits `ms` for the button. */
+export async function rollDish(host: Page, ms = 3000) {
+  const roll = host.getByRole("button", { name: /^🎲 擲料理骰/ });
+  try {
+    await roll.waitFor({ state: "visible", timeout: ms });
+  } catch {
+    return;
+  }
+  if (await roll.isEnabled()) await roll.click();
+  else await roll.click({ timeout: 5000 }).catch(() => {}); // a 擲料理骰中… that is already rolling
+  await expect(roll).toHaveCount(0, { timeout: 10_000 });
 }
 
 /** The host presses 公布答案 on the waiting lock (docs/designs/host-reveal.md): nothing is judged until then. */
@@ -137,6 +154,9 @@ export const NEXT_WAIT_MS = SERVE_HOLD_MS + 5_000;
 export async function serveDish(host: Page) {
   const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
   const next = host.getByRole("button", { name: "下一題", exact: true });
+  const roll = host.getByRole("button", { name: /^🎲 擲料理骰/ });
+  await expect(serve.or(next).or(roll)).toBeVisible();
+  if (await roll.isVisible()) await rollDish(host);
   await expect(serve.or(next)).toBeVisible();
   if (await serve.isVisible()) await serve.click();
 }
@@ -144,13 +164,16 @@ export async function serveDish(host: Page) {
 export async function nextQuestion(host: Page) {
   const serve = host.getByRole("button", { name: "🍲 上菜", exact: true });
   const next = host.getByRole("button", { name: "下一題", exact: true });
+  const roll = host.getByRole("button", { name: /^🎲 擲料理骰/ });
+  await expect(serve.or(next).or(roll)).toBeVisible();
+  if (await roll.isVisible()) await rollDish(host);
   await expect(serve.or(next)).toBeVisible();
   if (await serve.isVisible()) await serve.click();
   await next.click({ timeout: NEXT_WAIT_MS });
 }
 
 /** What a raw host socket keeps from the room's STATE messages, enough to judge every turn. */
-export type HostState = { type: string; phase: string; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
+export type HostState = { type: string; phase: string; hold?: { id: number }; podium?: { step?: number; beats: unknown[] | null }; eventId: number; pendingRoll?: unknown; reveal?: { dish?: { room: number | null; monster: { name: string } }; served?: true; dishNext?: true } | null; view: { bossCurrentQuestionId: string; teams: { id: string; inBossPhase: boolean; currentQuestionId: string }[] } };
 
 /** Over a raw host socket, judges a one-team game correct turn after turn until it finishes (the boss kill, after its dice).
  * `onTurn` runs before each judge, e.g. to check the screen once the boss door opens. */
@@ -158,6 +181,11 @@ export async function judgeToTheEnd(host: WebSocket, cur: () => HostState, onTur
   for (let i = 0; i < 200 && cur().phase === "playing"; i++) {
     await onTurn?.(cur().view.teams[0]);
     const before = cur().eventId;
+    // A correct answer's reveal waits for 🎲 擲料理骰 (HOST_NEXT): its die lands, then the scored reveal replaces it.
+    if (cur().reveal?.dishNext) {
+      host.send(JSON.stringify({ type: "HOST_NEXT", eventId: cur().eventId }));
+      await expect.poll(() => !!cur().reveal?.dishNext, { timeout: JUDGE_LANDS_MS }).toBe(false);
+    }
     // Close the previous answer reveal (D7); no-op if none. A cooked monster is served first, and 下一題 waits out its cooking.
     if (cur().reveal?.dish && !cur().reveal?.served) {
       host.send(JSON.stringify({ type: "HOST_SERVE", eventId: cur().eventId }));

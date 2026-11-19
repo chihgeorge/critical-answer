@@ -66,6 +66,8 @@ type S = ReturnType<typeof setup>;
 /** ▶ 下一步 on the hold the last STATE showed. */
 /** ▶ 下一步, unsettled: a step that starts the dish die leaves it in its beat (the next step lands it). */
 const step = (s: S) => s.room.onMessage(JSON.stringify({ type: "HOST_STEP", eventId: state(s.room).eventId, step: state(s.room).hold.id }), s.host);
+/** 🎲 擲料理骰: the host's HOST_NEXT under a correct answer's reveal rolls its dish die (not landed, unlike `send`). */
+const roll = (s: S) => s.room.onMessage(JSON.stringify({ type: "HOST_NEXT", eventId: state(s.room).eventId }), s.host);
 const pacing = (s: S, mode: "auto" | "manual") => send(s.room, s.host, { type: "HOST_PACING", mode });
 
 /** The host judges team `i` right, then 上菜 and 下一題 (the cooking's hold skipped). */
@@ -106,11 +108,15 @@ describe("手動停頓: the switch", () => {
     lockAndReveal(s, true);
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(BEAT_MS);
-    expect(state(s.room).stageBeat).toBe("dish-intro");
-    vi.advanceTimersByTime(BEAT_MS);
+    // The answer and its explanation first: the reveal waits for the host's 🎲 擲料理骰, in auto too.
+    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
+    vi.advanceTimersByTime(LONG);
+    expect(state(s.room).pendingRoll).toBeNull();
+    roll(s);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
     vi.advanceTimersByTime(BEAT_MS);
-    expect(state(s.room).reveal).not.toBeNull();
+    expect(state(s.room).reveal).toMatchObject({ scored: { teamId: T1 } });
+    expect(state(s.room).reveal.dishNext).toBeUndefined();
     expect(state(s.room).pacing).toBeUndefined();
   });
 
@@ -137,13 +143,17 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
-    expect(state(s.room)).toMatchObject({ stageBeat: "dish-intro", hold: { kind: "dish-intro" }, pendingRoll: null });
-    step(s);
-    expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: { kind: "dish" }, hold: { kind: "roll" }, reveal: null });
+    // The answer's reveal is not a step: it waits for 🎲 擲料理骰, then the die's beat is one.
+    expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: null, reveal: { dishNext: true } });
+    expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(LONG);
-    expect(state(s.room).reveal).toBeNull();
+    expect(state(s.room).pendingRoll).toBeNull();
+    roll(s);
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "dish" }, hold: { kind: "roll" }, reveal: { dishNext: true } });
+    vi.advanceTimersByTime(LONG);
+    expect(state(s.room).reveal.scored).toBeUndefined();
     step(s);
-    expect(state(s.room).reveal).not.toBeNull();
+    expect(state(s.room).reveal).toMatchObject({ scored: { teamId: T1 } });
     expect(state(s.room).hold).toBeUndefined();
   });
 
@@ -155,9 +165,14 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     press(eventId - 1, hold.id);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     press(eventId, hold.id);
-    press(eventId, hold.id); // the double press: the die's step has another id
-    expect(state(s.room)).toMatchObject({ stageBeat: "dish-intro", pendingRoll: null, reveal: null });
+    press(eventId, hold.id); // the double press: no step is up under the answer's reveal
+    expect(state(s.room)).toMatchObject({ pendingRoll: null, reveal: { dishNext: true } });
+    expect(state(s.room).hold).toBeUndefined();
+    roll(s);
+    roll(s); // 🎲 擲料理骰 pressed twice rolls one die
     expect(state(s.room).hold.id).not.toBe(hold.id);
+    step(s);
+    expect(state(s.room)).toMatchObject({ pendingRoll: null, reveal: { scored: { teamId: T1 } } });
   });
 
   it("a boss miss's red tile, and the phase card two misses bring", async () => {
@@ -267,8 +282,8 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(BEAT_MS - 1);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     vi.advanceTimersByTime(1);
-    expect(state(s.room).stageBeat).toBe("dish-intro");
-    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
+    roll(s);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
   });
 
@@ -323,7 +338,7 @@ describe("手動停頓: switching with a pause up", () => {
     vi.advanceTimersByTime(LONG);
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     step(s);
-    step(s);
+    roll(s);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
 
     const f = setup({ manual: false });
@@ -343,8 +358,8 @@ describe("手動停頓: review cases (2026-11-09)", () => {
     send(s.room, s.host, { type: "HOST_STEP", eventId: state(s.room).eventId, step: id });
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
     vi.advanceTimersByTime(BEAT_MS);
-    expect(state(s.room).stageBeat).toBe("dish-intro");
-    vi.advanceTimersByTime(BEAT_MS);
+    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
+    roll(s);
     expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
   });
 
@@ -574,10 +589,10 @@ describe("host-controlled turns and awards (#366)", () => {
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     expect(state(s.room).pendingLock).toBeTruthy();
     step(s);
-    skip(); // the dish intro (#364) holds the turn too
-    expect(state(s.room).stageBeat).toBe("dish-intro");
+    skip(); // the answer's reveal before its dish die holds the turn too
+    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
-    step(s);
+    roll(s);
     skip();
     expect(state(s.room).pendingRoll).toBeTruthy();
     step(s);
