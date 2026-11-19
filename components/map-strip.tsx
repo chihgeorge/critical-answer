@@ -7,18 +7,17 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { FogReveal } from "@/lib/ambience";
 import type { SpectatorView } from "@/lib/game-state";
 import { layoutMap, nameTags, PAWN, BOSS_SPRITE, CORRIDOR, DOOR_W, type Pawn } from "@/lib/map-layout";
-import { LabelChip, Sprite, useClassicArt } from "@/components/pixel";
+import { LabelChip, Sprite } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
 import { SPRITE_SIZE, type SceneTheme } from "@/lib/pixel-art";
 import { roomTheme } from "@/lib/turn-info";
 
-const ROOM_STYLE = { background: "#7a6496", boxShadow: "inset 0 -5px 0 #5d4a79, inset 0 4px 0 #9a84b8" };
 // The boss room in the boss's wine (--boss, #320), one step lighter so the HP bar reads on it.
 const BOSS_STYLE = { background: "#7a2238", boxShadow: "inset 0 -6px 0 #561629, inset 0 4px 0 #a0384f" };
 /** The torch-lit look (dungeon-scene C): the strip is a cross-section of black rock, each reached room lit in its own
  * biome's stone, the unreached rest of the way solid dark (no clouds, nothing that counts rooms: D8). */
 const ROCK = { strip: "#1c1438", fog: "#0b0718", fogOpen: "#150f2e", corridor: "#2a2050" };
-const LIT: Record<SceneTheme, typeof ROOM_STYLE> = {
+const LIT: Record<SceneTheme, typeof BOSS_STYLE> = {
   stone: { background: "#6f61ab", boxShadow: "inset 0 -5px 0 #4c4186, inset 0 4px 0 #8a7cc4" },
   moss: { background: "#4f8a6e", boxShadow: "inset 0 -5px 0 #35604f, inset 0 4px 0 #6aa888" },
   deep: { background: "#56648c", boxShadow: "inset 0 -5px 0 #3a4768, inset 0 4px 0 #7080a8" },
@@ -32,7 +31,6 @@ export const FogRevealContext = createContext<FogReveal | null>(null);
 
 export function MapStrip({ view }: { view: SpectatorView }) {
   const fogReveal = useContext(FogRevealContext);
-  const classic = useClassicArt();
   const ref = useRef<HTMLDivElement>(null);
   const [budget, setBudget] = useState(0);
   useEffect(() => {
@@ -95,8 +93,8 @@ export function MapStrip({ view }: { view: SpectatorView }) {
   };
 
   // Rooms carry no number (the host asked for none); only the stub is labelled "…" so folded rooms still read as more.
-  // The fog reveal (immersion.md PR3): its clouds sit inside the room box, so the pawns drawn after it stay on top, and a
-  // clipping wrapper keeps the sliding clouds out of the corridor. Lit: one brightness pulse once the clouds clear;
+  // The fog reveal (immersion.md PR3): its dark sits inside the room box, so the pawns drawn after it stay on top, and a
+  // clipping wrapper keeps the sliding dark out of the corridor. Lit: one brightness pulse once the dark clears;
   // otherwise (budget or reduced motion) the room is brighter, without motion, until the reveal ends.
   const room = (x: number, w: number, id: string, label?: string, reveal?: FogReveal, index = 0) => (
     <div
@@ -104,19 +102,12 @@ export function MapStrip({ view }: { view: SpectatorView }) {
       data-testid={reveal ? "fog-reveal" : undefined}
       data-step={reveal?.step}
       className={`absolute border-4${reveal?.step === "blow" && reveal.lit ? " px-room-lit" : ""}`}
-      style={{ ...(classic ? ROOM_STYLE : LIT[roomTheme(index, false)]), left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)", ...(reveal?.step === "blow" && !reveal.lit ? { filter: "brightness(1.3)" } : {}) }}
+      style={{ ...LIT[roomTheme(index)], left: x, width: w, top: ROOM_BOX.top, height: ROOM_BOX.h, borderColor: "var(--k)", ...(reveal?.step === "blow" && !reveal.lit ? { filter: "brightness(1.3)" } : {}) }}
     >
       {reveal && (
         <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
-          {classic ? (
-            /* The fog's own two cloud rows (top 4 and 30 of the strip's fog), inside the box's 4px border. */
-            [0, 26].map((top, k) => (
-              <Sprite key={k} kind="cloud" scale={2} className={`px-fog-cloud absolute${reveal.step === "blow" ? " px-fog-blow" : ""}`} style={{ left: k ? Math.max(0, w - 44) : 0, top }} />
-            ))
-          ) : (
-            /* The dark of the unreached rock still over the whole room, sliding off the way the clouds did. */
-            <div className={`px-fog-cloud absolute inset-0${reveal.step === "blow" ? " px-fog-blow" : ""}`} style={{ background: ROCK.fog }} />
-          )}
+          {/* The dark of the unreached rock still over the whole room, sliding off. */}
+          <div className={`px-fog-cloud absolute inset-0${reveal.step === "blow" ? " px-fog-blow" : ""}`} style={{ background: ROCK.fog }} />
         </div>
       )}
       {label && (
@@ -126,26 +117,16 @@ export function MapStrip({ view }: { view: SpectatorView }) {
       )}
     </div>
   );
-  const corridor = (x: number) => <div key={`cor-${x}`} className="absolute border-y-4" style={{ left: x, width: CORRIDOR, top: 40, height: 14, background: classic ? "#5d4a79" : ROCK.corridor, borderColor: "var(--k)" }} />;
+  const corridor = (x: number) => <div key={`cor-${x}`} className="absolute border-y-4" style={{ left: x, width: CORRIDOR, top: 40, height: 14, background: ROCK.corridor, borderColor: "var(--k)" }} />;
 
-  const fill = Math.max(1, Math.floor(map.fog.w / 30));
-  const clouds = map.boss.open ? Math.max(1, Math.floor(fill / 2)) : fill; // D16: the fog thins once the door opens
   return (
-    <div ref={ref} data-testid="map-strip" className="relative min-w-0 flex-1" style={{ height: 82, marginTop: -16, ...(classic ? {} : { background: ROCK.strip, boxShadow: "0 0 0 4px var(--k)" }) }}>
+    <div ref={ref} data-testid="map-strip" className="relative min-w-0 flex-1" style={{ height: 82, marginTop: -16, background: ROCK.strip, boxShadow: "0 0 0 4px var(--k)" }}>
       {budget > 0 && (
         <>
           {map.stub && [room(map.stub.x, map.stub.w, "stub", "…", undefined, (map.rooms[0]?.index ?? 1) - 1), corridor(map.stub.x + map.stub.w)]}
           {map.rooms.map((r) => [room(r.x, r.w, String(r.index), undefined, fogReveal?.room === r.index ? fogReveal : undefined, r.index), corridor(r.x + r.w)])}
-          {classic ? (
-            <div className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 14, height: 66 }}>
-              {Array.from({ length: clouds }, (_, k) => (
-                <Sprite key={k} kind="cloud" scale={2} className={`absolute ${k % 2 ? "px-drift2" : "px-drift"}`} style={{ left: Math.round((k * (map.fog.w - 36)) / Math.max(1, clouds - 1)), top: k % 2 ? 30 : 4 }} />
-              ))}
-            </div>
-          ) : (
-            // D16 in the dark: the unreached rock lifts one step once the boss door opens.
-            <div data-testid="map-dark" className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 0, bottom: 0, background: map.boss.open ? ROCK.fogOpen : ROCK.fog }} />
-          )}
+          {/* D16 in the dark: the unreached rock lifts one step once the boss door opens. */}
+          <div data-testid="map-dark" className="absolute" style={{ left: map.fog.x, width: map.fog.w, top: 0, bottom: 0, background: map.boss.open ? ROCK.fogOpen : ROCK.fog }} />
           {map.boss.open ? (
             <div key="boss-open" data-testid="boss-room" className="absolute border-4" style={{ ...BOSS_STYLE, left: map.boss.x, width: map.boss.w, top: BOSS_BOX.top, height: BOSS_BOX.h, borderColor: "var(--k)" }}>
               {/* This game's boss (#367), centred in the BOSS_SPRITE slot (a 52px boss reaches 4px past it, into the first pawn tag's empty margin) and on the box's 64px inner floor. */}

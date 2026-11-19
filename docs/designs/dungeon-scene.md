@@ -24,6 +24,5 @@ Status: shipped in one PR (v0.81). Source: the 2026-11-16 art research (local-on
 
 ## Not done / follow-ups
 
-- Not seen on the event TV or projector. If the darks crush, open the screen with `?art=classic`, or set `DUNGEON_ART = false`.
-- Phones and the host page use the torch-lit palette of the team's biome (ambient only, no torch light); `?art=classic` covers the big screen only, and `DUNGEON_ART = false` reverts them too.
-- After the event, keep one look and delete the other path (TODOS.md).
+- Phones and the host page use the torch-lit palette of the team's biome (ambient only, no torch light).
+- The old look and its revert switches (`DUNGEON_ART`, `?art=classic`, decisions 1 and 8) were deleted in #281; the 🌑 floor in decision 2 is now pinned by numbers in `lib/scene.test.ts`.
