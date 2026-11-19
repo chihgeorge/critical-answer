@@ -148,7 +148,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   const gone = (q && game.view.eliminated?.[q.id]) ?? [];
   // Which question this phone's mage press was for and how many options were out before it: the bar counts the rest.
   const [cast, setCast] = useState<{ qid: string; eventId: number; before: number } | null>(null);
-  const ready = !!me && me.abilityUses > 0 && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
+  // A 偷襲 whose die never landed (a restart cut its beat) rolls again for free (startSneak), even on the last use.
+  const unrolledSneak = me?.classId === "thief" && !!q && me.sneakTry?.questionId === q.id && me.sneakTry.value === undefined;
+  const ready = !!me && (me.abilityUses > 0 || unrolledSneak) && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
   const button = (icon: string, label: string, sub: string, background: string, onClick: () => void) => (
     <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background }} onClick={onClick}>
       {icon} {label}

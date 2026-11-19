@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BUZZ_REOPEN_LINE, createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, PRAYER_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { BUZZ_REOPEN_LINE, createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_LINE, MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 import * as scripted from "./scripted";
@@ -61,12 +61,17 @@ describe("scripted lines", () => {
     expect(BOSS_MISS_VARIANTS.length).toBeGreaterThanOrEqual(4);
   });
 
-  // Value: protects=a prayed miss gets its own line, never the retry pool's 「下一輪」 (owner, 2026-11-09)
-  it("a cleric's prayer gets a prayer line, never a next-round one", () => {
+  // Value: protects=a prayed miss never repeats the prayer die's 「再答」 line (owner, #416) nor says 「下一輪」 (owner, 2026-11-09);
+  // fails_when=the retry line after a stood prayer says 再答 / 祈禱 / 聖光, or the event gets a second line
+  it("a cleric's prayer retry says one atmosphere line, never answer-again or next-round", () => {
     const p = createScriptedProvider(lcg(4));
-    const prayer = new Set(PRAYER_VARIANTS.map((t) => t.replace("{team}", team)));
-    for (let i = 0; i < 10; i++) expect(prayer.has(p.line({ type: "retry", team, monster, prayed: true }))).toBe(true);
-    for (const l of PRAYER_VARIANTS) expect(l).not.toContain("下一輪");
+    const atm = new Set(ATMOSPHERE_VARIANTS.retry.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
+    for (let i = 0; i < 10; i++) {
+      const l = p.line({ type: "retry", team, monster, prayed: true });
+      expect(atm.has(l)).toBe(true);
+      expect(l).not.toMatch(/再答|祈禱|聖光|下一輪/);
+    }
+    expect(targetSegmentCount({ type: "retry", team, monster, prayed: true })).toBe(1);
     // In the boss room the prayer brings a new question: the boss-miss line says so.
     const boss = new Set(BOSS_MISS_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
     expect(boss.has(p.line({ type: "retry", team, monster, prayed: true, boss: true }))).toBe(true);

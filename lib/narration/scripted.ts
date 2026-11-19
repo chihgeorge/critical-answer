@@ -413,8 +413,6 @@ export const FLEE_SWITCH_VARIANTS = [
   "{team}換個對手，這回對上{to}。",
 ];
 
-/** A cleric's prayer on a miss: the team answers again now, keeping the turn, so never "next round". */
-export const PRAYER_VARIANTS = ["聖光降臨，{team}再答一次！", "{team}的祈禱得到回應，馬上再答一次！", "一道聖光落下，{team}重整旗鼓，現在再答！"];
 
 // The dice lines the owner approved (2026-11-19), one pool per skill tier: [1, 2–6, 7–19, 20] (skillTier). A class die's
 // line plays as the die lands (dieLine); the warrior's and the dish die's replace the answer's line (line / plainLine).
@@ -647,7 +645,8 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "flee" && event.caught) return fill(pick(CAUGHT_VARIANTS, "caught"), event);
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
-      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(PRAYER_VARIANTS, "prayer"), event);
+      // The prayer die's line already said the team answers again (owner, #416): only a beat of atmosphere, never 「下一輪」.
+      if (event.type === "retry" && event.prayed && !event.boss) return fill(pick(ATMOSPHERE_VARIANTS.retry, "atm-retry"), event);
       if (event.type === "retry" && event.boss) return fill(pick(BOSS_MISS_VARIANTS, "boss-miss"), event);
       if (event.type === "retry" && event.buzzSecond) return fill(pick(BUZZ_SECOND_VARIANTS, "buzz-second"), event);
       if (event.type === "retry" && event.buzzAgain) return fill(pick(BUZZ_AGAIN_VARIANTS, "buzz-again"), event);

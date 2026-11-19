@@ -97,20 +97,21 @@ describe("🧪 lucky potion in the room", () => {
     expect(g.room.game!.teams[0].potionsDrunk).toBe(1);
   });
 
-  // Value: protects=a non-chef dish 2–6 is no bad die, so the potion never "saves" it, while a chef's 2–6 still is
-  // (dishTier); fails_when=sayPotion judges the dish die by skillTier again or reads the wrong team's class
-  it("a potion dish of [3, 18] says the saved line for a chef only", async () => {
-    const saved = async (classes: (string | null)[]) => {
+  // Value: protects=a dish 2–6 pays ×1 for everyone, so the potion never "saves" it; only a burnt 1 is a bad dish die
+  // (#418); fails_when=sayPotion judges the dish die by skillTier again
+  it("a potion dish says the saved line only when the low die burnt", async () => {
+    const saved = async (classes: (string | null)[], low: number) => {
       const g = started(mc("m1"), classes);
       g.give(A);
       g.drink();
-      g.dice.push(3, 18);
+      g.dice.push(low, 18);
       g.lockRight();
       await vi.advanceTimersByTimeAsync(10_000);
       return /還好有喝|一顆失敗，一顆成功|藥水發威/.test(JSON.stringify(g.all())); // POTION_VARIANTS.saved
     };
-    expect(await saved([null, null])).toBe(false);
-    expect(await saved(["chef", null])).toBe(true);
+    expect(await saved([null, null], 3)).toBe(false);
+    expect(await saved(["chef", null], 3)).toBe(false);
+    expect(await saved([null, null], 1)).toBe(true);
   });
 
   it("a dish die without the potion stays one die", () => {
