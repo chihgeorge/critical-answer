@@ -17,11 +17,12 @@ export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script:
     script: "每一隊輪流出場，輪到哪一隊大螢幕上方會寫。選擇題點選後按「鎖定答案」；一般房填空題先擲說服檢定，再打字送出，由我來判對錯。",
   },
   ...DICE_PAGES,
+  // Page 4 names one 逃跑, never 同房／換房: the single flee (#413) only rewords its 「換一題簡單一點的」 here and in Picture.
   {
     topic: "答錯與怎麼贏",
     big: "答錯可以下輪再答或逃跑；分數最高的隊伍是冠軍",
     owl: "答錯別慌！準備好了嗎？主持人再按一次 ▶，冒險開始！",
-    script: "答錯可以下輪再答（先換下一隊），或逃跑換一隻怪物，換一題簡單一點的。打倒首領冒險就結束，但最後看分數，最高的隊伍才是冠軍。",
+    script: "答錯可以下輪再答（先換下一隊），或逃跑換一題簡單一點的。打倒首領冒險就結束，但最後看分數，最高的隊伍才是冠軍。",
   },
 ];
 
@@ -129,7 +130,7 @@ function Picture({ page }: { page: number }) {
         <div className="text-[22px]" style={{ color: "var(--danger)" }}>✕ 答錯</div>
         <div className="flex gap-10 text-[16px]">
           <div className="flex flex-col items-center gap-1">{miniBtn("var(--warn)", "下輪再答", 130)}先換下一隊</div>
-          <div className="flex flex-col items-center gap-1">{miniBtn("var(--lav)", "逃跑", 130)}換一隻怪，換簡單題</div>
+          <div className="flex flex-col items-center gap-1">{miniBtn("var(--lav)", "逃跑", 130)}換一題簡單一點的</div>
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-[16px]">
