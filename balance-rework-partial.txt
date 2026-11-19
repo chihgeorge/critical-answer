@@ -1,6 +1,0 @@
-Class-dice rework coarse grid, 10,000 games each (+-~0.9). Stopped for the handoff. See HANDOFF.md.
-base_ev      (current show-crit, PGIVE=0.1, event)    thief=29.4 chef=27.6 cleric=26.7 warrior=26.3 mage=25.8 gap=3.6
-base_a1      (current show-crit, PGIVE=0.1, default)  thief=28.7 chef=27.3 cleric=28.1 warrior=26.0 mage=25.5 gap=3.2
-r_ev_1.3_1   (REWORK HIDECRIT PGIVE=0.1 CHEFPOTN=1 sneak 1.3, event)   thief=24.2 chef=28.3 cleric=27.1 warrior=28.3 mage=27.6 gap=4.1
-r_a1_1.3_1   (same, default)                                           thief=23.4 chef=28.5 cleric=28.7 warrior=28.3 mage=26.4 gap=5.3
-Not finished: sneak 1.4 / 1.5, CHEFPOTN=3.

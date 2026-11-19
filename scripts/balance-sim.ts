@@ -6,7 +6,7 @@
 //   letter-count hint cracks WEAK of the unknown fill-ins, a whole answer or order all of them.
 // - TEXT of the questions are fill-in (persuasion check first), SORT are sort questions, the rest multipleChoice.
 // - A correct answer may lead to a fork (EVENT_CHANCE); the unmarked doors are ⚔️ or ❓ half and half, and the room ⚔️
-//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room picks 逃跑・同房 or 逃跑・換房 half and half.
+//   led to rolls no fork. ❓ opens an event (a fortune's effect is picked at random). A team that flees outside the boss room takes 逃跑・換房 (FLEESAME=0.5: 逃跑・同房 half the time, the rule before 2026-11-18).
 // - The boss has two phases: a turn-based one (HP1 hearts), then a buzzer phase (HP2) with no abilities.
 // - A team knows a question or not, for good (KNOW by difficulty; fill-in ×TEXTK). A first-letter hint cracks HINT of the
 //   unknown fill-ins. Unknown multipleChoice guesses among the options left; an unknown fill-in flees.
@@ -43,9 +43,15 @@ registerHooks({
   // LIB="NAME=value;NAME2=[1,2]": rewrite `export const NAME = ...;` in lib/game-state.ts for a what-if sweep (no lib change).
   load(url, ctx, next) {
     const r = next(url, ctx);
-    if (!process.env.LIB || !url.endsWith("/lib/game-state.ts")) return r;
+    if (!url.endsWith("/lib/game-state.ts") || !(process.env.LIB || process.env.REWORK === "1")) return r;
     let src = String(r.source);
-    for (const kv of process.env.LIB.split(";").filter(Boolean)) {
+    // REWORK: the finishing blow is a plain 4d20, no sneak multiplier (owner, 2026-11-18).
+    if (process.env.REWORK === "1") {
+      const kill = "sneakPay(kill.reduce((a, b) => a + b, 0))";
+      if (!src.includes(kill)) throw new Error("REWORK: kill bonus line not found in lib");
+      src = src.replace(kill, "kill.reduce((a, b) => a + b, 0)");
+    }
+    for (const kv of (process.env.LIB ?? "").split(";").filter(Boolean)) {
       const [k, v] = kv.split("=");
       const re = new RegExp(`export const ${k}(: [^=]+)? = [^;]+;`);
       if (!re.test(src)) throw new Error(`LIB: no const ${k}`);
@@ -83,16 +89,27 @@ if (BOSSD) for (const b of boss) bossDifficulties[b] = BOSSD as GT.Difficulty;
 let songAt = 0;
 for (const [d, n] of (process.env.BUZZD ?? "").split(",").filter(Boolean).map((x) => x.split(":").map(Number)))
   for (let j = 0; j < n && songAt < songs.length; j++) bossDifficulties[songs[songAt++]] = d as GT.Difficulty;
-const HIDECRIT = process.env.HIDECRIT === "1", HIDEDIE = process.env.HIDEDIE === "1", CHEFFIX = env("CHEFFIX", 0), NODIE = process.env.NODIE === "1";
+const HIDECRIT = process.env.HIDECRIT === "1" || process.env.REWORK === "1", HIDEDIE = process.env.HIDEDIE === "1", CHEFFIX = env("CHEFFIX", 0), NODIE = process.env.NODIE === "1";
 // REWORK=1 (class-dice rework what-if, implies no crit die): the thief rolls its sneak die when it arms (1 spent, 2–6 not armed
 // and kept, 7–19 / 20 armed and read at the judgment); the chef rolls a dish die on every correct answer; a potion may go on
 // the warrior's roll, the sneak die or a dish die too. CHEFPOTN: dish rolls one potion covers (best of 2 each).
+// CHEFPOT=up: a potion raises one dish a tier instead (1 → 2–6 → 7–19 → 20). The kill's 4d20 is plain (load hook above).
 // PGIVE: chance per own turn that the host hands a team with no potion one.
-const REWORK = process.env.REWORK === "1", CHEFPOTN = env("CHEFPOTN", 1), PGIVE = env("PGIVE", 0);
+const REWORK = process.env.REWORK === "1", CHEFPOTN = env("CHEFPOTN", 1), PGIVE = env("PGIVE", 0), CHEFUP = process.env.CHEFPOT === "up";
 const AC = process.env.AC === "1", ORACLEP = env("ORACLEP", 1), ORACLE_MIN = env("ORACLE_MIN", 3), AIOK = env("AIOK", 0.9);
 const CHEATBOSS = process.env.CHEATBOSS !== "0", CHEATERS = env("CHEATERS", 0), CHEAT = env("CHEAT", 0.5), SPOT = env("SPOT", 0.3), FALSE = env("FALSE", 0);
 // CATCH_PAY is a const in lib; the sim overrides it in place for a sweep.
 for (const k of Object.keys(G.CATCH_PAY)) if (process.env[k.toUpperCase()]) (G.CATCH_PAY as Record<string, number>)[k] = Number(process.env[k.toUpperCase()]);
+// TEAMS=n teams a game (default 4; over 6 picks classes with repeats), CHEFS=k forces the first k to be chefs.
+// DISHALL=1 (what-if "everyone rolls the dish die"): a non-chef's correct turn-based answer rolls a d20 too, a 20 adds half its gain.
+// FLEESAME: share of room flees that are 逃跑・同房. 0 = the owner's 2026-11-18 rule (only 逃跑・換房 outside the boss room); 0.5 = the rule before.
+const FLEESAME = env("FLEESAME", 0);
+const TEAMS = env("TEAMS", 4), CHEFS = env("CHEFS", 0), DISHALL = process.env.DISHALL === "1";
+// What-if chef abilities: CHEFADV=1 the chef always rolls one more dish die and keeps the highest; CHEFSTEAL see settle.
+const CHEFADV = process.env.CHEFADV === "1", CHEFSTEAL = env("CHEFSTEAL", 0);
+// Dish-die counts of the game being played: every correct turn-based answer (a roll if everyone rolled), each chef team's rolls and 20s.
+let dishAll = 0;
+const chefRolls = new Map<string, [number, number]>();
 type Tag = { oracle: boolean; cheater: boolean };
 
 function play(classes: C[], tags: Tag[], maxTurns = 600) {
@@ -157,6 +174,13 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     const L = latent.get(key)!;
     const settle = (r: { game: GT.GameState; outcome: GT.AnswerOutcome }, ok: boolean) => {
       g = r.game;
+      if (ok) dishAll++;
+      if (ok && DISHALL && team().classId !== "chef" && "reward" in r.outcome) {
+        const v = d20(), gain = (r.outcome as { reward: number }).reward;
+        if (v === 20) g = { ...g, teams: g.teams.map((x) => (x.id === id ? { ...x, reward: x.reward + Math.round(gain * 0.5) } : x)) };
+        // CHEFSTEAL=x: another team's burnt dish (a 1) pays every chef team x of that answer's gain ("the chef rescues the dish").
+        if (v === 1 && CHEFSTEAL) g = { ...g, teams: g.teams.map((x) => (x.classId === "chef" ? { ...x, reward: x.reward + Math.round(gain * CHEFSTEAL) } : x)) };
+      }
       if (ok && EVENTS && !afterMonster && G.eventEligible(g, r.outcome) && R() < G.EVENT_CHANCE) g = G.enterFork(g, id);
     };
     // A held potion (a fortune's) goes on the next check, mage or prayer die, or the crit die of an answer the team knows.
@@ -164,9 +188,12 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // A fill-in's answer die: rolled for a chef or an armed thief (never with a potion).
     // NODIE=1 (what-if, local): no answer die at all; the chef reads CHEFFIX, an armed thief gets the plain sneak.
     // The chef's dish die: a potion covers CHEFPOTN rolls (best of 2 each).
-    const dishRoll = () => {
+    const dishRoll = () => { const v = dishRoll0(), c = chefRolls.get(id) ?? [0, 0]; chefRolls.set(id, [c[0] + 1, c[1] + (v === 20 ? 1 : 0)]); return v; };
+    const dishRoll0 = () => (CHEFADV ? Math.max(dishRoll1(), d20()) : dishRoll1());
+    const dishRoll1 = () => {
       const left = chefBoost.get(id) ?? 0;
       if (left > 0) { chefBoost.set(id, left - 1); return Math.max(d20(), d20()); }
+      if (team().item && CHEFUP) { g = G.spendPotion(G.drinkPotion(g, id), id); return [2, 7, 20, 20][G.skillTier(d20())]; }
       if (team().item) { chefBoost.set(id, CHEFPOTN - 1); return potionRoll(); }
       return d20();
     };
@@ -241,7 +268,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
     // A prayer keeps the turn: multipleChoice retries with a wrong tile gone; a fill-in it cannot crack flees to a new one.
     if (cleric && G.canPray(g, id)) g = G.prayerRoll(G.pray(g, id), id, potionRoll());
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
-    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
+    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < FLEESAME ? "flee" : "switch") : "retry", R).game;
   }
   return g;
 }
@@ -251,13 +278,18 @@ const CLASSES: (GT.ClassId | "none")[] = ["mage", "cleric", "warrior", "thief", 
 const shuffle = <T,>(a: T[]) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 const stats = new Map<string, { sum: number; wins: number; n: number; left: number; turns: number }>();
 let unfinished = 0;
+const dish = { games: 0, all: 0, allAny: 0, chefGames: 0, chefTeams: 0, rolls: 0, tw: 0, any: 0, teamAny: 0 };
 for (let i = 0; i < N; i++) {
   // 4 teams: shuffle 4 of the 6 options, so every class meets every other.
-  const lineup = shuffle([...CLASSES]).slice(0, 4);
-  const cheaters = new Set(shuffle([0, 1, 2, 3]).slice(0, CHEATERS));
+  const lineup = TEAMS <= 6 && !CHEFS ? shuffle([...CLASSES]).slice(0, TEAMS) : Array.from({ length: TEAMS }, (_, k) => (k < CHEFS ? "chef" : CLASSES[Math.floor(R() * CLASSES.length)]));
+  const cheaters = new Set(shuffle(lineup.map((_, k) => k)).slice(0, CHEATERS));
+  dishAll = 0; chefRolls.clear();
   const tags = lineup.map((_, k) => ({ oracle: R() < ORACLEP, cheater: cheaters.has(k) }));
   const g = play(lineup.map((c) => (c === "none" ? undefined : c)), tags);
   if (g.phase !== "finished") unfinished++;
+  dish.games++; dish.all += dishAll; dish.allAny += 1 - 0.95 ** dishAll;
+  const chefs = lineup.filter((c) => c === "chef").length;
+  if (chefs) { const v = [...chefRolls.values()]; dish.chefGames++; dish.chefTeams += chefs; dish.rolls += v.reduce((a, x) => a + x[0], 0); dish.tw += v.reduce((a, x) => a + x[1], 0); dish.teamAny += v.filter((x) => x[1]).length; if (v.some((x) => x[1])) dish.any++; }
   const max = Math.max(...g.teams.map((t) => t.reward));
   g.teams.forEach((t, k) => {
     const s = stats.get(lineup[k]) ?? { sum: 0, wins: 0, n: 0, left: 0, turns: 0 };
@@ -274,6 +306,8 @@ for (let i = 0; i < N; i++) {
   });
 }
 console.log(`games=${N} unfinished=${unfinished}`);
+// Dish die: per chef team, and per game with a chef (any chef team's 20); "all" = if every team rolled one d20 per correct turn-based answer.
+if (REWORK) console.log(`dish chef-rolls/team ${(dish.rolls / dish.chefTeams).toFixed(2)} 20s/team ${(dish.tw / dish.chefTeams).toFixed(3)} team-with-20 ${((100 * dish.teamAny) / dish.chefTeams).toFixed(1)}% game-with-chef-20 ${((100 * dish.any) / dish.chefGames).toFixed(1)}% | all-rolls/game ${(dish.all / dish.games).toFixed(1)} 20s/game ${((0.05 * dish.all) / dish.games).toFixed(2)} game-with-any-20 ${((100 * dish.allAny) / dish.games).toFixed(1)}%`);
 for (const [k, s] of [...stats].sort((a, b) => b[1].wins / b[1].n - a[1].wins / a[1].n))
   // ±: the 95% interval of the win share (normal approximation; class rows are one team per game, the * rows share games, so theirs is a little wide).
   console.log(k.padEnd(10), "win%", ((100 * s.wins) / s.n).toFixed(1).padStart(5), "±" + (196 * Math.sqrt((s.wins / s.n) * (1 - s.wins / s.n) / s.n)).toFixed(1), "(fair 25.0)", "avg", (s.sum / s.n).toFixed(1).padStart(6), "left", (s.left / s.n).toFixed(2), "turns", (s.turns / s.n).toFixed(1));
