@@ -1249,8 +1249,9 @@ export class DungeonRoom {
     if (this.game?.phase === "playing" && this.game.boss.phasePending) this.openPhaseCard(false);
     try {
       this.restoreBeats(s);
-    } catch {
+    } catch (err) {
       // a damaged save (a null team) restores without its beats
+      console.error(JSON.stringify({ event: "restore_beats_failed", error: String(err) }));
     }
     // A save from before activity was tracked counts as active now: never expire a room we cannot date.
     this.lastActivityAt = s.lastActivityAt ?? this.now();
@@ -1317,7 +1318,9 @@ export class DungeonRoom {
     if (!e || n?.eventId !== e.eventId) return;
     // appendLine's cut and line cap, but not appendLine itself: its broadcast would save a half-restored room.
     const lines = this.bossEntryLines(e.teamId, !!e.sprint).map((line) => sanitizeText(line, MAX_EDIT_LINE)).filter(Boolean).slice(0, NARRATION_MAX_LINES - n.lines.length);
-    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines, ...lines], rev: n.rev + 1 };
+    // Before the handoff restore() just added back, as closeReveal orders them (#394).
+    const at = s.heldHandoff?.eventId === n.eventId && n.lines.at(-1) === s.heldHandoff.line ? n.lines.length - 1 : n.lines.length;
+    if (lines.length) this.lastNarration = { ...n, lines: [...n.lines.slice(0, at), ...lines, ...n.lines.slice(at)], rev: n.rev + 1 };
   }
 
   /** Hands the finished game's record to the platform, and to the logs. A failure is logged and dropped: the room never waits. */
@@ -1580,6 +1583,8 @@ export class DungeonRoom {
         ? { question: q.full }
       : q.pub.memorize
         ? { question: { ...q.full, memorize: true as const, ...(q.pub.memoryLeft !== undefined ? { memoryLeft: q.pub.memoryLeft } : {}) } }
+      : this.reveal
+        ? { question: q.full } // STATE blanks the next question's text under a reveal (#362)
         : {};
     this.sendTo(conn, { type: "HOST_ANSWER", questionId: q.pub.id, answer: q.answer, ...(typed ? { typed } : {}), ...question, ...this.tapCount(q.pub.id) });
   }
@@ -1633,6 +1638,11 @@ export class DungeonRoom {
   /** STATE's question: the turn's, without its text, media, prompt and field labels while its check is not done. */
   private shownQuestion(): PublicQuestion | null {
     const pub = this.currentQuestion()?.pub ?? null;
+    if (pub && this.reveal && !this.awaitingCheck()) {
+      // #362: under a reveal the turn has moved on, but the next question's text waits for 下一題. Its shape (kind,
+      // media, option count) still goes out, so no screen changes course; the host pages get it with HOST_ANSWER.
+      return { ...pub, prompt: undefined, ...(pub.content.kind === "text" ? { content: { kind: "text", value: "" } } : {}), ...(pub.options ? { options: pub.options.map(() => "") } : {}), ...(pub.items ? { items: pub.items.map(() => "") } : {}) };
+    }
     if (!pub || !this.awaitingCheck()) return pub;
     const { id, difficulty, boss, monster } = pub;
     return { id, content: { kind: "text", value: "" }, difficulty, boss, monster, checkFirst: true };
@@ -3077,8 +3087,9 @@ export class DungeonRoom {
     this.broadcastState();
     // A fork opening in broadcastState moves eventSeq on: its line wins.
     const line = held && held.eventId === this.eventSeq ? this.freshHandoff(held.line, held.next) : null;
-    if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
+    // The entrance before the handoff to the next team (#394).
     if (entryTeamId) for (const entry of this.bossEntryLines(entryTeamId, !!this.game?.sprint && !entryBefore?.sprint)) this.appendLine(this.eventSeq, entry);
+    if (held && line) this.appendLine(held.eventId, line, MAX_LINE);
   }
 
   /** What the narrator says once a boss-entry dish is eaten (#364): the entrance, then the 最後衝刺 line it held back. */

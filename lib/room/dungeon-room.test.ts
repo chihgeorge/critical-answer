@@ -2539,8 +2539,9 @@ describe("narration (T5-T7)", () => {
       (room as any).servedAt = -Infinity;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].inBossPhase).toBe(true);
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.join(" ")).toContain("Team 0吃飽後走進首領房");
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.at(-1)).toBe("🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！");
+      const told: string[] = all(room).filter((m) => m.type === "NARRATION").at(-1).lines;
+      // #394: the entrance and its 最後衝刺 line come before the handoff to the next team.
+      expect(told.slice(1)).toEqual(["Team 0吃飽後走進首領房，首領戰開始！", "🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！", "Team 1，換你們了！害羞幽靈正等著你們。"]);
     });
 
     it("is appended with rev + 1 to a narration already on screen, and dropped once the game is over", async () => {

@@ -1269,7 +1269,7 @@ export default function PlayPage() {
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon
             color={isMyTurn ? undefined : "#6ab4ff"}
-            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" /> : undefined}
+            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" paused={disconnected} /> : undefined}
           >
             {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
