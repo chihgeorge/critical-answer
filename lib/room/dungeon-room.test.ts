@@ -616,7 +616,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const { room, turn, judge } = lastHit();
     const before = room.game!.teams.find((t) => t.id === turn)!.reward;
     judge();
-    expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
     // The boss stays on stage through the beat, not the default slime (#401).
     expect(lastBroadcast(room).stageMonster).toMatchObject(lastBroadcast(room).view.bossLook);
     vi.advanceTimersByTime(2000);
@@ -1266,6 +1266,23 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).view.checks[checkKey("r0-t1", ids[0])].hint).toBe("萬");
     });
 
+    // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
+    // turn under it; fails_when=an offline team loses the turn, or 跳過 is let through during the card; seam=none;
+    // no_claim=the screen's card art (e2e)
+    it("keeps the 說服成功 card on the roller's turn: its phone dropping or the host's 跳過 does not move the turn", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns, roll } = checkGame(2);
+      roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-success");
+      room.onClose(conns[0]);
+      send(room, hostConn, { type: "HOST_SKIP_TURN", teamId: ids[0], eventId: seqOf(room) });
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "check-success", view: { currentTurnTeamId: ids[0] } });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room)).toMatchObject({ question: { id: "r0-t1" }, view: { currentTurnTeamId: ids[0] } });
+      expect(lastBroadcast(room).stageBeat).toBeUndefined();
+    });
+
     it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns, roll } = checkGame();
@@ -1369,7 +1386,7 @@ describe("TEAM_SELECT_OPTION", () => {
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(room) });
-      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
       vi.advanceTimersByTime(6000);
       expect(room.game!.phase).toBe("finished");
       expect((room as any).reveal).toMatchObject({ answer: "萬家福" });

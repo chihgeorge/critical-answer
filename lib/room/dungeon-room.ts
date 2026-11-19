@@ -1739,7 +1739,8 @@ export class DungeonRoom {
       ...this.bossPhaseInfo(),
       cuisine: true as const,
       pendingLock: this.pendingLock,
-      pendingRoll: this.stageBeat === "kill-defeated" ? null : this.pendingRoll,
+      // Sent during the kill-defeated beat too, so host and phone stay held (#394); the big screen hides its dice then.
+      pendingRoll: this.pendingRoll,
       ...this.wrongSlots(),
       ...this.podiumView(),
       ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
@@ -5318,7 +5319,8 @@ export class DungeonRoom {
     const undoable = (verdict: { upheld: boolean }) => ({ prev, after: this.game!, teamId: c.teamId, questionId: c.questionId, verdict });
     if (upheld) {
       try {
-        this.judge(c.teamId, c.questionId, false, "flee", undefined, undefined, undefined, { by: c.by });
+        // The one 逃跑 value (#413); `caught` judges through upholdCatch, which keeps the accused's monster.
+        this.judge(c.teamId, c.questionId, false, "switch", undefined, undefined, undefined, { by: c.by });
       } catch (err) {
         return this.sendInvalid(conn, err);
       }
