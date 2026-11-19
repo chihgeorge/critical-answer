@@ -409,6 +409,8 @@ export type ClientMessage =
   | { type: "TEAM_USE_ABILITY"; questionId: string }
   /** The team on turn at a fork picks its door (docs/designs/branch-fork.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_CHOOSE_FORK"; side: ForkSide; eventId: number }
+  /** A waiting team's advice to the team choosing at a fork (#285): advice only, the choosing team still picks. */
+  | { type: "FORK_VOTE"; side: ForkSide }
   /** The team that drew the fortune teller picks an effect (docs/designs/fortune-teller.md). `eventId`: the STATE it was pressed under. */
   | { type: "TEAM_CHOOSE_FORTUNE"; effect: FortuneEffect; eventId: number }
   /** 擲骰說服 on the team's own fill-in turn (dnd design R6, R-E1): the room rolls the check. `eventId`: the STATE it was pressed under (R-E4). */
@@ -469,6 +471,8 @@ export const REACT_GAP_MS = 2000;
 export const REACT_JITTER_MS = 300;
 /** At most this many reactions per room in any REACT_GAP_MS: one from every waiting team of a full room. */
 export const REACT_ROOM_MAX = MAX_TEAMS - 1;
+/** A team's door votes (#285) count at most once in this many ms, so flipping sides cannot flood the room. */
+export const FORK_VOTE_GAP_MS = 300;
 
 /** A d20 rolled and shown for a beat before it is judged. `kind`: the warrior's roll for the answer, the dish die
  * after a correct turn-based answer (`warrior`: the warrior's hit it follows), a fill-in's persuasion check (`bonus` + the die against
@@ -629,6 +633,8 @@ export type ServerMessage =
        * shows the team as it was before the press, so nothing behind the door shows early. Memory only. The side opened
        * and what was behind it; the other door is never named, nor which side hides what before a pick. */
       forkBeat?: { teamId: string; side: ForkSide; door: ForkDoor; timeout?: true };
+      /** The waiting teams' door votes (#285), teamId → side, while a team chooses. Advice only; FORK_VOTES updates it. */
+      forkVotes?: Record<string, ForkSide>;
       /** 占卜師 (docs/designs/fortune-teller.md), from the crystal ball to the host's 下一題 after the effect card. `step`:
        * "intro" the ball (no pick yet), "choose" the pizza, "beat" the picked slice lit, "card" the effect card. `effect`
        * and `timeout` only from "beat"; `value` and `matchIds` only on "card". Never during the door opening. */
@@ -639,6 +645,8 @@ export type ServerMessage =
   | { type: "GAME_OVER"; winners: string[] }
   /** A waiting team's reaction, for the big screen to float up for a moment. Never stored. */
   | { type: "REACTION"; teamId: string; reaction: Reaction }
+  /** Every door vote of the fork being chosen, after one changed (#285). Never stored; STATE carries the same. */
+  | { type: "FORK_VOTES"; votes: Record<string, ForkSide> }
   /** One per event (1-3 segments, played in order), sent again with `rev` + 1 after each host edit of that eventId.
    * Clients keep the highest eventId they have seen. Result, an atmosphere (or host) line on big moments, and a
    * transition when there's a next team — see runner.ts targetSegmentCount and docs/designs/multi-segment-narration.md.
@@ -1081,6 +1089,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { type: "HOST_UNDO_RULING" };
     case "TEAM_CHOOSE_FORK":
       return (m.side === "left" || m.side === "right") && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORK", side: m.side, eventId: m.eventId as number } : null;
+    case "FORK_VOTE":
+      return m.side === "left" || m.side === "right" ? { type: "FORK_VOTE", side: m.side } : null;
     case "TEAM_CHOOSE_FORTUNE":
       return isFortuneEffect(m.effect) && Number.isInteger(m.eventId) && (m.eventId as number) >= 0 ? { type: "TEAM_CHOOSE_FORTUNE", effect: m.effect, eventId: m.eventId as number } : null;
     case "HOST_REVEAL": {

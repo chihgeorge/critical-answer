@@ -53,6 +53,12 @@ async function toTheFork(browser: Browser) {
   await expect(eventTeam.getByTestId("phone-fork-right")).toHaveText("右門");
   await expect(eventTeam.getByTestId("phone-fork-left")).toBeInViewport();
   await expect(eventTeam.getByTestId("phone-fork-right")).toBeInViewport();
+  // 觀眾投票 (#285): Plain advises 左門; the TV and EventTeam's phone show the tally, and EventTeam still picks.
+  await plain.getByTestId("phone-fork-vote-left").click();
+  await expect(plain.getByTestId("phone-fork-vote-left")).toHaveAttribute("aria-pressed", "true");
+  await expect(screen.getByTestId("fork-votes-left")).toContainText("1 票");
+  await expect(eventTeam.getByTestId("phone-fork-tally")).toContainText("左門 1 票");
+  await expect(eventTeam.getByTestId("phone-fork-vote")).toHaveCount(0);
   return { host, screen, eventTeam, plain };
 }
 

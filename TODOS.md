@@ -17,7 +17,6 @@
 
 - [活動後：火把地城和舊畫面只留一個](#活動後火把地城和舊畫面只留一個)（[#281](https://github.com/chihgeorge/critical-answer/issues/281)） — S，活動後
 - [觀眾反應的後續：燈籠預測](#觀眾反應的後續燈籠預測)（[#283](https://github.com/chihgeorge/critical-answer/issues/283)） — M
-- [觀眾投票決定走哪扇門（叉路 Approach C）](#觀眾投票決定走哪扇門叉路-approach-c)（[#285](https://github.com/chihgeorge/critical-answer/issues/285)） — M（人工約 1–2 天 / CC 約 1 小時），活動後
 - [題庫指定叉路位置、難度門和類別門（叉路 Approach B）](#題庫指定叉路位置難度門和類別門叉路-approach-b)（[#286](https://github.com/chihgeorge/critical-answer/issues/286)） — L（人工約 1 週 / CC 約半天），活動後
 - [頒獎稱號「命運之子」](#頒獎稱號命運之子)（[#287](https://github.com/chihgeorge/critical-answer/issues/287)） — S，活動後
 - [抓包與神諭：用平衡模擬看分數對勝率的影響](#抓包與神諭用平衡模擬看分數對勝率的影響)（[#288](https://github.com/chihgeorge/critical-answer/issues/288)） — M，活動後
@@ -131,23 +130,6 @@
 
 **Notes:**
 - 旁白要提到反應，伺服器得先記下這一題收到哪些反應（現在只廣播、不存），再餵給 LLM 和腳本句。
-
----
-
-## 觀眾投票決定走哪扇門（叉路 Approach C）
-
-**What:** 叉路口（`docs/designs/branch-fork.md`）改成讓其他隊伍（觀眾）用手機投票，或讓投票當作輪到的隊伍的參考。
-
-**Why:** 叉路現在只有輪到的隊伍在選，其他隊伍只能看；投票能讓全場都有事做。/autoplan 2026-11-09 評估過，超出這次範圍，延後。
-
-**Context:**
-- `lib/room/dungeon-room.ts`（`handleChooseFork`、`syncFork`）
-- `app/room/[code]/play/page.tsx`（`ForkPanel`）
-- `app/room/[code]/screen/page.tsx`（`ForkScreen`）
-
-**Effort/Priority:** M（人工約 1–2 天 / CC 約 1 小時） / P3
-
-**Depends on:** 叉路上線，且實際對局的遊戲紀錄看過大家怎麼選。
 
 ---
 
