@@ -178,14 +178,17 @@ export function MoreDrawer({
                     <div key={t.id} className="flex flex-col gap-2 border-b border-[var(--k)]/20 pb-2">
                       <div className="flex items-center gap-2">
                         {teamSprite?.(t.id)}
-                        <span className="min-w-0 flex-1 truncate text-[16px]">
-                          {t.name}
-                          {t.online ? "" : "（離線）"}
+                        {/* Name over its numbers: on a phone the buttons leave the name too little width beside them. */}
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate text-[16px]">
+                            {t.name}
+                            {t.online ? "" : "（離線）"}
+                          </span>
+                          <span className="truncate text-[14px]">
+                            {scoreLabel} <span className="px-num text-[14px]">{t.reward}</span>
+                            {max !== undefined && t.classId && <>{"・"}{CLASS_ICONS[t.classId]}{t.abilityUses}/{max}</>}
+                          </span>
                         </span>
-                        <span className="text-[14px]">
-                          {scoreLabel} <span className="px-num text-[14px]">{t.reward}</span>
-                        </span>
-                        {max !== undefined && t.classId && <span className="text-[14px]">{CLASS_ICONS[t.classId]}{t.abilityUses}/{max}</span>}
                         <PixelButton aria-label={`${t.name}扣 ${FIX_SCORE_STEP} 分`} disabled={t.reward <= 0} onClick={() => fix("score-")} className={small}>−{FIX_SCORE_STEP}</PixelButton>
                         <PixelButton aria-label={`${t.name}加 ${FIX_SCORE_STEP} 分`} onClick={() => fix("score+")} className={small}>+{FIX_SCORE_STEP}</PixelButton>
                         <PixelButton aria-label={`${t.name}的更多工具`} aria-expanded={more} onClick={() => setToolsFor(more ? null : t.id)} className={small} style={{ background: more ? "var(--k)" : "#fff", color: more ? "#fff" : undefined }}>
@@ -205,6 +208,7 @@ export function MoreDrawer({
                               send({ type: "HOST_SET_SCORE", teamId: t.id, score });
                             }}
                           >
+                            <span aria-hidden className="text-[14px]">分數</span>
                             <input
                               aria-label={`${t.name}的分數`}
                               inputMode="numeric"
@@ -222,6 +226,7 @@ export function MoreDrawer({
                           </form>
                           {max !== undefined && t.classId && (
                             <>
+                              <span aria-hidden className="text-[14px]">技能 {CLASS_ICONS[t.classId]}</span>
                               <PixelButton aria-label={`${t.name}能力少 1 次`} disabled={t.abilityUses <= 0} onClick={() => fix("ability-")} className={small}>−1</PixelButton>
                               <PixelButton aria-label={`${t.name}能力多 1 次`} disabled={t.abilityUses >= max} onClick={() => fix("ability+")} className={small}>+1</PixelButton>
                             </>
