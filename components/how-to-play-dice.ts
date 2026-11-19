@@ -1,10 +1,8 @@
 // All dice text of the how-to-play pages (persuasion check, dish die, lucky potion, class dice), computed from the
 // rules' constants (docs/designs/class-dice-rework.md).
 import {
-  CHECK_BONUS,
   CLASS_IDS,
   CLASS_SKILLS,
-  CHECK_DC,
   CHEF_DISH_LEGEND_MULTIPLIER,
   CHEF_DISH_SUCCESS_MULTIPLIER,
   DISH_BURNT_MULTIPLIER,
@@ -51,14 +49,12 @@ export const POTION_PAGE: PageText = {
 export const CLASS_DICE_PAGE: PageText = {
   topic: "職業骰",
   big: `職業技能都擲 d20，${OK} 以上就成功`,
-  owl: "每個職業都有擲骰的時候，擲到 20 大成功，擲到 1 大失敗！",
+  owl: "每個職業都有職業技能，擲到 20 大成功，擲到 1 大失敗！",
   script:
     `法師${CLASS_SKILLS.mage}、牧師${CLASS_SKILLS.cleric}、戰士${CLASS_SKILLS.warrior}、盜賊${CLASS_SKILLS.thief}、廚師${CLASS_SKILLS.chef}（答對的料理骰）都擲 d20。結果分四段：1 大失敗，2 到 ${OK - 1} 失敗，` +
     `${OK} 到 19 成功，20 大成功。每個職業做什麼，大廳選職業時有寫。`,
 };
 
-/** Page 3's picture: an example persuasion roll (die + bonus vs DC). */
-export const CHECK_EXAMPLE = { die: 10, bonus: CHECK_BONUS.thief, dc: CHECK_DC[2] };
 /** Page 5's picture: the dish die's three outcomes, and the chef's better ones. */
 export const DISH_FACES: [string, string][] = [["1", `燒焦・只拿${BURNT}`], ["2–19", "照常上菜"], ["20", `傳說級・×${DISH_LEGEND_MULTIPLIER}`]];
 export const CHEF_DISH_LINE = `${OK}–19 ×${CHEF_DISH_SUCCESS_MULTIPLIER}・20 ×${CHEF_DISH_LEGEND_MULTIPLIER}`;

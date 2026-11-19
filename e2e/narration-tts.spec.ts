@@ -432,7 +432,7 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await openSettings(host);
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
   await clickStart(host);
-  const page1 = "輪到誰，怪物就找誰。看大螢幕上方，再拿起手機作答！";
+  const page1 = "看大螢幕上方輪到誰，再拿手機作答！";
   const page2 = "選擇題點一個答案，按鎖定，等主持人公布答案！";
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);
 

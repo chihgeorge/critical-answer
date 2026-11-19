@@ -5,7 +5,7 @@
 import type { ReactNode } from "react";
 import { DialogueBox, LabelChip, Panel, Sprite, TurnRibbon } from "@/components/pixel";
 import { D20 } from "@/components/d20";
-import { CHECK_EXAMPLE, CHEF_DISH_LINE, CLASS_DICE_PAGE, CLASS_SKILLS_ROW, DICE_SCALE, DISH_FACES, DISH_PAGE, FILL_IN_PAGE, POTION_PAGE } from "@/components/how-to-play-dice";
+import { CHEF_DISH_LINE, CLASS_DICE_PAGE, CLASS_SKILLS_ROW, DICE_SCALE, DISH_FACES, DISH_PAGE, FILL_IN_PAGE, POTION_PAGE } from "@/components/how-to-play-dice";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS } from "@/lib/game-state";
 import { INTRO_PAGES } from "@/lib/protocol";
 
@@ -13,9 +13,9 @@ import { INTRO_PAGES } from "@/lib/protocol";
 export const INTRO_PAGE_TEXT: { topic: string; big: string; owl: string; script: string }[] = [
   {
     topic: "輪流上陣・用手機作答",
-    big: "各隊輪流上陣，輪到的隊伍用手機作答",
-    owl: "輪到誰，怪物就找誰。看大螢幕上方，再拿起手機作答！",
-    script: "每一隊輪流出場，輪到哪一隊大螢幕上方會寫，那一隊用手機作答。題目有選擇題、填空題、排序題三種，接下來一頁一頁說。",
+    big: "輪流上陣，用手機作答",
+    owl: "看大螢幕上方輪到誰，再拿手機作答！",
+    script: "各隊輪流出場，大螢幕上方寫輪到誰，那一隊用手機作答。",
   },
   {
     topic: "選擇題",
@@ -69,20 +69,27 @@ function MiniPhone({ children, height = 120 }: { children: ReactNode; height?: n
 
 const cell = { border: "3px solid var(--k)", padding: "4px 10px", background: "var(--cream)" } as const;
 
-const mcPhone = (picked: number) => (
+/** A multiple-choice phone: `picked` locked in; with `answer`, the same phone after the reveal (the answer green ✓,
+ * a wrong pick red ✗). */
+const mcPhone = (picked: number, answer?: number) => (
   <MiniPhone>
     <div className="grid grid-cols-2 gap-1 text-[14px]">
-      {["A 火", "B 水", "C 風", "D 土"].map((o, i) => (
-        <div key={o} style={{ background: i === picked ? "var(--turn)" : "var(--cream)", border: "2px solid var(--k)", padding: "0 4px" }}>{o}</div>
-      ))}
+      {["A 火", "B 水", "C 風", "D 土"].map((o, i) => {
+        const look = answer === undefined ? (i === picked ? "var(--turn)" : "var(--cream)") : i === answer ? "var(--ok)" : i === picked ? "var(--danger)" : "var(--cream)";
+        const mark = answer === undefined ? "" : i === answer ? " ✓" : i === picked ? " ✗" : "";
+        return <div key={o} style={{ background: look, border: "2px solid var(--k)", padding: "0 4px" }}>{o}{mark}</div>;
+      })}
     </div>
-    {miniBtn("var(--ok)", "鎖定答案")}
+    {answer === undefined
+      ? miniBtn("var(--ok)", "鎖定答案")
+      : miniBtn(picked === answer ? "var(--ok)" : "var(--danger)", picked === answer ? "✓ 答對！" : "✗ 答錯")}
   </MiniPhone>
 );
 
-const fillInPhone = (
-  <MiniPhone>
-    <div className="text-[14px]" style={{ background: "var(--cream)", border: "2px solid var(--k)", padding: "2px 4px", marginTop: 14 }}>海綿寶寶|</div>
+const fillInPhone = (hint?: string) => (
+  <MiniPhone height={hint ? 140 : 120}>
+    {hint && <div className="text-center text-[16px]" style={{ background: "var(--warn)", border: "2px solid var(--k)" }}>{hint}</div>}
+    <div className="text-[14px]" style={{ background: "var(--cream)", border: "2px solid var(--k)", padding: "2px 4px", marginTop: hint ? 0 : 14 }}>海綿寶寶|</div>
     {miniBtn("var(--ok)", "送出")}
   </MiniPhone>
 );
@@ -99,42 +106,36 @@ function Picture({ page }: { page: number }) {
         <Sprite kind="hero" variant={0} scale={3} className={hop} />
         <div className="flex items-start gap-20">
           {mcPhone(1)}
-          {fillInPhone}
+          {fillInPhone()}
         </div>
         <Sprite kind="slime" scale={3} className={hop} />
       </div>
     );
   if (page === 2)
     return (
-      <div className="flex items-center gap-6 text-[18px]">
-        {mcPhone(2)}
+      <div className="flex items-center gap-6 text-[16px]">
+        <div className="flex flex-col items-center gap-1">{mcPhone(1)}選好、鎖定</div>
         <span className="text-[26px]">→</span>
-        {miniBtn("var(--turn)", "公布答案", 130)}
-        <span className="text-[26px]">→</span>
-        <div className="flex flex-col items-center gap-1">
-          <span className="text-[34px]" style={{ color: "var(--ok)" }}>✓</span>
-          自動判對錯
-        </div>
+        <div className="flex flex-col items-center gap-1">{mcPhone(1, 1)}公布：答對</div>
+        <div className="flex flex-col items-center gap-1">{mcPhone(2, 1)}公布：答錯</div>
       </div>
     );
-  if (page === 3) {
-    const { die, bonus, dc } = CHECK_EXAMPLE;
+  // Two things to see (owner 2026-11-19): a persuasion that passes shows a hint, then type the answer and press 送出.
+  if (page === 3)
     return (
-      <div className="flex items-center gap-10 text-[20px]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-            🗣️ 說服擲骰檢定 {dc}（+{bonus}）
-          </div>
-          <div className="flex items-center gap-4">
-            {face(die)}
-            <span className="px-num text-[18px]">{die} + {bonus} = {die + bonus} ≥ {dc}</span>
-          </div>
-          <span>→ 🔮 第一個字：海</span>
+      <div className="flex items-center gap-8 text-[18px]">
+        <div className="flex flex-col items-center gap-2">
+          <D20 value={15} size={44} />
+          <span>🗣️ 說服成功</span>
         </div>
-        {fillInPhone}
+        <span className="text-[26px]">→</span>
+        {fillInPhone("💡 提示：海")}
+        <div className="flex flex-col gap-6 text-left text-[20px]">
+          <span>① 看提示</span>
+          <span>② 打字，按「送出」</span>
+        </div>
       </div>
     );
-  }
   if (page === 4)
     return (
       <div className="flex items-center gap-8 text-[18px]">
@@ -156,9 +157,9 @@ function Picture({ page }: { page: number }) {
     return (
       <div className="flex flex-col items-center gap-3 text-[18px]">
         <div className="flex gap-6">
-          {DISH_FACES.map(([n, t], i) => (
+          {DISH_FACES.map(([n, t]) => (
             <div key={n} className="flex flex-col items-center gap-1">
-              {face(n === "2–19" ? 12 : Number(n), i === DISH_FACES.length - 1 ? "kept" : undefined)}
+              {face(n === "2–19" ? 12 : Number(n))}
               {n} {t}
             </div>
           ))}
@@ -201,7 +202,7 @@ function Picture({ page }: { page: number }) {
       </div>
     );
   return (
-    <div className="flex items-end gap-16">
+    <div className="flex items-center gap-16">
       <div className="flex flex-col items-center gap-2">
         <Sprite kind="slime" scale={3} className={hop} />
         <div className="text-[22px]" style={{ color: "var(--danger)" }}>✕ 答錯</div>
@@ -211,10 +212,13 @@ function Picture({ page }: { page: number }) {
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-[16px]">
-        {/* As wide as the slime (crown art 14px × 7 ≈ slime 32px × 3), centred in a gold glow that pulses like the torches (px-glow; still under reduced motion). */}
-        <div className="relative">
-          <div className="px-glow" style={{ width: 220, height: 220, left: "50%", top: "50%", marginLeft: -110, marginTop: -110, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
-          <Sprite kind="crown" scale={7} className={hop} style={{ position: "relative" }} />
+        {/* As big as the whole left block (owner 2026-11-19): the crown's art is 14×8 px of its 20×12 box (lib/pixel-art.ts),
+            so the box is cropped to the art at scale 20; a gold glow pulses behind it like the torches (px-glow; still under reduced motion). */}
+        <div className="relative" style={{ width: 14 * 20, height: 8 * 20 }}>
+          <div className="px-glow" style={{ width: 380, height: 380, left: "50%", top: "50%", marginLeft: -190, marginTop: -190, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
+          <div className={hop} style={{ position: "absolute", left: -3 * 20, top: -2 * 20 }}>
+            <Sprite kind="crown" scale={20} />
+          </div>
         </div>
         <span>分數最高的隊伍贏</span>
       </div>

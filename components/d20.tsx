@@ -8,26 +8,48 @@ import { killRollText } from "@/lib/kill-roll";
 import { ROW_NAMES } from "@/lib/podium";
 import { INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, type InitiativeView } from "@/lib/initiative";
 
-/** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. `tone`: a 🧪 potion's two dice
- * (lucky-potion.md D10), the kept one on `--turn`, the other dimmed. */
+/** A pixel-outlined d20 face: the hexagon with its front triangle, `value` in the middle. A natural 20 turns gold with a
+ * glow and four blinking pixel sparkles (static under reduced motion), wherever a d20 lands on 20. `tone`: a 🧪 potion's
+ * two dice (lucky-potion.md D10): the kept one keeps its colours and gets a green outline and a ✓ badge, the other dims. */
 export function D20({ value, size, tone }: { value: number | string; size: number; tone?: "kept" | "dim" }) {
-  const line = tone === "dim" ? "var(--dim-line)" : "var(--k)";
+  const dim = tone === "dim";
+  const nat20 = value === 20 && !dim;
+  const line = dim ? "var(--dim-line)" : "var(--k)";
   const edge = { stroke: line, strokeWidth: 3 };
+  const g = "var(--ok)";
+  const filter = [
+    ...(tone === "kept" ? [`drop-shadow(4px 0 0 ${g})`, `drop-shadow(-4px 0 0 ${g})`, `drop-shadow(0 4px 0 ${g})`, `drop-shadow(0 -4px 0 ${g})`] : []),
+    "drop-shadow(0 6px 0 var(--k))",
+    ...(nat20 ? [`drop-shadow(0 0 ${Math.round(size / 8)}px #ffd23f)`] : []),
+  ].join(" ");
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden data-tone={tone} style={{ display: "block", filter: "drop-shadow(0 6px 0 var(--k))" }}>
-      <polygon points="50,3 93,27 93,73 50,97 7,73 7,27" fill={tone === "kept" ? "var(--turn)" : "#ffa94d"} stroke={line} strokeWidth={5} />
-      <polygon points="50,18 84,74 16,74" fill={tone === "kept" ? "var(--turn)" : "#ffd9a3"} {...edge} />
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden data-tone={tone} data-nat20={nat20 || undefined} style={{ display: "block", overflow: "visible", filter, opacity: dim ? 0.6 : undefined }}>
+      <polygon points="50,3 93,27 93,73 50,97 7,73 7,27" fill={nat20 ? "#ffcc33" : "#ffa94d"} stroke={line} strokeWidth={5} />
+      <polygon points="50,18 84,74 16,74" fill={nat20 ? "#fff6b0" : "#ffd9a3"} {...edge} />
       {["50,3 50,18", "7,27 50,18", "93,27 50,18", "16,74 7,73", "84,74 93,73", "16,74 50,97", "84,74 50,97"].map((l) => {
         const [a, b] = l.split(" ").map((p) => p.split(",").map(Number));
         return <line key={l} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} {...edge} />;
       })}
       {/* Two digits at 20 ran over the triangle's edges; 16 sits inside it, a little lower where the triangle is wider. */}
-      <text x="50" y={String(value).length > 1 ? 66 : 62} textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize={String(value).length > 1 ? 16 : 20} fill={tone === "dim" ? "var(--dim-ink)" : "var(--k)"}>
+      <text x="50" y={String(value).length > 1 ? 66 : 62} textAnchor="middle" fontFamily="'Press Start 2P', monospace" fontSize={String(value).length > 1 ? 16 : 20} fill={dim ? "var(--dim-ink)" : "var(--k)"}>
         {value}
       </text>
+      {nat20 &&
+        [[8, 8], [92, 10], [6, 92], [94, 90]].map(([x, y], i) => (
+          <path key={i} className={i % 2 ? "px-nat20-spark px-nat20-spark2" : "px-nat20-spark"} d={`M${x - 2} ${y - 7}h4v5h5v4h-5v5h-4v-5h-5v-4h5z`} fill="#fff6b0" stroke="var(--k)" strokeWidth={1.5} />
+        ))}
+      {tone === "kept" && (
+        <g>
+          <circle cx="86" cy="86" r="12" fill={g} stroke="var(--k)" strokeWidth={3} />
+          <path d="M80 86l4 4 8-9" fill="none" stroke="var(--k)" strokeWidth={4} />
+        </g>
+      )}
     </svg>
   );
 }
+
+/** A face while the die tumbles: never 20, so the nat-20 glow shows only where a die lands. */
+const tumbleFace = () => 1 + Math.floor(Math.random() * 19);
 
 /** How long the die tumbles before it lands; the room judges at 2000 ms (BEAT_MS), so the result stays up a moment. */
 const TUMBLE_MS = 1200;
@@ -48,7 +70,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
       const land = setTimeout(() => setFace(null), 0);
       return () => clearTimeout(land);
     }
-    const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
+    const tick = setInterval(() => setFace(tumbleFace()), 80);
     const land = setTimeout(() => {
       clearInterval(tick);
       setFace(null);
@@ -145,7 +167,7 @@ export function KillRollOverlay({ teamName, values }: { teamName: string; values
   useEffect(() => {
     if (still()) return;
     const count = values.length;
-    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 20))), 80);
+    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => tumbleFace())), 80);
     const lands = Array.from({ length: count }, (_, i) => setTimeout(() => setLanded(i + 1), TUMBLE_MS + i * KILL_STAGGER_MS));
     return () => {
       clearInterval(tick);
@@ -185,7 +207,7 @@ export function TieRollOverlay({ line, names, values, result }: { line: string; 
   useEffect(() => {
     if (landed) return;
     const count = values.length;
-    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => 1 + Math.floor(Math.random() * 20))), 80);
+    const tick = setInterval(() => setFaces(Array.from({ length: count }, () => tumbleFace())), 80);
     const land = setTimeout(() => {
       clearInterval(tick);
       setLanded(true);
@@ -227,7 +249,7 @@ function TumbleDie({ value, size }: { value: number; size: number }) {
   const [face, setFace] = useState<number | null>(still ? null : 1);
   useEffect(() => {
     if (still) return;
-    const tick = setInterval(() => setFace(1 + Math.floor(Math.random() * 20)), 80);
+    const tick = setInterval(() => setFace(tumbleFace()), 80);
     const land = setTimeout(() => {
       clearInterval(tick);
       setFace(null);
