@@ -616,6 +616,8 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const before = room.game!.teams.find((t) => t.id === turn)!.reward;
     judge();
     expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    // The boss stays on stage through the beat, not the default slime (#401).
+    expect(lastBroadcast(room).stageMonster).toMatchObject(lastBroadcast(room).view.bossLook);
     vi.advanceTimersByTime(2000);
     const roll = lastBroadcast(room).pendingRoll;
     expect(roll).toMatchObject({ teamId: turn, kind: "kill", values: [11, 11, 11, 11], value: 44 }); // rng 0.5: each d20 is 11
@@ -1093,9 +1095,11 @@ describe("TEAM_SELECT_OPTION", () => {
       const log = vi.spyOn(console, "log").mockImplementation(() => {});
       const { room, hostConn, ids, lockAndReveal } = critGame();
       const seq = seqOf(room);
+      const asked = lastBroadcast(room).question.monster;
       lockAndReveal(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
-      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "crit-intro", pendingRoll: null });
+      // The beat sends no question, but keeps the room's monster on stage (#401).
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "crit-intro", pendingRoll: null, question: null, stageMonster: asked });
       vi.advanceTimersByTime(2000);
       const held = lastBroadcast(room);
       expect(held.pendingLock).toBeNull();

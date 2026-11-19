@@ -612,6 +612,9 @@ export type ServerMessage =
       hold?: Hold;
       /** A narrated pause before the next question or die. */
       stageBeat?: "crit-intro" | "check-success" | "kill-defeated";
+      /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.
+       * Absent from older servers. */
+      stageMonster?: PublicQuestion["monster"];
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */
       late?: { teams: { id: string; name: string; classId?: ClassId; look?: number }[]; closed?: true };

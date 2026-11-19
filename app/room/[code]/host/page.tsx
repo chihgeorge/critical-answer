@@ -461,7 +461,7 @@ export default function HostPage() {
   // Disconnect UI: judge buttons disable and "重新連線中" shows here; /play and /screen show their own
   // notice (lib/offline-notice.ts), and a phone is told after reconnecting if its turn was skipped.
   const ready = connected && claimed;
-  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster) : null;
+  const turn = game ? describeTurn(game.view, game.question, game.phaseCard?.monster, game.stageMonster) : null;
   // Fresh per-field marks for each buzz: a new question, team or event remounts FieldJudge.
   // Nobody may be on turn (a buzzer phase, a reveal): `team` is then undefined at run time though typed as present.
   const fieldJudgeId = game ? `${turn?.questionId}:${turn?.team?.id}:${game.eventId}` : "";
