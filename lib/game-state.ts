@@ -51,6 +51,16 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   chef: "廚師",
 };
 
+/** Each class's skill name (owner 2026-11-19): the phone buttons, the lobby, the big screen's roll chips and the
+ * how-to-play slides all say these. The chef's is its passive; 「料理骰」 stays the die every team rolls. */
+export const CLASS_SKILLS: Record<ClassId, string> = {
+  mage: "占星",
+  cleric: "祈禱",
+  warrior: "衝鋒",
+  thief: "偷襲",
+  chef: "神廚",
+};
+
 export const CLASS_ICONS: Record<ClassId, string> = {
   mage: "🔮",
   cleric: "✝️",

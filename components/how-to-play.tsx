@@ -4,7 +4,8 @@
 // Pages 3 and 5–7 teach the dice; their text is in how-to-play-dice.ts.
 import type { ReactNode } from "react";
 import { DialogueBox, LabelChip, Panel, Sprite, TurnRibbon } from "@/components/pixel";
-import { CHECK_EXAMPLE, CHEF_DISH_LINE, CLASS_DICE_PAGE, CLASS_ROLL_WHEN, DICE_SCALE, DISH_FACES, DISH_PAGE, FILL_IN_PAGE, POTION_PAGE } from "@/components/how-to-play-dice";
+import { D20 } from "@/components/d20";
+import { CHECK_EXAMPLE, CHEF_DISH_LINE, CLASS_DICE_PAGE, CLASS_SKILLS_ROW, DICE_SCALE, DISH_FACES, DISH_PAGE, FILL_IN_PAGE, POTION_PAGE } from "@/components/how-to-play-dice";
 import { CLASS_ICONS, CLASS_IDS, CLASS_LABELS } from "@/lib/game-state";
 import { INTRO_PAGES } from "@/lib/protocol";
 
@@ -87,25 +88,20 @@ const fillInPhone = (
 );
 
 /** One die face as the pages draw it; `lit` marks the face that counts. */
-const face = (n: string, lit = false, dim = false) => (
-  <div className="px-num text-[20px]" style={{ background: lit ? "var(--turn)" : "var(--cream)", border: "3px solid var(--k)", padding: "6px 12px", opacity: dim ? 0.45 : 1 }}>🎲 {n}</div>
-);
+/** The game's own d20 face (no 🎲 on the slides); `tone` marks a potion's kept and dropped die. */
+const face = (n: number, tone?: "kept" | "dim") => <D20 value={n} size={64} tone={tone} />;
 
 function Picture({ page }: { page: number }) {
   const hop = "px-hop";
   if (page === 1)
     return (
-      <div className="flex flex-col items-center gap-3">
-        {/* The order is rolled after the intro (擲先攻), so no team is named yet. */}
-        <TurnRibbon>▼ 輪到：擲先攻第一名</TurnRibbon>
-        <div className="flex items-center gap-8">
-          <Sprite kind="hero" variant={0} scale={3} className={hop} />
-          <div className="flex items-start gap-20">
-            {mcPhone(1)}
-            {fillInPhone}
-          </div>
-          <Sprite kind="slime" scale={3} className={hop} />
+      <div className="flex items-center gap-8">
+        <Sprite kind="hero" variant={0} scale={3} className={hop} />
+        <div className="flex items-start gap-20">
+          {mcPhone(1)}
+          {fillInPhone}
         </div>
+        <Sprite kind="slime" scale={3} className={hop} />
       </div>
     );
   if (page === 2)
@@ -130,7 +126,7 @@ function Picture({ page }: { page: number }) {
             🗣️ 說服擲骰檢定 {dc}（+{bonus}）
           </div>
           <div className="flex items-center gap-4">
-            <Sprite kind="dice" scale={2} className={hop} />
+            {face(die)}
             <span className="px-num text-[18px]">{die} + {bonus} = {die + bonus} ≥ {dc}</span>
           </div>
           <span>→ 🔮 第一個字：海</span>
@@ -162,8 +158,8 @@ function Picture({ page }: { page: number }) {
         <div className="flex gap-6">
           {DISH_FACES.map(([n, t], i) => (
             <div key={n} className="flex flex-col items-center gap-1">
-              {face(n, i === DISH_FACES.length - 1)}
-              {t}
+              {face(n === "2–19" ? 12 : Number(n), i === DISH_FACES.length - 1 ? "kept" : undefined)}
+              {n} {t}
             </div>
           ))}
         </div>
@@ -177,8 +173,8 @@ function Picture({ page }: { page: number }) {
       <div className="flex flex-col items-center gap-3 text-[20px]">
         <div className="px-chip" style={{ fontSize: 22, padding: "6px 14px", background: "var(--lav)", border: "4px solid var(--k)" }}>🧪 已喝下！</div>
         <div className="flex items-center gap-4">
-          {face("6", false, true)}
-          {face("17", true)}
+          {face(6, "dim")}
+          {face(17, "kept")}
           <span>→ 取高：17</span>
         </div>
       </div>
@@ -187,11 +183,11 @@ function Picture({ page }: { page: number }) {
     return (
       <div className="flex flex-col items-center gap-3 text-[16px]">
         <div className="flex gap-5">
-          {CLASS_ROLL_WHEN.map(([c, when]) => (
+          {CLASS_SKILLS_ROW.map(([c, skill]) => (
             <div key={c} className="flex flex-col items-center gap-1">
               <Sprite kind="hero" variant={CLASS_IDS.indexOf(c)} cls={c} scale={2} className={hop} />
               <span>{CLASS_ICONS[c]} {CLASS_LABELS[c]}</span>
-              <span>{when}</span>
+              <span className="text-[20px]">{skill}</span>
             </div>
           ))}
         </div>
@@ -207,7 +203,7 @@ function Picture({ page }: { page: number }) {
   return (
     <div className="flex items-end gap-16">
       <div className="flex flex-col items-center gap-2">
-        <Sprite kind="slime" scale={4} className={hop} />
+        <Sprite kind="slime" scale={3} className={hop} />
         <div className="text-[22px]" style={{ color: "var(--danger)" }}>✕ 答錯</div>
         <div className="flex gap-10 text-[16px]">
           <div className="flex flex-col items-center gap-1">{miniBtn("var(--warn)", "下輪再答", 130)}先換下一隊</div>
@@ -215,7 +211,11 @@ function Picture({ page }: { page: number }) {
         </div>
       </div>
       <div className="flex flex-col items-center gap-1 text-[16px]">
-        <Sprite kind="crown" scale={4} className={hop} />
+        {/* As wide as the slime (crown 20px × 5 ≈ slime 32px × 3), in a gold glow that pulses like the torches (px-glow; still under reduced motion). */}
+        <div className="relative flex h-[90px] items-end justify-center">
+          <div className="px-glow" style={{ width: 190, height: 190, left: "50%", top: "50%", marginLeft: -95, marginTop: -95, mixBlendMode: "normal", background: "radial-gradient(circle, #ffdd55cc 0%, #ffcf4a66 35%, #0000 70%)" }} />
+          <Sprite kind="crown" scale={5} className={hop} style={{ position: "relative" }} />
+        </div>
         <span>分數最高的隊伍贏</span>
       </div>
     </div>
@@ -234,6 +234,7 @@ export function HowToPlay({ page }: { page: number }) {
         </LabelChip>
       </div>
       <Panel className="absolute flex flex-col items-center justify-center gap-4 text-center" style={{ left: 60, right: 60, top: 60, height: 300, zIndex: 5 }}>
+        <TurnRibbon>{page === 1 ? "▼ 輪到：藍鯨隊" : text.topic}</TurnRibbon>
         <Picture page={page} />
         <div style={{ fontSize: 34, lineHeight: 1.25 }}>{text.big}</div>
       </Panel>

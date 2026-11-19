@@ -84,7 +84,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
               : warriorEffect(value);
   const chip =
     kind === "mage"
-      ? `🔮 ${teamName} 施法！擲技能骰`
+      ? `🔮 ${teamName} 占星！擲技能骰`
       : kind === "cleric"
         ? `✝️ ${teamName} 祈禱！擲技能骰`
         : kind === "thief"
@@ -95,7 +95,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
               : `🍳 ${teamName} 答對！擲料理骰`
             : check
               ? `🗣️ ${teamName} 說服：d20 + ${bonus}，擲骰檢定 ${dc}`
-              : `⚔️ ${teamName} 擲骰！${WARRIOR_TARGET} 以上就算答對`;
+              : `⚔️ ${teamName} 衝鋒！${WARRIOR_TARGET} 以上就算答對`;
   const potion = values && values.length > 1 ? values : null;
   return (
     <div data-testid="roll-overlay" data-kind={kind} className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{ zIndex: 8, background: "#1b132099" }}>

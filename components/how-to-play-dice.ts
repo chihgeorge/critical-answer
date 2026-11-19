@@ -2,6 +2,8 @@
 // rules' constants (docs/designs/class-dice-rework.md).
 import {
   CHECK_BONUS,
+  CLASS_IDS,
+  CLASS_SKILLS,
   CHECK_DC,
   CHEF_DISH_LEGEND_MULTIPLIER,
   CHEF_DISH_SUCCESS_MULTIPLIER,
@@ -20,11 +22,9 @@ type PageText = { topic: string; big: string; owl: string; script: string };
 /** Page 3 (填空題): typing, the host's judging, and the persuasion check before it. */
 export const FILL_IN_PAGE: PageText = {
   topic: "填空題",
-  big: "一般房先擲說服檢定，再打字送出",
-  owl: "說服擲到 20，怪物直接讓路；擲到 1，答對也只拿一半！",
-  script:
-    "一般房的填空題先按手機上的「🎲 擲骰說服」：擲 d20 加職業加值，達到怪物頭上的檢定就送第一個字；20 免答算答對，1 答對只拿一半。" +
-    "擲完才出題，打字按「送出」，由我判對錯。首領房不用擲說服骰。",
+  big: "先擲說服，再打字送出",
+  owl: "說服擲到 20 免答，擲到 1 只拿一半！",
+  script: "先擲說服：d20 加職業加值，過了怪物的檢定給第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
 };
 
 /** Page 5 (答對後的料理骰). */
@@ -53,7 +53,7 @@ export const CLASS_DICE_PAGE: PageText = {
   big: `職業技能都擲 d20，${OK} 以上就成功`,
   owl: "每個職業都有擲骰的時候，擲到 20 大成功，擲到 1 大失敗！",
   script:
-    `法師施法、牧師答錯祈禱、戰士擲骰代答、盜賊按偷襲、廚師答對擲料理骰時都擲 d20。結果分四段：1 大失敗，2 到 ${OK - 1} 失敗，` +
+    `法師${CLASS_SKILLS.mage}、牧師${CLASS_SKILLS.cleric}、戰士${CLASS_SKILLS.warrior}、盜賊${CLASS_SKILLS.thief}、廚師${CLASS_SKILLS.chef}（答對的料理骰）都擲 d20。結果分四段：1 大失敗，2 到 ${OK - 1} 失敗，` +
     `${OK} 到 19 成功，20 大成功。每個職業做什麼，大廳選職業時有寫。`,
 };
 
@@ -62,12 +62,6 @@ export const CHECK_EXAMPLE = { die: 10, bonus: CHECK_BONUS.thief, dc: CHECK_DC[2
 /** Page 5's picture: the dish die's three outcomes, and the chef's better ones. */
 export const DISH_FACES: [string, string][] = [["1", `燒焦・只拿${BURNT}`], ["2–19", "照常上菜"], ["20", `傳說級・×${DISH_LEGEND_MULTIPLIER}`]];
 export const CHEF_DISH_LINE = `${OK}–19 ×${CHEF_DISH_SUCCESS_MULTIPLIER}・20 ×${CHEF_DISH_LEGEND_MULTIPLIER}`;
-/** Page 7's picture: when each class rolls, and the shared scale. */
-export const CLASS_ROLL_WHEN: [ClassId, string][] = [
-  ["mage", "施法"],
-  ["cleric", "答錯祈禱"],
-  ["warrior", "擲骰代答"],
-  ["thief", "按偷襲"],
-  ["chef", "答對擲料理骰"],
-];
+/** Page 7's picture: each class with its skill name only; players read the effects on their phones (owner 2026-11-19). */
+export const CLASS_SKILLS_ROW: [ClassId, string][] = CLASS_IDS.map((c) => [c, CLASS_SKILLS[c]]);
 export const DICE_SCALE: [string, string][] = [["1", "大失敗"], [`2–${OK - 1}`, "失敗"], [`${OK}–19`, "成功"], ["20", "大成功"]];

@@ -39,12 +39,12 @@ export function sneakEffect(value: number, penalty = 0): string {
 export function dishEffect(value: number, chef: boolean): string {
   const t = skillTier(value);
   const m = dishMultiplier(chef, value);
-  return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "上菜，獎勵不變" : t === 2 ? (chef ? `上菜！廚師 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
+  return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "上菜，獎勵不變" : t === 2 ? (chef ? `上菜！神廚 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
 }
 
 /** What a dish die that changed the score is called before its 「原本 → 現在」: a 1, a 20, or a chef's 7–19. */
 export function dishChangeLabel(value: number | undefined): string {
-  return value === 1 ? "焦黑！" : value === 20 ? "傳說級！" : "廚師加成";
+  return value === 1 ? "焦黑！" : value === 20 ? "傳說級！" : "神廚加成";
 }
 
 /** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1), `points`
@@ -68,7 +68,8 @@ export function rollStatus(kind: string | undefined): string {
   if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
   if (kind === "dish") return "答對！擲料理骰中，看大螢幕 ▶";
   if (kind === "check") return "說服檢定擲骰中，看大螢幕 ▶";
-  if (kind === "mage") return "🔮 施法擲骰中，看大螢幕 ▶";
+  if (kind === "mage") return "🔮 占星擲骰中，看大螢幕 ▶";
+  if (kind === "warrior") return "⚔️ 衝鋒擲骰中，看大螢幕 ▶";
   if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
   if (kind === "thief") return "🗡️ 偷襲擲骰中，看大螢幕 ▶";
   return "擲骰中！看大螢幕 ▶";

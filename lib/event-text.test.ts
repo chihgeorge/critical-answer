@@ -12,7 +12,7 @@ describe("eventEffectLine", () => {
   });
 
   it("signs the points, adds the chef's bonus, and says an empty belly lost nothing", () => {
-    expect(eventEffectLine({ satiety: 20, chefBonus: 3 })).toBe("+20 飽足感（廚師 +3）");
+    expect(eventEffectLine({ satiety: 20, chefBonus: 3 })).toBe("+20 飽足感（神廚 +3）");
     expect(eventEffectLine({ satiety: -10 })).toBe("−10 飽足感");
     expect(eventEffectLine({ satiety: 0 })).toBe("飽足感已經見底，沒被扣");
   });

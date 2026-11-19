@@ -60,4 +60,4 @@ export function playClassFx(fx: ClassFx, d: ClassFxDeps): ClassFxLook | null {
 }
 
 /** The badge's words, after the team's name. */
-export const CLASS_FX_TEXT: Record<ClassFxKind, string> = { mage: "🔮 魔法！", cleric: "✝️ 祈禱！", thief: "🗝️ 偷襲！" };
+export const CLASS_FX_TEXT: Record<ClassFxKind, string> = { mage: "🔮 占星！", cleric: "✝️ 祈禱！", thief: "🗝️ 偷襲！" };
