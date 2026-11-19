@@ -21,7 +21,7 @@ type PageText = { topic: string; big: string; owl: string; script: string };
 export const FILL_IN_PAGE: PageText = {
   topic: "填空題",
   big: "說服骰會自動擲，過了有提示",
-  owl: "說服成功有提示！擲到 20 免答，擲到 1 只拿一半！",
+  owl: "填空題先說服，說服成功有提示！擲到 20 免答，擲到 1 只拿一半！",
   script: "輪到填空題，說服骰會自動擲：d20 加職業加值，過了怪物的檢定就有提示，答案第一個字；20 免答，1 只拿一半。再打字送出，由我判。首領房不擲說服。",
 };
 
