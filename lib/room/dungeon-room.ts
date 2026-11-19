@@ -4866,7 +4866,11 @@ export class DungeonRoom {
     this.setCue(passed ? "check-pass" : "check-fail");
     const said = this.diceLines.checkLine(passed ? "pass" : value === 1 ? "fumble" : "fail", this.lineNames(teamId));
     if (passed) {
-      this.writeScripted([`說服成功！${said}接下來看題目。`]);
+      // The check rolls as the turn opens, so the owl may still be reading the last turn's result and 「輪到…」 lines:
+      // the ones not read yet stay ahead of the check's, instead of being cut off by its new narration.
+      const n = this.lastNarration;
+      const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
+      this.writeScripted([...unread, `說服成功！${said}接下來看題目。`].slice(-NARRATION_MAX_LINES));
       this.checkSuccessBeat(teamId, questionId);
       this.broadcastState();
       this.sendNarration();

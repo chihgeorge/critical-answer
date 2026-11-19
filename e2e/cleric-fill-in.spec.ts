@@ -1,5 +1,5 @@
 import { test, expect, type Browser, type Page } from "@playwright/test";
-import { textOnlyBank, startGame, checkLanded, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, textOnlyBank, startGame, checkLanded, closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
 
@@ -86,6 +86,7 @@ test("cleric: a double-tap of 2 marks the answer wrong once and spends nothing",
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("牧師隊")}`);
   await team.getByRole("button", { name: /牧師/ }).click();
   await startGame(host);
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await expect(host.getByRole("button", { name: "答錯", exact: true })).toBeEnabled();
   await host.keyboard.press("2");
   await expect(host.getByRole("button", { name: "祈禱", exact: true })).toBeVisible();

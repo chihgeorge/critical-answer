@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { startGame, checkLanded, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
+import { hostCheckSettled, startGame, checkLanded, nextQuestion, screenUrl, closeLeftoverContexts } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -221,6 +221,7 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await expect(screen.getByText("正解：揭曉答案")).toHaveCount(0);
   await expect(screen.getByText("因為這是補充說明")).toHaveCount(0);
 
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答對！" }).click();
   for (const page of [screen, team]) {
     await expect(page.getByText("正解：揭曉答案")).toBeVisible();
@@ -228,9 +229,8 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   }
 
   // The reveal takes the question's place (D7) and the host can't judge until they press 下一題.
-  // Judged before the persuasion check, the question was never shown, so it comes only inside the reveal.
-  await expect(screen.getByText("揭曉測試題")).toHaveCount(1);
-  await expect(screen.getByTestId("reveal-question")).toHaveText("揭曉測試題");
+  // The check rolls itself before the host can judge, so the question was shown: the reveal does not repeat it.
+  await expect(screen.getByTestId("reveal-question")).toHaveCount(0);
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
   // The only team is next, but the reveal holds the room: its phone says it is next, not that it can answer (#263).
   await expect(team.getByText("下一個是我們！")).toBeVisible();
@@ -253,6 +253,7 @@ test("answer reveal: a YouTube explanation renders as an embed on /play and /scr
   const { host, screen, team } = await startWithExplanation(browser, request, { kind: "youtube", value: "dQw4w9WgXcQ" });
 
   // A wrong answer (retry) never reveals it (D5).
+  await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
   await expect(screen.getByTitle("詳解影片")).toHaveCount(0);
   await expect(team.getByTitle("詳解影片")).toHaveCount(0);

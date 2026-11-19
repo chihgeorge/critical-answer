@@ -111,8 +111,9 @@ test("create room, join two teams, start, judge; screen and play never see host-
   await expect(screen.getByText(`正解：${answer}`)).toHaveCount(0);
   // Now the narrator moves the story on: the result line shows a ▼ (more to come), then the next team is
   // addressed, and the last line has no ▼.
-  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 6000 });
-  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 8000 }); // the follow-up addresses the next team
+  // 乙隊's fill-in check rolls itself right away (2 s die, 2 s card), so the lines come after it.
+  await expect(screen.locator(".px-say .more")).toBeVisible({ timeout: 12_000 });
+  await expect(screen.locator(".px-say")).toContainText("乙隊", { timeout: 14_000 }); // the follow-up addresses the next team
   await expect(screen.locator(".px-say .more")).toHaveCount(0, { timeout: 6000 });
 
   await expect(host.getByText("輪到：乙隊")).toBeVisible();

@@ -1258,6 +1258,20 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).view.checks[checkKey("r0-t1", ids[0])].hint).toBe("萬");
     });
 
+    // Value: protects=the check rolls as the turn opens, so a pass must not cut off the owl's unread lines (the last
+    // turn's result and 「輪到…」); fails_when=a passed check's narration replaces them (main-line e2e lost its ▼)
+    it("keeps the owl's unread lines ahead of a passed check's line", () => {
+      vi.useFakeTimers();
+      const { room } = checkGame(1, 15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      const r = room as unknown as { eventSeq: number; lastNarration: { eventId: number; lines: string[]; rev: number; done: number } | null };
+      r.lastNarration = { eventId: r.eventSeq, lines: ["甲隊答對了。", "輪到乙隊。"], rev: 0, done: 1 };
+      vi.advanceTimersByTime(2000);
+      const lines = r.lastNarration!.lines;
+      expect(lines[0]).toBe("輪到乙隊。");
+      expect(lines.at(-1)).toMatch(/^說服成功！/);
+      expect(lines).toHaveLength(2);
+    });
+
     // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
     // turn under it; fails_when=an offline team loses the turn, or 跳過 is let through during the card; seam=none;
     // no_claim=the screen's card art (e2e)

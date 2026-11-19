@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { hostCheckSettled, advanceAwards, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -52,6 +52,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
 
+  await hostCheckSettled(host); // 送王房 waits for a fill-in's own check, like a judgment
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
