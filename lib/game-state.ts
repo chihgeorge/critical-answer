@@ -51,6 +51,16 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   chef: "廚師",
 };
 
+/** Each class's skill name (owner 2026-11-19): the phone buttons, the lobby, the big screen's roll chips and the
+ * how-to-play slides all say these. The chef's is its passive; 「料理骰」 stays the die every team rolls. */
+export const CLASS_SKILLS: Record<ClassId, string> = {
+  mage: "洞悉",
+  cleric: "祈禱",
+  warrior: "衝鋒",
+  thief: "偷襲",
+  chef: "提鮮",
+};
+
 export const CLASS_ICONS: Record<ClassId, string> = {
   mage: "🔮",
   cleric: "✝️",
@@ -70,7 +80,7 @@ export function abilityUsesFor(classId: ClassId | undefined): number {
 
 /* ---------- Class dice (docs/designs/class-abilities.md 「職業技能擲骰」) ---------- */
 
-/** One d20's tier, the same for every class: 0 大失敗 (1), 1 小失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
+/** One d20's tier, the same for every class: 0 大失敗 (1), 1 失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
 export type SkillTier = 0 | 1 | 2 | 3;
 export function skillTier(value: number): SkillTier {
   return value <= 1 ? 0 : value < SKILL_SUCCESS ? 1 : value <= 19 ? 2 : 3;
@@ -78,7 +88,7 @@ export function skillTier(value: number): SkillTier {
 /** The lowest value of the success tier (7). */
 export const SKILL_SUCCESS = 7;
 /** Each tier's name, for the screens and the narrator. */
-export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
+export const TIER_LABELS = ["大失敗", "失敗", "成功", "大成功"] as const;
 
 /** The thief's Sneak Attack die (docs/designs/class-dice-rework.md), rolled when 偷襲 is pressed: on 7–19 a correct answer
  * gives SNEAK_REWARD_MULTIPLIER times the reward (rounded half up) and the boss loses 2 hearts; on a 20 SNEAK_CRIT_MULTIPLIER
@@ -97,6 +107,13 @@ export const CHEF_DISH_LEGEND_MULTIPLIER = 2;
 /** The dish die's multiplier per tier (1, 2–6, 7–19, 20) for a team that is not a chef, and for a chef. */
 export const DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, 1, DISH_LEGEND_MULTIPLIER] as const;
 export const CHEF_DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, CHEF_DISH_SUCCESS_MULTIPLIER, CHEF_DISH_LEGEND_MULTIPLIER] as const;
+
+/** The dish die's tier as players see it: for a team that is not a chef 2–6 pays the same as 7–19, so it reads as the
+ * same plain result (owner 2026-11-18), never as a failure; a chef's 2–6 stays tier 1 (no bonus). */
+export function dishTier(value: number, chef: boolean): SkillTier {
+  const t = skillTier(value);
+  return t === 1 && !chef ? 2 : t;
+}
 
 /** The dish die `value`'s multiplier for a chef or anyone else. */
 export function dishMultiplier(chef: boolean, value: number): number {

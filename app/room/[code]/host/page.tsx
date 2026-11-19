@@ -115,7 +115,8 @@ export default function HostPage() {
   // Check first, question after: STATE holds a fill-in's text back until its check is done; the host's copy comes with the answer.
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
   // And the buzzer question waiting for the winner's category (#370): STATE sends none, the host reads it here.
-  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) ? { ...state!, question: answer!.question! } : state, [state, answer]);
+  // And the next question under a reveal (#362): STATE blanks its text until 下一題, the ⏭ preview reads it here.
+  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) || (state?.reveal && answer?.question && answer.questionId === state.question?.id) ? { ...state!, question: answer!.question! } : state, [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
   const [fxOpen, setFxOpen] = useState(false);
@@ -1252,7 +1253,7 @@ export default function HostPage() {
                       {game.answerClock.left === null ? (
                         <span data-testid="answer-clock-wait" className="text-[14px]">{game.question?.memorize ? "⏱ 記憶完後開始倒數" : "⏱ 影片播完後開始倒數"}</span>
                       ) : (
-                        <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" />
+                        <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" paused={!connected} />
                       )}
                     </div>
                   )}
@@ -1485,7 +1486,8 @@ export default function HostPage() {
                   {cleric === "wait" ? (
                     <>
                       <div className="px-1 pt-1 text-center text-[20px] text-white" role="status">{prayedWrong ? `${turn.team.name}祈禱了！` : "答錯了！"}等{turn.team.name}選，或替他們選：</div>
-                      <div className="grid grid-cols-3">
+                      {/* One column per button shown: 祈禱 only while the cleric may still pray. */}
+                      <div className={game.view.awaitingPrayer === turn.team.id ? "grid grid-cols-3" : "grid grid-cols-2"}>
                         {game.view.awaitingPrayer === turn.team.id && (
                           <PixelButton className="text-[16px]" style={{ background: "#ffe066" }} disabled={!canJudge || held} onClick={() => judge(turn.team!.id, turn.questionId!, false, "pray")}>
                             祈禱

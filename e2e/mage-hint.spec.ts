@@ -32,11 +32,11 @@ test.describe("a fill-in answer with a first character", () => {
   test("mage: no first-character button before the check, nor after a check that gave it", async ({ browser }) => {
     const { screen, team } = await mageRoom(browser);
     await expect(team.getByTestId("roll-check")).toBeVisible();
-    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /洞悉：看答案提示/ })).toHaveCount(0);
     await rollCheck(team);
     await expect(team.getByTestId("check-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-check-hint")).toHaveText("🔮 第一個字：萬");
-    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /洞悉：看答案提示/ })).toHaveCount(0);
     await expect(team.getByText("法師・剩 3 次")).toBeVisible();
   });
 
@@ -52,13 +52,13 @@ test.describe("a fill-in answer with a first character", () => {
     await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible();
     await expect(team.getByTestId("roll-check")).toHaveCount(0);
     await expect(screen.getByTestId("screen-check-dc")).toHaveCount(0);
-    await team.getByRole("button", { name: /施法：看答案提示/ }).click();
+    await team.getByRole("button", { name: /洞悉：看答案提示/ }).click();
     await expect(team.getByTestId("mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(host.getByTestId("host-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(screen.getByTestId("screen-mage-hint")).toHaveText("🔮 第一個字：萬");
     await expect(team.getByText("法師・剩 2 次")).toBeVisible();
     // One hint per question: the button is gone.
-    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /洞悉：看答案提示/ })).toHaveCount(0);
   });
 });
 
@@ -71,9 +71,9 @@ test.describe("a 1-character fill-in answer", () => {
     const { host, team } = await mageRoom(browser);
     // The check passes but a 1-character answer has no hint to give, so the mage's button is offered after it.
     await rollCheck(team);
-    await team.getByRole("button", { name: /施法：看答案提示/ }).click();
+    await team.getByRole("button", { name: /洞悉：看答案提示/ }).click();
     await expect(team.getByText("🔮 這題答案太短，不能看第一個字・剩 3 次")).toBeVisible();
-    await expect(team.getByRole("button", { name: /施法：看答案提示/ })).toHaveCount(0);
+    await expect(team.getByRole("button", { name: /洞悉：看答案提示/ })).toHaveCount(0);
     await expect(host.getByTestId("host-mage-hint")).toHaveCount(0);
   });
 });

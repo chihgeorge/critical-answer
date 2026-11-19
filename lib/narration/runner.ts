@@ -84,6 +84,8 @@ export function alignToSlots(raw: string[], target: number, nextTeam: string, ho
  * (TODOS 旁白語氣是否耐聽); the big moments and a natural 20 or 1 keep it. With no next team it is the closing beat.
  */
 export function hasMiddleLine(event: Exclude<NarrationEvent, { type: "epilogue" }>): boolean {
+  // A prayed retry outside the boss room says one line: the prayer die's line already announced it (#416).
+  if (event.type === "retry" && event.prayed && !event.boss && !event.hostLine && !event.crowd) return false;
   // An audience that reacted enough this turn (crowd.ts) gets its line here.
   if (!event.next || event.hostLine || event.crowd) return true;
   if (event.type !== "correct" && event.type !== "retry" && event.type !== "flee") return true;
@@ -114,7 +116,8 @@ export interface TranscriptEntry {
   fallbackReason?: string;
 }
 
-/** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. "fix": a 修正 press. */
+/** Things the host did by hand, kept in the same transcript so a playtest can be reconstructed. "fix": a 修正 press, or a
+ * score change no judgment carries (a caught 偷襲). */
 export interface DirectorEntry {
   kind: "edit" | "breaker" | "next" | "fix";
   at: string;

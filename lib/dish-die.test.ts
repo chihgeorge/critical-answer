@@ -6,7 +6,8 @@ import { rolledDish } from "./dish-die";
 it("serves the dish by its tier: burnt, botched, as cooked, legendary", () => {
   const dish = { name: "炒飯", comment: "好吃" };
   expect(rolledDish(dish, 12, () => 0)).toEqual({ ...dish, look: "plain" });
-  expect(rolledDish(dish, 4, () => 0)).toMatchObject({ name: "半生不熟的炒飯", comment: "能吃，但大家都安靜地吃完了。", look: "botched" });
+  expect(rolledDish(dish, 4, () => 0)).toEqual({ ...dish, look: "plain" });
+  expect(rolledDish(dish, 4, () => 0, true)).toMatchObject({ name: "半生不熟的炒飯", comment: "能吃，但大家都安靜地吃完了。", look: "botched" });
   expect(rolledDish(dish, 1, () => 0)).toMatchObject({ name: "碳化的炒飯", look: "burnt" });
   expect(rolledDish(dish, 20, () => 0.99)).toMatchObject({ name: "一生一次的炒飯", look: "legend" });
 });

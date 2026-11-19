@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdirSync, openSync, rmSync } from "node:fs";
 import { closeLeftoverContexts } from "./answer";
 
 closeLeftoverContexts();
@@ -51,8 +51,16 @@ function startWorker(): ChildProcess {
       "--var", "ALLOWED_ORIGINS:*", "--var", "ANTHROPIC_API_KEY:",
       "--var", `ROOM_IDLE_MS:${IDLE_MS}`, "--var", `ROOM_EXPIRE_MS:${EXPIRE_MS}`,
     ],
-    { detached: true, stdio: "ignore" },
+    // The worker's own log (room_idle_closed, room_expired, alarm_failed) lands in test-results/, which CI uploads
+    // when a shard fails: the CI-only flake in issue 396 left nothing to read.
+    { detached: true, stdio: ["ignore", workerLog(), workerLog()] },
   );
+}
+
+let logFd: number | undefined;
+function workerLog(): number {
+  mkdirSync("test-results", { recursive: true });
+  return (logFd ??= openSync("test-results/lifecycle-worker.log", "w"));
 }
 
 type Peer = { ws: WebSocket; seen: any[]; closedWith: number | null };
@@ -69,6 +77,12 @@ const last = (p: Peer, type: string) => p.seen.findLast((m) => m.type === type);
 const send = (p: Peer, m: object) => p.ws.send(JSON.stringify(m));
 const wait = <T,>(fn: () => T | undefined | null | false, what: string, timeout = 15_000) =>
   expect.poll(fn, { message: what, timeout, intervals: [100] }).toBeTruthy();
+/** Waits until every peer is closed, then checks the codes on their own: a wrong code (the expiry's, an abnormal 1006)
+ * fails showing the codes, not as a bare timeout. */
+async function waitClosed(peers: Peer[], what: string, timeout: number) {
+  await wait(() => peers.every((p) => p.closedWith !== null), what, timeout);
+  expect(peers.map((p) => p.closedWith), `${what}: close codes`).toEqual(peers.map(() => CLOSE_IDLE));
+}
 
 // A room only ever watched on the big screen still rests: lib/room/lifecycle.test.ts covers it without a worker boot.
 test("an unused room closes its connections after the idle time, keeps the game, and is forgotten after the expiry", async () => {
@@ -113,7 +127,7 @@ test("an unused room closes its connections after the idle time, keeps the game,
     expect([host, a, b].every((p) => p.closedWith === null)).toBe(true);
 
     // Idle: the room closes every connection with the idle code, on its own.
-    await wait(() => [host, a, b].every((p) => p.closedWith === CLOSE_IDLE), "every connection closed with the idle code");
+    await waitClosed([host, a, b], "every connection closed with the idle code", 15_000);
     expect(Date.now() - activeAt).toBeGreaterThanOrEqual(IDLE_MS - 500); // not sooner than the idle time
 
     // The game is still there: the same people reconnect with their saved secrets and find it as it was.
@@ -125,8 +139,13 @@ test("an unused room closes its connections after the idle time, keeps the game,
     expect(last(a2, "STATE").view.teams.map((t: any) => [t.id, t.score])).toEqual(scores);
     expect(last(a2, "STATE").roomEpoch).toBe(epoch);
 
-    // Reconnecting was activity, so the idle clock started again: it closes once more.
-    await wait(() => [host2, a2, b2].every((p) => p.closedWith === CLOSE_IDLE), "closed again after the reconnect");
+    // Reconnecting was activity, so the idle clock started again: it closes once more, with the idle code. Waited for
+    // up to the room's end rather than a fixed 15 s: a late alarm on a loaded CI runner is still the idle close, and
+    // the code check tells it apart from the expiry's close (issue 396).
+    const reconnectAt = Date.now();
+    await waitClosed([host2, a2, b2], "closed again after the reconnect", createdAt + EXPIRE_MS - reconnectAt);
+    expect(Date.now() - reconnectAt).toBeGreaterThanOrEqual(IDLE_MS - 500); // not sooner than the idle time
+    expect(Date.now() - reconnectAt).toBeLessThan(IDLE_MS + 12_000); // and not wildly late either
 
     // Nobody comes back before the expiry time: the room is forgotten and its code is free.
     expect(Date.now() - createdAt).toBeLessThan(EXPIRE_MS); // both idle closes came before the end

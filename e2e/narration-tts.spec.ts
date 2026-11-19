@@ -144,7 +144,7 @@ test("screen TTS: speaks live narration (both line and the next-team prompt), bu
 
   await answerCorrectly(host);
   await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
-  await nextQuestion(host); // the narration waits for the reveal to close (#365)
+  await nextQuestion(host); // closes the reveal and adds the handoff line (#405)
 
   // The live NARRATION's line and its "then" (next-team) line both get spoken, in order —
   // not just the result line.
@@ -163,7 +163,7 @@ test("screen TTS: the host turning 🔊 off in ⚙ 更多 cancels the screen's s
 
   await tapScreen(screen); // 1 cancel-free priming utterance so far
   await answerCorrectly(host);
-  await nextQuestion(host); // the narration waits for the reveal to close (#365)
+  await nextQuestion(host); // closes the reveal and adds the handoff line (#405)
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
   const cancelsBeforeOff = await ttsCancelCount(screen);
@@ -187,7 +187,7 @@ test("screen TTS: LOBBY (room reset) cancels in-progress speech", async ({ brows
 
   await tapScreen(screen);
   await answerCorrectly(host);
-  await nextQuestion(host); // the narration waits for the reveal to close (#365)
+  await nextQuestion(host); // closes the reveal and adds the handoff line (#405)
   await expect.poll(() => ttsCalls(screen)).toContainEqual(expect.stringContaining("甲隊"));
 
   const cancelsBeforeReset = await ttsCancelCount(screen);
@@ -227,7 +227,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
   // A live line is spoken, and a correction of the line 下一題 then adds (same eventId, new text) is spoken too.
   const spokenBefore = (await ttsCalls(screen)).length;
   await answerCorrectly(host);
-  await nextQuestion(host); // closes the reveal, so the narration is read (#365), and adds the line naming 甲隊
+  await nextQuestion(host); // closes the reveal and adds the line naming 甲隊 (#405)
   await expect
     .poll(async () => (await ttsCalls(screen)).slice(spokenBefore))
     .toContainEqual(expect.stringContaining("乙隊"));
@@ -295,8 +295,7 @@ test("screen TTS: narration that arrives before the voice list has loaded is spo
   // A live narration arrives while there is still no voice to speak it with...
   await answerCorrectly(host);
   await expect(screen.getByText("🍲 甲隊")).toBeVisible(); // the reveal's ribbon names who eats (cooking I6)
-  await nextQuestion(host); // the narration waits for the reveal to close (#365)
-  await screen.waitForTimeout(500);
+  await screen.waitForTimeout(500); // over the reveal it is read with the phones (#405)
   expect(await ttsCalls(screen)).toEqual([""]); // just the unlock utterance: nothing to speak with yet
 
   // ...then the voices load, and it's spoken.
@@ -433,11 +432,11 @@ test("screen TTS: the how-to-play intro speaks each page's owl line once", async
   await openSettings(host);
   await expect(host.getByRole("checkbox", { name: "開始前播放玩法說明" })).toBeChecked();
   await clickStart(host);
-  const page1 = "輪到誰，怪物就找誰。選擇題點了要鎖定，填空題打字送出。";
-  const page2 = "說服擲到 20 免答！料理骰擲到 20 是傳說級料理，擲到 1 就燒焦了！";
+  const page1 = "看大螢幕上方輪到誰，再拿手機作答！";
+  const page2 = "選擇題點一個答案，按鎖定，等主持人公布答案！";
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1]);
 
   await host.getByRole("button", { name: "下一頁 ▶" }).click();
-  await expect(screen.getByTestId("how-to-play")).toContainText("2/4");
+  await expect(screen.getByTestId("how-to-play")).toContainText("2/8");
   await expect.poll(() => ttsCalls(screen)).toEqual(["", page1, page2]);
 });

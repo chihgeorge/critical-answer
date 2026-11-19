@@ -117,9 +117,9 @@ function epilogueAsk(e: Extract<NarrationEvent, { type: "epilogue" }>): string {
 
 /** How each class fights, so a mage never swings a sword (TODOS: 旁白的武器和招式要配合職業). */
 const CLASS_ATTACKS: Record<ClassId, string> = {
-  mage: "用法杖和法術攻擊（火球、冰箭、閃電），不用刀劍",
+  mage: "用法杖和法術攻擊（火球、冰箭、閃電），不用刀劍；不要寫「洞悉」，那是另一個技能",
   cleric: "用聖光、神術和權杖攻擊，不用刀劍；不要寫「祈禱」，那是另一個技能",
-  warrior: "用劍、戰斧和盾牌攻擊，不用法術",
+  warrior: "用劍、戰斧和盾牌攻擊，不用法術；不要寫「衝鋒」，那是另一個技能",
   thief: "用匕首、飛刀和暗處一刺攻擊，不用法術；不要寫「偷襲」，那是另一個技能",
   chef: "用菜刀、平底鍋和爐火攻擊，不用法術",
 };
@@ -139,7 +139,7 @@ function describeRoll(e: NarrationEvent): string {
 function warriorFacts(e: NarrationEvent): string {
   if (e.type === "retry") return e.warriorRoll !== 1 ? "沒打中" : `大失敗，沒打中，擲 1 要扣掉整題的獎勵，${e.penalty ? `這隊被扣了 ${e.penalty} 分` : "但這隊沒分可扣"}`;
   if (e.type === "boss-kill") return "命中";
-  return "warriorRoll" in e && e.warriorRoll === 20 ? "命中，獎勵加倍" : "命中，但戰士擲骰只拿這題八成的獎勵";
+  return "warriorRoll" in e && e.warriorRoll === 20 ? "命中，獎勵加倍" : "命中，但戰士衝鋒只拿這題八成的獎勵";
 }
 
 /** A natural 20 or 1 behind the hit (dnd design E3): the result line itself says it, no extra line. */
@@ -192,7 +192,8 @@ function describeEvent(e: NarrationEvent): string {
     }
     case "retry":
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以再答，也不要說首領倒下，結果留待揭曉。`;
-      if (e.prayed) return `事件：隊伍${q(e.team)}答錯了，但牧師的祈禱讓聖光降臨，他們現在馬上再答一次${e.boss ? `（首領${q(e.monster)}換了一題）` : ""}，不換隊。不要說下一輪再答。`;
+      if (e.prayed && !e.boss) return `事件：隊伍${q(e.team)}答錯了，牧師的祈禱骰已經宣布他們馬上再答，不換隊。這一行只寫一句場面氣氛，不要再說再答、祈禱、聖光或下一輪。`;
+      if (e.prayed) return `事件：隊伍${q(e.team)}答錯了，但牧師的祈禱讓聖光降臨，他們現在馬上再答一次（首領${q(e.monster)}換了一題），不換隊。不要說下一輪再答。`;
       if (e.buzzSecond) return `事件：搶答中，隊伍${q(e.team)}搶到了卻沒全對，所有隊伍都答過了，還沒有隊伍每一欄都對。同一首歌開始第二輪，所有隊伍可以再搶，這是最後一輪。要說第二輪、最後一次。不要說換題。`;
       if (e.buzzAgain) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，所有隊伍都答錯了這一題。同一題重新開放，所有隊伍可以再搶一次。不要說換題。`;
       if (e.buzzOut) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，這題他們不能再搶，音樂繼續放，其他隊伍快搶。不要說可以再答。`;
