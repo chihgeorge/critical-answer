@@ -1036,6 +1036,11 @@ describe("restoring after a restart", () => {
     const lines = async (patch?: (s: any) => void) => (await restoredFrom(storage, saved, patch)).lastNarration.lines.join(" ");
     expect(saved.lastNarration.lines.join(" ")).not.toContain("吃飽後走進首領房");
     expect(await lines()).toContain("甲隊吃飽後走進首領房");
+    // #394: the entrance goes before the handoff the save held back, as closeReveal orders them.
+    expect(saved.heldHandoff).toMatchObject({ eventId: saved.lastNarration.eventId });
+    const told: string[] = (await restoredFrom(storage, saved)).lastNarration.lines;
+    expect(told.at(-1)).toBe(saved.heldHandoff.line);
+    expect(told.findIndex((l) => l.includes("吃飽後走進首領房"))).toBeLessThan(told.length - 1);
     // Restoring it saves nothing half-restored: the room's start time stays as saved.
     expect((storage.data.get(SNAPSHOT_KEY) as any).createdAt).toBe(saved.createdAt);
     // A 最後衝刺 that started with this entry is said after it; one that was already on is not said again.

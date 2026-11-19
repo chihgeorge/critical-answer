@@ -616,7 +616,7 @@ describe("the boss kill's 4d20 beat (kill-roll.md)", () => {
     const { room, turn, judge } = lastHit();
     const before = room.game!.teams.find((t) => t.id === turn)!.reward;
     judge();
-    expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
     // The boss stays on stage through the beat, not the default slime (#401).
     expect(lastBroadcast(room).stageMonster).toMatchObject(lastBroadcast(room).view.bossLook);
     vi.advanceTimersByTime(2000);
@@ -1266,6 +1266,23 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).view.checks[checkKey("r0-t1", ids[0])].hint).toBe("萬");
     });
 
+    // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
+    // turn under it; fails_when=an offline team loses the turn, or 跳過 is let through during the card; seam=none;
+    // no_claim=the screen's card art (e2e)
+    it("keeps the 說服成功 card on the roller's turn: its phone dropping or the host's 跳過 does not move the turn", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids, conns, roll } = checkGame(2);
+      roll(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-success");
+      room.onClose(conns[0]);
+      send(room, hostConn, { type: "HOST_SKIP_TURN", teamId: ids[0], eventId: seqOf(room) });
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "check-success", view: { currentTurnTeamId: ids[0] } });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room)).toMatchObject({ question: { id: "r0-t1" }, view: { currentTurnTeamId: ids[0] } });
+      expect(lastBroadcast(room).stageBeat).toBeUndefined();
+    });
+
     it("rolls once per question: a second press and a press after a wrong retry are refused", () => {
       vi.useFakeTimers();
       const { room, hostConn, ids, conns, roll } = checkGame();
@@ -1369,7 +1386,7 @@ describe("TEAM_SELECT_OPTION", () => {
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t) => ({ ...t, inBoss: true })), boss: { ...g.boss, hp: 1, phaseIndex: g.boss.phases.length - 1, currentQuestionId: "r0-t1" } };
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: true, eventId: seqOf(room) });
-      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
       vi.advanceTimersByTime(6000);
       expect(room.game!.phase).toBe("finished");
       expect((room as any).reveal).toMatchObject({ answer: "萬家福" });
@@ -1759,7 +1776,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useRealTimers();
     });
 
-    it("逃跑・換房 from the phone: same room, and the screen shows the new monster", () => {
+    it("逃跑 from the phone: same room, and the screen shows the new monster", () => {
       vi.useFakeTimers();
       const { room, hostConn, conns } = startedMcGame(1);
       const before = lastBroadcast(room).question.monster.id;
@@ -2366,9 +2383,12 @@ describe("narration (T5-T7)", () => {
     send(room, hostConn, { type: "HOST_SEND_TO_BOSS", teamId: onTurn });
     const boss = states().at(-1)!.question;
     expect(boss.boss).toBe(true);
-    const lines = all(room).filter((m) => m.type === "NARRATION").at(-1).lines as string[];
+    const told = all(room).filter((m) => m.type === "NARRATION").at(-1);
+    const lines = told.lines as string[];
     expect(lines.at(-1)).toContain(boss.monster.name);
     expect(lines.at(-1)).not.toContain(roomMonster);
+    // #405: it overrides the handoff already said, so the big screen shows it at once.
+    expect(told.jump).toBe(true);
     // The first boss entry, so the sprint fires: still no owl line on 送王房 (last-sprint.md).
     expect(room.game!.sprint).toBeDefined();
     expect(lines.some((l) => l.startsWith("🦉"))).toBe(false);
@@ -2539,8 +2559,9 @@ describe("narration (T5-T7)", () => {
       (room as any).servedAt = -Infinity;
       send(room, hostConn, { type: "HOST_NEXT", eventId: seqOf(room) });
       expect(lastBroadcast(room).view.teams[0].inBossPhase).toBe(true);
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.join(" ")).toContain("Team 0吃飽後走進首領房");
-      expect(all(room).filter((m) => m.type === "NARRATION").at(-1).lines.at(-1)).toBe("🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！");
+      const told: string[] = all(room).filter((m) => m.type === "NARRATION").at(-1).lines;
+      // #394: the entrance and its 最後衝刺 line come before the handoff to the next team.
+      expect(told.slice(1)).toEqual(["Team 0吃飽後走進首領房，首領戰開始！", "🦉 Team 0進魔王房了！Team 1、Team 2獲得祝福！", "Team 1，換你們了！害羞幽靈正等著你們。"]);
     });
 
     it("is appended with rev + 1 to a narration already on screen, and dropped once the game is over", async () => {
@@ -3991,6 +4012,9 @@ describe("class abilities: mage, cleric and thief in the room (class-abilities.m
     caught.use(1);
     expect(caught.room.game!.teams[0]).toMatchObject({ reward: 29, abilityUses: 2, sneakTry: { questionId: "r0-mc1", value: 1, penalty: 1 } });
     expect(caught.room.game!.teams[0].sneakArmed).toBeUndefined();
+    // The loss is in the transcript's score trail too (#416): no judgment carries it.
+    const trail = (caught.room as unknown as { transcript: { kind?: string; text?: string }[] }).transcript.filter((e) => e.kind === "fix");
+    expect(trail.at(-1)?.text).toMatch(/ sneak d20=1 30→29$/);
     caught.use();
     expect(err(caught.conns[0])).toBe("sneak_used");
   });

@@ -291,6 +291,10 @@ body {
   box-shadow: 6px 0 #fff6b0, -6px 0 #fff6b0, 0 6px #fff6b0, 0 -6px #fff6b0;
   animation: px-rise 3s steps(6) infinite;
 }
+/* A natural 20's sparkles (components/d20.tsx): two pairs blink in turn. */
+@keyframes px-nat20-spark { 50% { opacity: 0; } }
+.px-nat20-spark { animation: px-nat20-spark 0.6s steps(1) infinite; }
+.px-nat20-spark2 { animation-delay: -0.3s; }
 @keyframes px-run { from { transform: translateX(-420px); } to { transform: translateX(0); } }
 .px-run { animation: px-run 1.2s steps(8) 1 both; }
 @keyframes px-fall { from { transform: translateY(-40px) rotate(0); } to { transform: translateY(560px) rotate(180deg); } }
@@ -379,7 +383,7 @@ body {
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
 @media (prefers-reduced-motion: reduce) {
-  .px-tf1, .px-tf2, .px-glow, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
+  .px-tf1, .px-tf2, .px-glow, .px-nat20-spark, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
   .px-tf2 { opacity: 0; }
   /* The fog reveal's cover never shows: only the brightened room (the page takes no flash under reduced motion). */
   .px-fog-cloud { display: none; }

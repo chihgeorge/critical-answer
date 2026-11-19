@@ -2,6 +2,50 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.107.1.0] - 2026-11-20
+
+### Fixed
+- During the boss's 「首領被擊敗了！」 beat, before the four kill dice roll, the host page and the phones stay held as they are during the dice: their judge and ability buttons no longer reopen for two seconds. The big screen still shows the defeated boss first (#394).
+- 🚨 成立 sends the one 逃跑 value the room now uses; the accused team still flees and keeps its monster. The anti-cheating design note no longer mentions 逃跑・同房.
+- The idle-close e2e test (`e2e/lifecycle.spec.ts`) checks the close codes separately and waits for the second idle close until the room's end instead of a fixed 15 s. It also keeps the test worker's log in `test-results/` so the next CI failure can be read (#396).
+
+## [0.107.0.0] - 2026-11-20
+
+### Changed
+- The how-to-play slideshow is now 8 pages instead of 4: taking turns, multiple choice, fill-in (with the persuasion check), sort questions, the dish die after a correct answer, the lucky potion, the class dice (when each class rolls and the shared 1／2–6／7–19／20 scale, no per-class table) and a wrong answer and how to win (one 逃跑: another monster, an easier question). Each page keeps its picture, big text, owl line and host script.
+- A dish die of 2–6 no longer looks like a failure for a team that is not a chef: the big screen shows the same plain 「成功：上菜，獎勵不變」 as 7–19 (no red bar), the phone reads 「🍳 料理骰 N：上菜」, the dish keeps its own name and the narrator uses the served lines. A chef's 2–6 reads 「沒加成」 in plain cream, not red.
+- A class die's 2–6 is now called 「失敗」 instead of 「小失敗」 on the big screen, in the rules and in the how-to-play slideshow, so every place reads 1 大失敗／2–6 失敗／7–19 成功／20 大成功.
+- Every how-to-play page now opens with a title ribbon showing its topic (page 1 reads 「輪到：藍鯨隊」), the dice in the pictures are the game's own D20, page 3 (fill-in) is shorter, page 7 shows only each class's skill name and the 1／2–6／7–19／20 scale.
+- Skills are renamed everywhere (phone, lobby, big screen, narration, rules, README): the mage's 施法 is now 「洞悉」 (Insight), the warrior's roll instead of answering is 「衝鋒」 (Charge, ⚔️ on the phone), the chef's passive is 「提鮮」 (Seasoning); 「祈禱」 (Pray) and 「偷襲」 (Sneak Attack) stay. The die stays 料理骰.
+- A natural 20 now looks special wherever a d20 lands on it (dish die, class dice, persuasion, potion, initiative, the boss kill): the die turns gold, glows and four pixel sparkles blink around it (they stay still under reduced motion). A tumbling die never flashes a 20 before it lands.
+- A potion's kept die keeps its normal colours and gets a green outline and a ✓ badge; the dropped die fades. Before, the kept die was only pale yellow.
+- How-to-play: page 1 is shorter, page 2 shows the phone before and after the reveal (answer green ✓, a wrong pick red ✗), page 3 shows the hint 「💡 提示：海」 on the phone and ① 看提示 ② 打字，按「送出」, page 7's owl says 「每個職業都有職業技能」, and page 8 shows a small champion podium (the end screen's look, the winner crowned) at the slime's pixel scale.
+
+## [0.106.2.0] - 2026-11-20
+
+### Fixed
+- While an answer is revealed, the big screen and the phones no longer receive the next question's text early: STATE blanks it until 下一題, and the host page still previews it (#362).
+- The answer countdown on a phone, the big screen or the host page stands still while that page is disconnected, and jumps to the room's figure on reconnect. The rules now say the time keeps running during a server restart (#406).
+- After a boss-entry dish, the narrator says the entrance (and its 最後衝刺 line) before handing over to the next team, also after a restart; a failed beat restore is now logged (#394).
+- During an answer reveal the big screen reads this turn's narration in step with the phones; only the handoff to the next team still waits for 下一步. A line that overrides one already read (sending a team to the boss, taking a ruling back) shows at once instead of after the reading pause (#405).
+
+## [0.106.1.0] - 2026-11-19
+
+### Fixed
+- A thief whose last 偷襲 never rolled its sneak die (the room restarted in the beat) can press 偷襲 again on that question. It still costs no second use.
+- A caught 偷襲 (sneak die 1) now writes its deduction to the transcript, next to the 修正 lines, because no judgment records it.
+- A game saved before the class-dice rework keeps its chef and thief 改判 rows: after a restart, 改成答對 on one of them rolls the dish die. Older rows still pay the plain reward they were judged with.
+- The potion's "two bad dice" and "saved" lines no longer fire on a dish die of 2–6, which pays ×1 like 7–19.
+- After a cleric's prayer die stands (7–19 or 20) outside the boss room, the narrator no longer adds 「聖光降臨，再答一次！」-style lines (those are removed). The prayer die's own line already says the team answers again, so the retry gets a single atmosphere line. The AI narrator is told the same.
+- The host's cleric waiting row uses as many columns as it has buttons, so a cleric with no prayers left gets no empty column.
+- `scripts/balance-sim.ts` plays the reworked dice through lib (a dish die on every correct turn-based answer and on a warrior's hit, and the real sneak die). The `REWORK`, `DISHALL`, `DISHM`, `SNEAK1*`, `SNEAKLOSE`, `CHEF*`, `HIDECRIT`, `HIDEDIE`, `CHEFFIX` and `NODIE` what-ifs are removed. Tooling only.
+
+## [0.106.0.0] - 2026-11-19
+
+### Changed
+- **One 逃跑 after a wrong answer.** 「逃跑・同房」 is gone: outside the boss room the team's one 「逃跑」 (second line 「換一隻怪，換簡單題」) always brings another monster and a question one level easier, and the room number stays. The host page has one 逃跑 button too, on keyboard `3` (`4` while a cleric's fill-in waits). The boss room is unchanged. A phone or host page from before the change that still sends the old same-room flee gets the one 逃跑. The rules and the README say the same.
+- **「改成答對」 on a finishing blow rolls no dish die.** When the host turns a 答錯 into 答對 and that answer defeats the boss, the game goes straight to the kill and its 4d20, like any finishing blow. A test now covers it.
+
 ## [0.105.0.0] - 2026-11-19
 
 ### Changed

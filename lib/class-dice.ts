@@ -1,7 +1,7 @@
 // The words for the class dice and the dish die (docs/designs/class-dice-rework.md): what each tier of a die does, for
 // the big screen's roll, the phones and the narrator. Pure and bank-free, so a client may import it.
 
-import { SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, dishMultiplier, skillTier } from "./game-state";
+import { SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, dishMultiplier, dishTier, skillTier } from "./game-state";
 
 /** The question a mage casts on, as the screens know it. */
 export type CastOn = "multipleChoice" | "text" | "sort";
@@ -39,21 +39,22 @@ export function sneakEffect(value: number, penalty = 0): string {
 export function dishEffect(value: number, chef: boolean): string {
   const t = skillTier(value);
   const m = dishMultiplier(chef, value);
-  return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "失手了，獎勵不變" : t === 2 ? (chef ? `上菜！廚師 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
+  return t === 0 ? `燒焦了！獎勵 ×${m}` : t === 1 ? "上菜，獎勵不變" : t === 2 ? (chef ? `上菜！提鮮 ×${m}` : "上菜，獎勵不變") : `傳說級料理！獎勵 ×${m}`;
 }
 
 /** What a dish die that changed the score is called before its 「原本 → 現在」: a 1, a 20, or a chef's 7–19. */
 export function dishChangeLabel(value: number | undefined): string {
-  return value === 1 ? "焦黑！" : value === 20 ? "傳說級！" : "廚師加成";
+  return value === 1 ? "焦黑！" : value === 20 ? "傳說級！" : "提鮮加成";
 }
 
 /** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1), `points`
- * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18). */
-export function dishPhoneLine(value: number, bonus: number, points: number, unit: string): string {
+ * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18). A 2–6
+ * reads as served: only a chef's says it got no bonus. */
+export function dishPhoneLine(value: number, bonus: number, points: number, unit: string, chef = false): string {
   // A change leaves out 「料理骰 N：」, so the line fits one row of a phone.
   if (bonus) return `🍳 ${dishChangeLabel(value)} ${points - bonus} → ${points} ${unit}`;
-  const t = skillTier(value);
-  return t === 0 ? "🍳 料理骰 1：燒焦了" : t === 1 ? `🍳 料理骰 ${value}：半生不熟` : t === 2 ? `🍳 料理骰 ${value}：上菜` : "🍳 料理骰 20：傳說級料理";
+  const t = dishTier(value, chef);
+  return t === 0 ? "🍳 料理骰 1：燒焦了" : t === 1 ? `🍳 料理骰 ${value}：上菜（沒加成）` : t === 2 ? `🍳 料理骰 ${value}：上菜` : "🍳 料理骰 20：傳說級料理";
 }
 
 /** The warrior's roll for the answer: 1 wrong and loses the question's reward, 2–6 wrong, 7–19 right for 80%, 20 double. */
@@ -67,7 +68,8 @@ export function rollStatus(kind: string | undefined): string {
   if (kind === "kill") return "最後一擊！擲 4d20 擊殺獎勵，看大螢幕 ▶";
   if (kind === "dish") return "答對！擲料理骰中，看大螢幕 ▶";
   if (kind === "check") return "說服檢定擲骰中，看大螢幕 ▶";
-  if (kind === "mage") return "🔮 施法擲骰中，看大螢幕 ▶";
+  if (kind === "mage") return "🔮 洞悉擲骰中，看大螢幕 ▶";
+  if (kind === "warrior") return "⚔️ 衝鋒擲骰中，看大螢幕 ▶";
   if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
   if (kind === "thief") return "🗡️ 偷襲擲骰中，看大螢幕 ▶";
   return "擲骰中！看大螢幕 ▶";

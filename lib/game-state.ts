@@ -51,6 +51,16 @@ export const CLASS_LABELS: Record<ClassId, string> = {
   chef: "廚師",
 };
 
+/** Each class's skill name (owner 2026-11-19): the phone buttons, the lobby, the big screen's roll chips and the
+ * how-to-play slides all say these. The chef's is its passive; 「料理骰」 stays the die every team rolls. */
+export const CLASS_SKILLS: Record<ClassId, string> = {
+  mage: "洞悉",
+  cleric: "祈禱",
+  warrior: "衝鋒",
+  thief: "偷襲",
+  chef: "提鮮",
+};
+
 export const CLASS_ICONS: Record<ClassId, string> = {
   mage: "🔮",
   cleric: "✝️",
@@ -70,7 +80,7 @@ export function abilityUsesFor(classId: ClassId | undefined): number {
 
 /* ---------- Class dice (docs/designs/class-abilities.md 「職業技能擲骰」) ---------- */
 
-/** One d20's tier, the same for every class: 0 大失敗 (1), 1 小失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
+/** One d20's tier, the same for every class: 0 大失敗 (1), 1 失敗 (2–6), 2 成功 (7–19), 3 大成功 (20). */
 export type SkillTier = 0 | 1 | 2 | 3;
 export function skillTier(value: number): SkillTier {
   return value <= 1 ? 0 : value < SKILL_SUCCESS ? 1 : value <= 19 ? 2 : 3;
@@ -78,7 +88,7 @@ export function skillTier(value: number): SkillTier {
 /** The lowest value of the success tier (7). */
 export const SKILL_SUCCESS = 7;
 /** Each tier's name, for the screens and the narrator. */
-export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
+export const TIER_LABELS = ["大失敗", "失敗", "成功", "大成功"] as const;
 
 /** The thief's Sneak Attack die (docs/designs/class-dice-rework.md), rolled when 偷襲 is pressed: on 7–19 a correct answer
  * gives SNEAK_REWARD_MULTIPLIER times the reward (rounded half up) and the boss loses 2 hearts; on a 20 SNEAK_CRIT_MULTIPLIER
@@ -97,6 +107,13 @@ export const CHEF_DISH_LEGEND_MULTIPLIER = 2;
 /** The dish die's multiplier per tier (1, 2–6, 7–19, 20) for a team that is not a chef, and for a chef. */
 export const DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, 1, DISH_LEGEND_MULTIPLIER] as const;
 export const CHEF_DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, CHEF_DISH_SUCCESS_MULTIPLIER, CHEF_DISH_LEGEND_MULTIPLIER] as const;
+
+/** The dish die's tier as players see it: for a team that is not a chef 2–6 pays the same as 7–19, so it reads as the
+ * same plain result (owner 2026-11-18), never as a failure; a chef's 2–6 stays tier 1 (no bonus). */
+export function dishTier(value: number, chef: boolean): SkillTier {
+  const t = skillTier(value);
+  return t === 1 && !chef ? 2 : t;
+}
 
 /** The dish die `value`'s multiplier for a chef or anyone else. */
 export function dishMultiplier(chef: boolean, value: number): number {
@@ -237,7 +254,7 @@ export interface Team {
   /** The game round and this team's turn count when it walked into the boss room (lib/game-log.ts). `earned`: its own
    * correct answer reached bossThreshold (answerQuestion), not the host, an open door or an event room (⚡ 閃電突擊). */
   bossAt?: { round: number; turns: number; earned?: true };
-  /** 逃跑・換房 put a new monster in this team's room (catalog id); dropped when the team leaves the room. */
+  /** 逃跑 put a new monster in this team's room (catalog id); dropped when the team leaves the room. */
   swappedMonsterId?: string;
   /** Wrong answers this team fled from, boss room too (🏃 逃跑大師, podium-titles.md). Absent until the first. */
   flees?: number;
@@ -504,22 +521,23 @@ export type AnswerOutcome =
    * `dishDie` the dish die that landed, absent when none rolled. */
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; dishBonus?: number; dishDie?: number; killBonus?: number; roll?: RollMark }
-  /** `switchedTo`: 逃跑・換房's new monster (catalog id). */
+  /** `switchedTo`: 逃跑's new monster (catalog id). */
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true; penalty?: number };
 
 export class InvalidActionError extends Error {}
 
-/** After a wrong answer: 重答, 逃跑・同房 ("flee"), or 逃跑・換房 ("switch": a new monster, same room). */
+/** After a wrong answer: 重答, or 逃跑 ("switch": a new monster, same room). "flee" keeps the monster: only 🚨 成立
+ * (upholdCatch) uses it now; the boss room treats both alike. */
 export type FleeChoice = "retry" | "flee" | "switch";
 
-/** The monster this team faces in its room: 逃跑・換房's, else the room's. */
+/** The monster this team faces in its room: 逃跑's, else the room's. */
 export function teamMonsterId(game: GameState, team: Team): string | undefined {
   return team.swappedMonsterId ?? game.rooms[team.roomIndex]?.monsterId;
 }
 
-/** 逃跑・換房's new monster: another room monster of this game at the same base difficulty, else any other room
+/** 逃跑's new monster: another room monster of this game at the same base difficulty, else any other room
  * monster in the catalog (the catalog has no tiers of its own). */
 function switchMonster(game: GameState, team: Team, rng: () => number): string {
   const now = teamMonsterId(game, team);
