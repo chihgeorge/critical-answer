@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   answerQuestion,
-  armSneak,
+  startSneak,
   chooseFork,
   drinkPotion,
   enterFork,
@@ -318,11 +318,11 @@ describe("叉路 (branch-fork.md)", () => {
       const q = team(g).currentQuestionId;
       expect(() => answerQuestion(g, "t0", q, true, "retry", first)).toThrow("fork");
       expect(() => submitText(g, "t0", q, "x")).toThrow("fork");
-      expect(() => armSneak(g, "t0")).toThrow("fork");
+      expect(() => startSneak(g, "t0")).toThrow("fork");
       expect(() => drinkPotion(giveItem(g, "t0"), "t0")).toThrow("fork");
     }
     const monster = chooseFork(atForkGame(true, game(["thief", undefined])), "t0", "left", first).game;
-    expect(() => armSneak(monster, "t0")).not.toThrow();
+    expect(() => startSneak(monster, "t0")).not.toThrow();
   });
 
   it("the ⚔️ mark stays through a wrong answer and a flee, and goes on the correct answer, the boss room's too", () => {

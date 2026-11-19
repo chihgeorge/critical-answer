@@ -1,5 +1,6 @@
 // HOST_SCREEN_TEST (docs/designs/screen-media-test.md): the keyed big screen test-loads every clip in the room's bank.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import type { Bank } from "../question-bank";
@@ -31,7 +32,7 @@ function setup() {
   const io = { broadcast: vi.fn(), env: {} } as unknown as RoomIO;
   const room = new DungeonRoom(io, () => 0);
   (room as unknown as { bank: Bank }).bank = bank;
-  const send = (c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+  const send = (c: Conn, msg: object) => sendSettled(room, c, msg);
   const host = conn("host");
   room.onConnect(host);
   send(host, { type: "HOST_CLAIM", token: TOKEN });

@@ -8,8 +8,8 @@ it("covers initiative values until every team has rolled", () => {
   expect(html).not.toContain(">20</text>");
 });
 
-it("starts the crit tumble without flashing the result or a 20 hint", () => {
-  const html = renderToStaticMarkup(<RollOverlay teamName="甲隊" value={20} kind="crit" />);
+it("starts the dish die tumble without flashing the result or a 20 hint", () => {
+  const html = renderToStaticMarkup(<RollOverlay teamName="甲隊" value={20} kind="dish" />);
   expect(html).not.toContain("20 是大成功");
   expect(html).toContain("visibility:hidden");
   expect(html).not.toContain(">20</text>");

@@ -2,6 +2,7 @@
 // The room side of YouTube questions (docs/designs/youtube-questions.md): the host's ▶ ⏸ ⟲ become STATE
 // `media`, only for the video the big screen shows now, kept in memory only (D6).
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
@@ -16,7 +17,7 @@ const text = (id: string) => ({ kind: "text", id, content: { kind: "text", value
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: ReturnType<typeof vi.fn> };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -50,11 +51,12 @@ function game(questions: object[], roll = true) {
   const media = (action: string, questionId = state().question?.id ?? state().reveal?.questionId, conn: Conn = host) =>
     send(room, conn, { type: "HOST_MEDIA", questionId, action });
   /** Answers the question in play correctly; a fill-in question passes its persuasion check first. */
-  const correct = () => {
+  const correct = (settle = true) => {
     const g = room.game!;
     const qid = g.teams[0].currentQuestionId;
     room.game = { ...g, checks: { ...g.checks, [checkKey(qid, T1)]: { value: 10, bonus: 0, dc: 8, passed: true } } };
-    send(room, host, { type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId });
+    room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: T1, questionId: qid, correct: true, fleeChoice: "retry", eventId: state().eventId }), host);
+    if (settle) settleDish(room);
   };
   return { room, io, host, phone, state, media, correct, check };
 }
@@ -351,9 +353,10 @@ describe("the screen key", () => {
   it("sends no SCREEN_VIDEO for a reveal whose video explanation takes the video's place", () => {
     const g = game([video("v1", { explanation: { kind: "youtube", value: VIDEO } }), video("v2", { explanation: { kind: "youtube", value: VIDEO } })]);
     const keyed = screen(g.room, "keyed", keyOf(g.host));
+    g.correct(false); // the question's video stays up during the dish die's beat
     keyed.send.mockClear();
     g.host.send.mockClear();
-    g.correct();
+    settleDish(g.room);
     expect(g.state().reveal.video).toBeUndefined();
     for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
   });

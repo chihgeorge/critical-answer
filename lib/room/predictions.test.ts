@@ -65,7 +65,7 @@ function started({ qs = MCS, classes = [], start = {}, storage = memoryStorage()
     send(room, phones[i], { type: "TEAM_LOCK_OPTION", questionId: q });
     send(room, host, { type: "HOST_REVEAL", teamId: IDS[i], questionId: q });
     vi.advanceTimersByTime(2000);
-    // A right lock: its introduction, then the crit die's beat, then the judgment.
+    // A right lock: its introduction, then the dish die's beat, then the judgment.
     if (right) vi.advanceTimersByTime(4000);
     return { i, q };
   };
@@ -144,6 +144,7 @@ describe("locking", () => {
     // On into the buzzer phase, where every team is answering.
     g.room.game = { ...g.room.game!, currentTurnIndex: 0 };
     send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: g.room.game!.boss.currentQuestionId, correct: true, fleeChoice: "retry", eventId: g.state().eventId });
+    vi.advanceTimersByTime(4000); // the dish die's introduction and beat (class-dice-rework.md)
     for (let k = 0; k < 2; k++) {
       send(g.room, g.host, { type: "HOST_SERVE", eventId: g.state().eventId });
       (g.room as unknown as { servedAt: number }).servedAt = -Infinity;
@@ -252,8 +253,8 @@ describe("resolution", () => {
     expect(c.state().predicted).toBeUndefined();
   });
 
-  // Value: protects=judgeNow's two passes count once | fails_when=a chef's answer die (first pass returns early) resolves the locks twice or never | no_claim=the kill roll's pass (boss, never a round)
-  it("a chef's fill-in, judged again after its answer die, counts the locks once", () => {
+  // Value: protects=judgeNow's two passes count once | fails_when=a dish die (first pass returns early) resolves the locks twice or never | no_claim=the kill roll's pass (boss, never a round)
+  it("a chef's fill-in, judged again after its dish die, counts the locks once", () => {
     const g = started({ qs: TEXTS, classes: ["chef"] });
     g.shown();
     g.predict(1, true);
@@ -276,6 +277,7 @@ describe("resolution", () => {
     const { q } = g.judgeText(false);
     expect(g.right()).toEqual([0, 0, 1]);
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: q, eventId: g.state().eventId });
+    vi.advanceTimersByTime(4000); // the 答對's dish die (class-dice-rework.md)
     expect(g.right()).toEqual([0, 1, 0]);
     expect(g.room.game!.judgments).toHaveLength(1);
     expect(g.room.game!.judgments![0]).toMatchObject({ correct: true, predictions: { [B]: true, [C]: false } });
@@ -322,6 +324,10 @@ describe("resolution", () => {
     };
     const { g, q } = setup();
     send(g.room, g.host, { type: "HOST_UNDO_WRONG", teamId: A, questionId: q, eventId: g.state().eventId });
+    // The 答對's dish die rolls first (class-dice-rework.md): no lock joins the put-back round meanwhile.
+    g.predict(2, true);
+    expect(g.preds()).toHaveLength(1);
+    vi.advanceTimersByTime(4000);
     expect(g.state().predictions?.locked ?? []).toEqual([]);
     g.predict(2, false);
     expect(g.preds()).toHaveLength(1);

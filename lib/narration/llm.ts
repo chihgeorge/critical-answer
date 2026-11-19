@@ -124,15 +124,15 @@ const CLASS_ATTACKS: Record<ClassId, string> = {
   chef: "用菜刀、平底鍋和爐火攻擊，不用法術",
 };
 
-/** The warrior's d20, unless the crit die's 20 or 1 below already says it: the result line itself says it, no extra line. */
+/** The warrior's d20, unless its 20 below already says it: the result line itself says it, no extra line. */
 function describeRoll(e: NarrationEvent): string {
   const crit = "roll" in e && e.roll?.kind === "crit";
   const warrior =
     "warriorRoll" in e && e.warriorRoll !== undefined && !crit
       ? `\n這隊戰士不答題，改擲 d20，擲出 ${e.warriorRoll} 點（${WARRIOR_TARGET} 點以上算命中），${warriorFacts(e)}。第一行要說出點數${e.type === "retry" && e.warriorRoll === 1 && e.penalty ? "和扣分" : ""}。`
       : "";
-  // A check's line says 答對, but a warrior rolled instead: its own line stands alone.
-  return warrior || describeDie(e);
+  // A check's line says 答對, but a warrior rolled instead: its own line stands alone, with its hit's dish die.
+  return warrior ? warrior + ("roll" in e && e.roll?.kind === "dish" ? describeDie(e) : "") : describeDie(e);
 }
 
 /** What the warrior's die did under #305's rules: a 1 takes the question's whole reward, 7–19 pays 八成, a 20 doubles. */
@@ -149,9 +149,11 @@ function describeDie(e: NarrationEvent): string {
     return e.roll.value === 20
       ? "\n這隊說服檢定擲出 20，不用答題就說服了怪物，算答對。第一行要提到說服成功。"
       : "\n這隊說服檢定擲出 1，講錯話了，雖然答對，獎勵只拿一半。第一行用好笑的方式說他們講錯話。";
-  return e.roll.value === 20
-    ? `\n這一擊擲出 20，是大成功，獎勵${"warriorRoll" in e && e.warriorRoll === 20 ? "加倍" : "多拿一半"}。第一行要提到大成功。`
-    : "\n這一擊擲出 1，是大失敗，但還是打中了，分數照拿。第一行用好笑的方式說手滑了，但還是打中。";
+  if (e.roll.kind === "dish")
+    return e.roll.value === 20
+      ? "\n這隊答對後擲料理骰擲出 20，端出傳說級料理，獎勵多拿不少。第一行要提到傳說級料理。"
+      : "\n這隊答對後擲料理骰擲出 1，菜燒焦了，獎勵只剩一成。第一行用好笑的方式說菜燒焦了。";
+  return `\n這一擊擲出 20，是大成功，獎勵加倍${e.type === "boss-hit" ? "，首領多掉一顆心" : ""}。第一行要提到大成功。`;
 }
 
 function describe(e: NarrationEvent): string {

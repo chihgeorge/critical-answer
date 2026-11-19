@@ -19,8 +19,8 @@
 // spends one of its ABILITY_USES on its turn. The warrior rolls instead of answering:
 // spendAbility() takes the use when the room rolls, then warriorRoll() judges the d20 as the
 // answer (WARRIOR_TARGET or more is correct) through answerQuestion, so the turn still advances
-// exactly once. The mage rolls a skill die for removed options or a hint (mageCast), the thief arms a Sneak Attack
-// that raises this answer's reward ×1.5 and doubles its boss damage (armSneak), and the cleric prays on a wrong
+// exactly once. The mage rolls a skill die for removed options or a hint (mageCast), the thief rolls a Sneak Attack die
+// that may raise this answer's reward and boss damage (startSneak, sneakRoll), and the cleric prays on a wrong
 // lock (pray) so that its 重答 / 逃跑 keeps the turn instead of advancing it (prayerTurn).
 //
 // Turn order never changes with room progress — this avoids the "arrival
@@ -60,7 +60,7 @@ export const CLASS_ICONS: Record<ClassId, string> = {
 };
 
 /** Ability uses per team per game, the same for every active class (class dice, owner 2026-11-17). The chef has none:
- * it reads the answer die (CHEF_MULTIPLIERS). */
+ * its dish die pays more (CHEF_DISH_MULTIPLIERS). */
 export const ABILITY_USES = 3;
 
 /** A team's ability uses at the start of a game. */
@@ -80,18 +80,33 @@ export const SKILL_SUCCESS = 7;
 /** Each tier's name, for the screens and the narrator. */
 export const TIER_LABELS = ["大失敗", "小失敗", "成功", "大成功"] as const;
 
-/** A correct answer after Sneak Attack gives this times the reward (rounded half up) on a success (7–19); the boss loses 2
- * hearts. A 20 is a sneak and a crit (×2, 3 hearts); 1 and 2–6 are no sneak (2–6 gives the use back). */
+/** The thief's Sneak Attack die (docs/designs/class-dice-rework.md), rolled when 偷襲 is pressed: on 7–19 a correct answer
+ * gives SNEAK_REWARD_MULTIPLIER times the reward (rounded half up) and the boss loses 2 hearts; on a 20 SNEAK_CRIT_MULTIPLIER
+ * and 3 hearts. 2–6 is no sneak; a 1 is caught and loses SNEAK_CAUGHT_SHARE of the question's reward at once. */
 export const SNEAK_REWARD_MULTIPLIER = 1.5;
-/** The chef reads the answer die on a correct answer, per tier: this times the question's whole reward. Never in a boss
- * buzzer phase, on an event or on a kill's 4d20 (owner, 2026-11-09). */
-export const CHEF_MULTIPLIERS = [0.1, 0.8, 1.3, 2] as const;
+export const SNEAK_CRIT_MULTIPLIER = 2;
+export const SNEAK_CAUGHT_SHARE = 0.1;
 
-/** The chef's change to one reward gain, read from the answer die `value` (0 with no die): rounded half up, and never
- * more than the gain itself away. Negative below a success. */
-export function chefShare(gain: number, value: number | undefined): number {
+/** 料理骰 (docs/designs/class-dice-rework.md): every team rolls it after a correct turn-based answer, and it multiplies the
+ * question's whole reward after every other modifier. Never in a buzzer phase, on an event or on a kill's 4d20, and never
+ * on the boss's hearts. Each multiplier is its own constant: the owner may still tune them. */
+export const DISH_BURNT_MULTIPLIER = 0.1;
+export const DISH_LEGEND_MULTIPLIER = 1.5;
+export const CHEF_DISH_SUCCESS_MULTIPLIER = 1.2;
+export const CHEF_DISH_LEGEND_MULTIPLIER = 2;
+/** The dish die's multiplier per tier (1, 2–6, 7–19, 20) for a team that is not a chef, and for a chef. */
+export const DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, 1, DISH_LEGEND_MULTIPLIER] as const;
+export const CHEF_DISH_MULTIPLIERS = [DISH_BURNT_MULTIPLIER, 1, CHEF_DISH_SUCCESS_MULTIPLIER, CHEF_DISH_LEGEND_MULTIPLIER] as const;
+
+/** The dish die `value`'s multiplier for a chef or anyone else. */
+export function dishMultiplier(chef: boolean, value: number): number {
+  return (chef ? CHEF_DISH_MULTIPLIERS : DISH_MULTIPLIERS)[skillTier(value)];
+}
+
+/** The dish die's change to one reward gain (0 with no die): rounded half up. Negative on a 1. */
+export function dishShare(gain: number, value: number | undefined, chef: boolean): number {
   if (value === undefined || gain <= 0) return 0;
-  return Math.round(gain * CHEF_MULTIPLIERS[skillTier(value)]) - gain;
+  return Math.round(gain * dishMultiplier(chef, value)) - gain;
 }
 
 /** The warrior's d20 counts as a correct answer at this value or more: the shared tiers' success (owner, 2026-11-09). */
@@ -105,7 +120,7 @@ export function warriorShare(value: number): number {
 
 /** A fill-in question is a persuasion check (dnd design Premise 3): d20 + the team's class bonus against the
  * monster's DC. A team with no class adds 1. */
-export const CHECK_BONUS: Record<ClassId | "none", number> = { mage: 4, thief: 3, cleric: 2, chef: 1, none: 1, warrior: 0 };
+export const CHECK_BONUS: Record<ClassId | "none", number> = { mage: 6, thief: 3, cleric: 2, chef: 4, none: 1, warrior: 0 };
 /** The DC per difficulty 1–5 (dnd design Decision 11); a boss question uses its own difficulty's, 3 unless the bank says. */
 export const CHECK_DC = [8, 10, 12, 14, 16] as const;
 /** A boss question the bank gives no difficulty: 3, a 15-point hit (owner, 2026-11-18). */
@@ -192,7 +207,7 @@ export interface Team {
   look?: number;
   /** Class ability uses left (ABILITY_USES at the start). */
   abilityUses: number;
-  /** Natural 20s this team rolled: crit dice, warrior rolls, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
+  /** Natural 20s this team rolled: dish dice, class dice, persuasion checks and the kill's 4d20 (podium-reveal.md D5).
    * Absent until the first one, and in a game saved before them. */
   natural20s?: number;
   /** Natural 1s, counted by every die that counts a natural 20, and the warrior's d20 whatever the question (fortune-teller.md). */
@@ -201,9 +216,13 @@ export interface Team {
    * fortune teller's conditions (docs/designs/fortune-teller.md). Absent until the first. */
   correctAnswers?: number;
   wrongAnswers?: number;
-  /** The thief's Sneak Attack waits for this team's next judgment: a correct one gives ×1.5 its reward
-   * and ×2 its boss damage; any judgment uses it up (class-abilities.md D16). */
+  /** The thief's Sneak Attack die landed 7–19 or 20 and waits for this team's next judgment: a correct one gives ×1.5
+   * its reward and ×2 its boss damage (`sneakCrit`, a 20: ×2 and 3 hearts); any judgment uses it up (class-dice-rework.md). */
   sneakArmed?: true;
+  sneakCrit?: true;
+  /** The thief's last 偷襲: on which question (once per question, whatever its die said), the die once it landed and
+   * what a 1 took. */
+  sneakTry?: SneakTry;
   /** The team's typed answer to its text question (submitText), waiting for the host. Only the turn's
    * team can hold one, and it keeps the turn until judged; answerQuestion and sendToBoss clear it. */
   typedAnswer?: string;
@@ -365,8 +384,6 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
-  /** The host can resolve correct choice and sort answers without a crit die. */
-  hideCritRoll?: boolean;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -480,14 +497,15 @@ export interface WrongAnswer {
  * or a sort question's whole order joined by " → "). */
 export type MageHintKind = "count" | "whole";
 
-/** A natural 20 or 1 behind a correct answer: the crit die (or a warrior's 20 on a multipleChoice question), or the
- * question's persuasion check (a 20 won it outright, a 1 halved it). Narration and the cue use it. */
-export type RollMark = { kind: "crit" | "check"; value: 20 | 1 };
+/** A natural 20 or 1 behind a correct answer: the dish die (`dish`), a class die's 20 (a warrior's roll or the thief's
+ * sneak die, `crit`), or the question's persuasion check (a 20 won it outright, a 1 halved it). Narration and the cue use it. */
+export type RollMark = { kind: "dish" | "crit" | "check"; value: 20 | 1 };
 
 export type AnswerOutcome =
-  /** `reward` is the whole gain; `chefBonus` the chef's share of it, only for a chef. */
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; chefBonus?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
-  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; chefBonus?: number; killBonus?: number; roll?: RollMark }
+  /** `reward` is the whole gain; `dishBonus` the dish die's share of it (negative on a 1), absent when it changed nothing;
+   * `dishDie` the dish die that landed, absent when none rolled. */
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
+  | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; dishBonus?: number; dishDie?: number; killBonus?: number; roll?: RollMark }
   /** `switchedTo`: 逃跑・換房's new monster (catalog id). */
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
@@ -901,7 +919,7 @@ export function enterNextBossPhase(game: GameState): GameState {
     ...cleared,
     buzz: undefined,
     // A buzzer phase has no abilities (D6): a sneak armed in the phase before is given back, as sendToBoss does.
-    teams: resetBossSelections(phase.buzzer ? pulled.teams.map((t) => (t.sneakArmed ? { ...t, sneakArmed: undefined, abilityUses: t.abilityUses + 1 } : t)) : pulled.teams),
+    teams: resetBossSelections(phase.buzzer ? pulled.teams.map((t) => (t.sneakArmed ? { ...t, sneakArmed: undefined, sneakCrit: undefined, abilityUses: t.abilityUses + 1 } : t)) : pulled.teams),
     boss: {
       ...boss,
       phaseIndex,
@@ -1306,7 +1324,8 @@ export function answerQuestion(
   correct: boolean,
   fleeChoice: FleeChoice = "retry",
   rng: () => number = Math.random,
-  critValue?: number,
+  /** The dish die rolled after a correct turn-based answer (料理骰): it multiplies the question's whole reward, last. */
+  dishDie?: number,
   /** The kill bonus's four d20, already shown by the room; rolled on `rng` when absent. */
   killDice?: number[],
   /** A music question's fields judged right out of how many (docs/designs/multi-field.md D2, E1): a correct boss hit
@@ -1315,40 +1334,37 @@ export function answerQuestion(
   fields?: { right: number; total: number; marks?: boolean[] },
   /** A warrior's missed roll: nothing was judged or shown, so a turn-based boss question stays (class-abilities.md). */
   warriorMiss = false,
-  /** A fill-in's answer die (class dice): what the chef and an armed thief read on a correct answer, with no crit effect
-   * of its own. Absent: they read `critValue`. */
-  answerDie?: number,
-  /** A warrior's d20 that stood in for the answer: its hit pays warriorShare, a 20 is a crit on any question, and a 1
+  /** A warrior's d20 that stood in for the answer: its hit pays warriorShare, a 20 takes one more boss heart, and a 1
    * takes the question's whole reward away (never below 0). Correctness never changes it (owner, 2026-11-17). */
   warriorDie?: number,
 ): { game: GameState; outcome: AnswerOutcome } {
   assertPlaying(game);
   const me = game.teams.find((t) => t.id === teamId);
-  // The die the chef or an armed thief reads (class dice): a fill-in's answer die, else the crit die. An armed thief
-  // with no die at all (a path that rolls none) gets the plain sneak.
-  const read = answerDie ?? critValue;
-  const thiefTier = correct && me?.sneakArmed && read !== undefined ? skillTier(read) : undefined;
-  // The die behind a correct answer: a 20 adds half the base reward (and a boss hit); a 1 is only a show. A thief's 20 on
-  // its answer die and a warrior's 20 on any question are crits too.
-  const crit = correct && (critValue === 20 || thiefTier === 3 || warriorDie === 20);
+  // The thief's sneak die landed when 偷襲 was pressed (sneakRoll): armed on 7–19, `sneakCrit` on a 20.
+  const sneakCrit = correct && !!me?.sneakArmed && !!me.sneakCrit;
+  // A class die's 20 behind a correct answer (the sneak die or a warrior's roll) takes one more boss heart.
+  const crit = correct && (sneakCrit || warriorDie === 20);
   // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
   const check = game.checks?.[checkKey(questionId, teamId)];
   // A natural 20 talked the monster aside (persuasion-gift): it lives, so the team eats what it shared, not the monster.
   const persuaded = correct && check?.value === 20 && !check.dropped;
   // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
-  // check (never twice), the blessing adds half the base like a crit 20.
+  // check (never twice), the blessing adds half the base.
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
   // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
   const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
-  const critMark = warriorDie === 20 || thiefTier === 3 ? 20 : critValue;
+  const dishMark = correct && !isBuzzPhase(game) && (dishDie === 20 || dishDie === 1) ? dishDie : undefined;
+  // A check's 20 or 1 names the answer first (persuaded, or halved), then a class die's 20; the dish die rides along in
+  // the outcome's dishDie, so its look and line still show.
   const rollMark: { roll?: RollMark } =
-    correct && (critMark === 20 || critMark === 1)
-      ? { roll: { kind: "crit", value: critMark } }
-      : correct && (check?.value === 20 || check?.value === 1)
-        ? { roll: { kind: "check", value: check.value } }
-        : {};
-  // A warrior's 20 is its share's double, not the crit's half on top.
-  const critBonus = (base: number) => (crit && warriorDie === undefined ? Math.round(base * 0.5) : 0) + (boon === "blessing" ? Math.round(base * 0.5) : 0);
+    correct && (check?.value === 20 || check?.value === 1)
+      ? { roll: { kind: "check", value: check.value } }
+      : crit
+        ? { roll: { kind: "crit", value: 20 } }
+        : dishMark
+          ? { roll: { kind: "dish", value: dishMark } }
+          : {};
+  const blessing = (base: number) => (boon === "blessing" ? Math.round(base * 0.5) : 0);
   // R5: the half is taken from the base reward, then the sneak raises it; a warrior's hit pays its die's share of it.
   const baseOf = (reward: number) => {
     const half = halved ? Math.round(reward * 0.5) : reward;
@@ -1374,17 +1390,16 @@ export function answerQuestion(
     throw new InvalidActionError(`${teamId} already locked a wrong answer; only retry or flee is left`);
   }
   const prayed = !correct && game.pendingWrong?.prayed === true;
-  // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage, ×1.5 reward. Its die's
-  // 1 or 2–6 is no sneak, and 2–6 gives the use back (class dice).
-  const sneak = getTeam(game, teamId).sneakArmed && (thiefTier === undefined || thiefTier >= 2) ? 2 : 1;
-  const sneakBack = thiefTier === 1 ? 1 : 0;
-  const sneakPay = (reward: number) => (sneak === 2 ? Math.round(reward * SNEAK_REWARD_MULTIPLIER) : reward);
-  // The chef's change goes on the question's whole gain, last (eng review D2), read from the answer die; never on a kill's
-  // 4d20 (`extra`), and no class ability counts in a buzzer phase.
-  const chef = getTeam(game, teamId).classId === "chef" && !isBuzzPhase(game);
-  const withChef = (gain: number, extra = 0) => {
-    const share = chef ? chefShare(gain, read) : 0;
-    return { reward: gain + share + extra, ...(share ? { chefBonus: share } : {}) };
+  // Any judgment uses up an armed Sneak Attack; only a correct one pays (D16): ×2 boss damage (3 hearts on a 20) and
+  // ×1.5 reward (×2 on a 20).
+  const sneak = getTeam(game, teamId).sneakArmed ? 2 : 1;
+  const sneakPay = (reward: number) => (sneak === 2 ? Math.round(reward * (sneakCrit ? SNEAK_CRIT_MULTIPLIER : SNEAK_REWARD_MULTIPLIER)) : reward);
+  // The dish die goes on the question's whole gain, last (eng review D2); never on a kill's 4d20 (`extra`), and not in a
+  // buzzer phase.
+  const chef = getTeam(game, teamId).classId === "chef";
+  const withDish = (gain: number, extra = 0) => {
+    const share = isBuzzPhase(game) ? 0 : dishShare(gain, dishDie, chef);
+    return { reward: gain + share + extra, ...(share ? { dishBonus: share } : {}), ...(dishDie !== undefined && !isBuzzPhase(game) ? { dishDie } : {}) };
   };
   // This turn counts once, for lib/game-log.ts: a cleric's prayed wrong lock keeps the turn, so its answer after counts.
   const order = game.turnOrder.indexOf(teamId);
@@ -1393,7 +1408,7 @@ export function answerQuestion(
     lastTurnIndex: order,
   };
   // The choice resolves the pending wrong lock.
-  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, ...(sneakBack ? { abilityUses: t.abilityUses + sneakBack } : {}), typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, [...(correct && critValue !== undefined ? [critValue] : []), ...(correct && answerDie !== undefined ? [answerDie] : [])]), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
+  game = { ...game, ...played, pendingWrong: null, teams: patchTeam(game.teams, teamId, (t) => ({ sneakArmed: undefined, sneakCrit: undefined, typedAnswer: undefined, typedFields: undefined, ...(correct ? { boon: undefined, fork: undefined } : {}), ...(prayed ? {} : { turns: (t.turns ?? 0) + 1 }), ...withNaturals(t, correct && dishDie !== undefined ? [dishDie] : []), ...(correct ? { correctAnswers: (t.correctAnswers ?? 0) + 1 } : fleeChoice === "retry" ? { wrongAnswers: (t.wrongAnswers ?? 0) + 1 } : {}) })) };
   // Leaving a question publishes its answer, so it can never be dealt again.
   const seenWrong = !correct && fleeChoice !== "retry";
   const revealedOnFlee = seenWrong ? withRevealed(game.revealedQuestionIds, questionId) : game.revealedQuestionIds;
@@ -1421,12 +1436,12 @@ export function answerQuestion(
       const hits = fields?.right ?? 1;
       const newHp = Math.max(0, boss.hp - hits * sneak - (crit ? 1 : 0));
       const bossKilled = newHp === 0 && lastPhase;
-      // The 4d20 is not raised by a crit (R4).
+      // The finishing blow's 4d20 is always plain: no class die raises it (class-dice-rework.md).
       const kill = bossKilled ? (killDice ?? rollBossKillDice(rng)) : undefined;
-      const killBonus = kill ? sneakPay(kill.reduce((a, b) => a + b, 0)) : undefined;
+      const killBonus = kill ? kill.reduce((a, b) => a + b, 0) : undefined;
       const hitReward = bossHitReward(game);
-      const hit = sneakPay(baseOf(hitReward)) + critBonus(hitReward);
-      const gain = withChef(fields ? Math.round((hit * fields.right) / fields.total) : hit, killBonus ?? 0);
+      const hit = sneakPay(baseOf(hitReward)) + blessing(hitReward);
+      const gain = withDish(fields ? Math.round((hit * fields.right) / fields.total) : hit, killBonus ?? 0);
       const { reward } = gain;
       const teams = patchTeam(game.teams, teamId, (t) => ({ reward: t.reward + reward, ...(bossKilled ? ate(t, persuaded && game.bossMonsterId ? monsterById(game.bossMonsterId)?.gift.name : boss.dish) : {}), ...withNaturals(t, kill ?? []) }));
 
@@ -1508,7 +1523,7 @@ export function answerQuestion(
       // The question's own difficulty: an empty, fully held or fully revealed pool deals from another one (deal()).
       const pointsAwarded = game.pools.findIndex((ids) => ids.includes(questionId)) + 1 || team.currentDifficulty;
       const base = game.rooms[team.roomIndex].reward;
-      const gain = withChef(sneakPay(baseOf(base)) + critBonus(base));
+      const gain = withDish(sneakPay(baseOf(base)) + blessing(base));
       const { reward } = gain;
       // A correct answer is always revealed (D5), so the next deal from any pool must not hand it
       // back to a team who hasn't faced it yet.
@@ -1577,12 +1592,9 @@ export function answerQuestion(
 
   // A warrior's 1 takes the question's whole reward (class dice): the room's, or the boss's hit; never below 0.
   if (!correct && warriorDie === 1) {
-    const base = inBoss ? bossHitReward(game) : game.rooms[team.roomIndex].reward;
-    const penalty = Math.min(base, getTeam(nextGame, teamId).reward);
-    if (penalty > 0) {
-      nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, (t) => ({ reward: t.reward - penalty })) };
-      if (outcome.type === "incorrect-retry") outcome = { ...outcome, penalty };
-    }
+    const taken = deduct(nextGame, teamId, questionReward(game, teamId));
+    nextGame = taken.game;
+    if (taken.penalty > 0 && outcome.type === "incorrect-retry") outcome = { ...outcome, penalty: taken.penalty };
   }
   // Eliminated options and a mage's hint belong to a question still in play: once it leaves (answered, fled, rotated)
   // a later deal of it starts clean.
@@ -1624,6 +1636,21 @@ export function answerQuestion(
   if (prayed) return { game: { ...here, prayerTurn: teamId }, outcome };
   return { game: advanceTurn({ ...here, prayerTurn: undefined }, facedMonster), outcome };
 }
+
+/** What a plain correct answer to the team's current question pays: its room's reward, or the boss's hit. */
+function questionReward(game: GameState, teamId: string): number {
+  const team = getTeam(game, teamId);
+  return team.inBoss ? bossHitReward(game) : (game.rooms[team.roomIndex]?.reward ?? 0);
+}
+
+/** Takes `amount` from the team's reward, never below 0: a warrior's 1 (the whole question) and a caught sneak (a tenth). */
+function deduct(game: GameState, teamId: string, amount: number): { game: GameState; penalty: number } {
+  const penalty = Math.max(0, Math.min(amount, getTeam(game, teamId).reward));
+  return penalty > 0 ? { game: { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ reward: t.reward - penalty })) }, penalty } : { game, penalty: 0 };
+}
+
+/** The thief's last 偷襲 (Team.sneakTry). */
+export type SneakTry = { questionId: string; value?: number; penalty?: number };
 
 /** Throws unless it is `teamId`'s turn as a `classId` with no wrong lock waiting (that waits for
  * retry/flee). The room checks its own beats (locks, rolls). */
@@ -1746,12 +1773,29 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   return { ...game, teams, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
 }
 
-/** The thief arms a Sneak Attack for its answer to this question, spending the use at once (D16). */
-export function armSneak(game: GameState, teamId: string): GameState {
+/** The thief presses 偷襲 on its current question (class-dice-rework.md): the use is spent at once and the room rolls the
+ * sneak die, which sneakRoll applies when it lands. Once per question, whatever the die says. */
+export function startSneak(game: GameState, teamId: string): GameState {
   assertAbilityTurn(game, teamId, "thief");
-  if (getTeam(game, teamId).sneakArmed) throw new InvalidActionError("sneak_armed");
-  const spent = spendAbility(game, teamId, "thief");
-  return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakArmed: true })) };
+  const questionId = currentQuestionIdOf(game, teamId);
+  const tried = getTeam(game, teamId).sneakTry;
+  // A press whose die never landed (a restart cut its beat; the die lives in the room's memory) rolls again, already paid.
+  const unrolled = tried?.questionId === questionId && tried.value === undefined;
+  if (getTeam(game, teamId).sneakArmed || (tried?.questionId === questionId && !unrolled)) throw new InvalidActionError("sneak_used");
+  const spent = unrolled ? game : spendAbility(game, teamId, "thief");
+  return { ...spent, teams: patchTeam(spent.teams, teamId, () => ({ sneakTry: { questionId } })) };
+}
+
+/** The sneak die `value` landed: 1 is caught and loses SNEAK_CAUGHT_SHARE of the question's reward now (never below 0),
+ * 2–6 is nothing, 7–19 arms the sneak and 20 arms it as a crit (×2, 3 hearts). Natural 20s and 1s count. */
+export function sneakRoll(game: GameState, teamId: string, value: number): { game: GameState; penalty: number } {
+  assertPlaying(game);
+  const tier = skillTier(value);
+  const questionId = getTeam(game, teamId).sneakTry?.questionId ?? currentQuestionIdOf(game, teamId);
+  const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ ...withNaturals(t, [value]), sneakTry: { questionId, value }, ...(tier >= 2 ? { sneakArmed: true as const, ...(tier === 3 ? { sneakCrit: true as const } : {}) } : {}) })) };
+  if (tier !== 0) return { game: counted, penalty: 0 };
+  const taken = deduct(counted, teamId, Math.round(questionReward(game, teamId) * SNEAK_CAUGHT_SHARE));
+  return { game: { ...taken.game, teams: patchTeam(taken.game.teams, teamId, () => ({ sneakTry: { questionId, value, penalty: taken.penalty } })) }, penalty: taken.penalty };
 }
 
 /** Whether `teamId` is a cleric that may pray this turn: the game on, a use left, no prayer yet this turn. */
@@ -1813,7 +1857,7 @@ export function prayerRoll(game: GameState, teamId: string, value: number): Game
  * The warrior's roll stands in for the answer: `value` (a d20, rolled by the room) of WARRIOR_TARGET
  * or more is a correct answer, less is a wrong one with retry, under answerQuestion's usual rules
  * (in the boss room a shown wrong option still rotates the question). The use was spent by spendAbility.
- * `critable`: a multipleChoice question, where this die is also the crit die (a 20 is a critical hit, R2).
+ * `dishDie`: a hit's dish die, rolled after the warrior's (class-dice-rework.md).
  */
 export function warriorRoll(
   game: GameState,
@@ -1821,14 +1865,13 @@ export function warriorRoll(
   questionId: string,
   value: number,
   rng: () => number = Math.random,
-  critable = false,
+  dishDie?: number,
   killDice?: number[],
 ): { game: GameState; outcome: AnswerOutcome } {
   assertAbilityTurn(game, teamId, "warrior");
-  // A critable die is counted as the crit die in answerQuestion (its 20 rides on a correct answer); any other natural 20,
-  // and every natural 1, is counted here (D5, fortune-teller.md E7).
-  const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, critable ? (value === 1 ? [1] : []) : [value])) };
-  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, critable ? value : undefined, killDice, undefined, value < WARRIOR_TARGET, undefined, value);
+  // Its natural 20s and 1s count here (D5, fortune-teller.md E7); the dish die's count in answerQuestion.
+  const counted = { ...game, teams: patchTeam(game.teams, teamId, (t) => withNaturals(t, [value])) };
+  return answerQuestion(counted, teamId, questionId, value >= WARRIOR_TARGET, "retry", rng, dishDie, killDice, undefined, value < WARRIOR_TARGET, value);
 }
 
 /**
@@ -1846,7 +1889,7 @@ export function sendToBoss(game: GameState, teamId: string, rng: () => number = 
   if (game.antiCheat?.openCatch?.teamId === teamId) game = cancelCatch(game);
   // A sneak armed for the room question is for that question only (D16): drop it and give the use back.
   // (A boss-room sneak can outlive a question rotation while the thief is offline; accepted, /review D4=A.)
-  const sneak = team.sneakArmed ? { sneakArmed: undefined, abilityUses: team.abilityUses + 1 } : {};
+  const sneak = team.sneakArmed ? { sneakArmed: undefined, sneakCrit: undefined, abilityUses: team.abilityUses + 1 } : {};
   const teams = patchTeam(game.teams, teamId, () => ({ inBoss: true, bossAt: { round: game.round ?? 1, turns: team.turns ?? 0 }, currentSelection: null, queuedQuestionId: undefined, swappedMonsterId: undefined, typedAnswer: undefined, typedFields: undefined, event: undefined, fork: undefined, oracleQ: undefined, ...sneak }));
   // The room question leaves play with this team (as in answerQuestion): a later deal of it starts clean.
   const left = team.currentQuestionId;
@@ -1894,7 +1937,7 @@ export function giveItem(game: GameState, teamId: string): GameState {
   return { ...game, teams: patchTeam(game.teams, teamId, (t) => ({ item: "luckyPotion", potionsGiven: (t.potionsGiven ?? 0) + 1 })) };
 }
 
-/** Whether `teamId`'s potion doubles its next crit or check die: drunk on the question it faces now, this turn (E1). */
+/** Whether `teamId`'s potion doubles its next die (check, class die or dish die; class-dice-rework.md): drunk on the question it faces now, this turn (E1). */
 export function potionArmed(game: GameState, teamId: string): boolean {
   const t = getTeam(game, teamId);
   return !!t.item && t.itemArmedFor === currentQuestionIdOf(game, teamId) && t.itemArmedTurn === (t.turns ?? 0);
@@ -1944,9 +1987,9 @@ export interface Judgment {
   taken?: number;
   /** A warrior's roll (class dice): only its own die decides it, so 改判 never moves it (owner, 2026-11-17). */
   warrior?: true;
-  /** A wrong answer whose 改成答對 is paid from an answer die rolled then (owner, 2026-11-17): a chef's, or a thief's
-   * that had 偷襲 armed (`points` is the plain reward). */
-  reads?: "chef" | "thief";
+  /** A wrong turn-based answer: its 改成答對 is paid through a dish die rolled then (class-dice-rework.md), a chef's
+   * multipliers when `chef`, after the armed sneak's reward multiplier `sneak` (`points` is the plain reward). */
+  dish?: { chef?: true; sneak?: number };
   /** The waiting teams' 群眾預測 locks on this answer, true = 會答對 (crowd-prediction.md): 改判 moves their predictionsRight. */
   predictions?: Record<string, boolean>;
 }
@@ -2015,23 +2058,23 @@ export function judgmentPoints(prev: GameState, teamId: string, outcome: AnswerO
 export function recordJudgment(game: GameState, prev: GameState, teamId: string, questionId: string, outcome: AnswerOutcome, warrior = false, predictions?: Record<string, boolean>): GameState {
   const correct = outcome.type === "correct-room-advance" || outcome.type === "correct-boss-hit";
   const t = getTeam(prev, teamId);
-  const reads = correct || warrior || isBuzzPhase(prev) ? undefined : t.classId === "chef" ? "chef" : t.sneakArmed ? "thief" : undefined;
+  const dish = correct || warrior || isBuzzPhase(prev) ? undefined : { ...(t.classId === "chef" ? { chef: true as const } : {}), ...(t.sneakArmed ? { sneak: t.sneakCrit ? SNEAK_CRIT_MULTIPLIER : SNEAK_REWARD_MULTIPLIER } : {}) };
   const locks = predictions && Object.keys(predictions).length ? predictions : undefined;
-  const entry: Judgment = { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome), ...(warrior ? { warrior: true as const } : {}), ...(reads ? { reads } : {}), ...(locks ? { predictions: locks } : {}) };
+  const entry: Judgment = { teamId, questionId, correct, points: judgmentPoints(prev, teamId, outcome), ...(warrior ? { warrior: true as const } : {}), ...(dish ? { dish } : {}), ...(locks ? { predictions: locks } : {}) };
   return { ...game, judgments: [...(game.judgments ?? []), entry], teams: scorePredictions(game.teams, locks, correct, 1) };
 }
 
-/** Whether 改成答對 on ledger entry `j` needs an answer die rolled now (owner, 2026-11-17): a chef's or armed thief's wrong
- * answer never flipped before (a flip back gives back what the last 改成答錯 took). */
+/** Whether 改成答對 on ledger entry `j` needs a dish die rolled now (class-dice-rework.md): a turn-based wrong answer never
+ * flipped before (a flip back gives back what the last 改成答錯 took). */
 export function rejudgeNeedsDie(j: Judgment): boolean {
-  return !j.correct && j.reads !== undefined && j.taken === undefined;
+  return !j.correct && j.dish !== undefined && j.taken === undefined;
 }
 
 /** 改判: ledger entry `index` shows `correct` from now on, and only its reward points move (owner decision "A 只改分數").
  * 改成答錯 takes min(taken ?? N, reward) and keeps it as `taken`; 改成答對 gives back `taken ?? N` and drops it, so any flip
  * cycle nets 0 and the next 改成答錯 starts from N again. `teamId` and `questionId` must match the entry, or it is a press from an older list (`stale`).
- * `crit`: a multipleChoice or sort question, where the die is the crit die, so a chef's 20 adds the crit's half first, as live (#342). */
-export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean, die?: number, crit = false): GameState {
+ * `die`: the dish die a first 改成答對 of a turn-based answer rolls. */
+export function hostRejudge(game: GameState, index: number, teamId: string, questionId: string, correct: boolean, die?: number): GameState {
   if (game.phase !== "playing") throw new InvalidActionError("not_playing");
   const j = game.judgments?.[index];
   if (!j || j.teamId !== teamId || j.questionId !== questionId) throw new InvalidActionError("stale");
@@ -2040,23 +2083,15 @@ export function hostRejudge(game: GameState, index: number, teamId: string, ques
   if (j.correct === correct) throw new InvalidActionError("at_limit");
   const needsDie = correct && rejudgeNeedsDie(j);
   if (needsDie && die === undefined) throw new InvalidActionError("die_needed");
-  const tier = die === undefined ? 2 : skillTier(die);
-  // The chef's tier multiplier, or the thief's sneak by tier. Only the score moves: a thief's 2–6 gives no use back here.
-  // As live: a thief's 20 is a crit on any question (sneak ×1.5 plus the crit's half), a chef's only on a crit die.
-  const half = Math.round(j.points * 0.5);
-  const paid = !needsDie
-    ? (j.taken ?? j.points)
-    : j.reads === "chef"
-      ? Math.round((crit && die === 20 ? j.points + half : j.points) * CHEF_MULTIPLIERS[tier])
-      : tier === 3
-        ? Math.round(j.points * SNEAK_REWARD_MULTIPLIER) + half
-        : Math.round(j.points * [1, 1, SNEAK_REWARD_MULTIPLIER][tier]);
+  // As live: the armed sneak's multiplier, then the dish die's on the whole of it.
+  const sneaked = Math.round(j.points * (j.dish?.sneak ?? 1));
+  const paid = !needsDie ? (j.taken ?? j.points) : Math.round(sneaked * dishMultiplier(!!j.dish?.chef, die!));
   const from = getTeam(game, teamId).reward;
   const moved = correct ? paid : Math.min(j.taken ?? j.points, from);
   const to = correct ? from + moved : from - moved;
-  const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.reads ? { reads: j.reads } : {}), ...(j.predictions ? { predictions: j.predictions } : {}) };
+  const entry: Judgment = { teamId, questionId, correct, points: j.points, ...(j.dish ? { dish: j.dish } : {}), ...(j.predictions ? { predictions: j.predictions } : {}) };
   if (!j.flipped) entry.flipped = true;
-  // What this flip moved, for the next flip to move back exactly (an answer die is rolled once per entry).
+  // What this flip moved, for the next flip to move back exactly (a dish die is rolled once per entry).
   if (!correct || needsDie) entry.taken = moved;
   const judgments = game.judgments!.map((e, i) => (i === index ? entry : e));
   // 群眾預測 follow the flip: a lock that now matches gains one, one that no longer does loses one, so a cycle nets 0.
@@ -2630,6 +2665,10 @@ export interface SpectatorView {
     /** The most uses ⚙ 更多's 修正 may give back (abilityCap); absent for a chef or no class. */
     abilityCap?: number;
     sneakArmed?: true;
+    /** The armed sneak die landed on 20 (×2, 3 hearts). */
+    sneakCrit?: true;
+    /** The thief's last 偷襲 (its button stays grey on that question) and what its die did. */
+    sneakTry?: SneakTry;
     /** The typed answer waiting for the host (text questions), or null. */
     typedAnswer: string | null;
     /** A cleric that could pray if judged wrong now (canPrayBeforeJudge): the host's one 答錯 key waits for
@@ -2654,8 +2693,6 @@ export interface SpectatorView {
   }[];
   /** The score that opens the boss room (GameConfig). Absent from older servers: DEFAULT_GAME_CONFIG's. */
   bossThreshold?: number;
-  /** The host disabled the correct-answer crit die for this game. */
-  hideCritRoll?: true;
   bossHp: number;
   bossMaxHp: number;
   /** This game's boss as the map strip draws it (the room's bossLook: drawn, or the bank's). Absent from an older server. */
@@ -2708,6 +2745,8 @@ export function getSpectatorView(game: GameState): SpectatorView {
       abilityUses: t.abilityUses,
       ...(abilityCap(t) !== null ? { abilityCap: abilityCap(t)! } : {}),
       ...(t.sneakArmed ? { sneakArmed: true as const } : {}),
+      ...(t.sneakArmed && t.sneakCrit ? { sneakCrit: true as const } : {}),
+      ...(t.sneakTry ? { sneakTry: t.sneakTry } : {}),
       typedAnswer: t.typedAnswer ?? null,
       ...(canPrayBeforeJudge(game, t.id) ? { mayPray: true as const } : {}),
       // A boss team's question is the boss's, not its stale room question.
@@ -2724,7 +2763,6 @@ export function getSpectatorView(game: GameState): SpectatorView {
       ...(oracleActive(game, t.id) ? { oracle: true as const } : {}),
     })),
     bossThreshold: game.config.bossThreshold,
-    ...(game.config.hideCritRoll ? { hideCritRoll: true as const } : {}),
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
     bossPhase: game.boss.phaseIndex + 1,

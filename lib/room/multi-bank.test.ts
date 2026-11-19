@@ -1,5 +1,6 @@
 // HOST_SET_BANK / HOST_BANKS (docs/designs/multi-bank.md): a host picks the next game's bank in the lobby.
 import { describe, it, expect, vi } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import type { Bank } from "../question-bank";
@@ -38,7 +39,7 @@ function setup(loadBank = vi.fn(async (id: string) => (id === "party" ? PARTY : 
   const io = { broadcast: vi.fn(), env: { OWNER_KEY }, storage, listBanks: vi.fn(async () => BANKS), loadBank } as unknown as RoomIO;
   const room = new DungeonRoom(io, () => 0);
   const host = conn("host");
-  const send = (c: Conn, msg: object) => room.onMessage(JSON.stringify(msg), c);
+  const send = (c: Conn, msg: object) => sendSettled(room, c, msg);
   send(host, { type: "HOST_CLAIM", token: TOKEN });
   const prove = () => send(host, { type: "HOST_AI_KEY", source: "owner", ownerKey: OWNER_KEY });
   return { room, host, send, prove, data, io, loadBank };

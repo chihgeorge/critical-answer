@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
 import { BANK_KEY, NARRATION_MAX_LINES, SCHEMA_VERSION, SNAPSHOT_KEY } from "./snapshot";
 import type { Conn, RoomIO, RoomStorage } from "./io";
@@ -60,7 +61,7 @@ function makeRoom(storage: RoomStorage, opts: ConstructorParameters<typeof Dunge
   return { room: new DungeonRoom(io, () => 0, { epilogueDelayMs: 0, ...opts }), io };
 }
 
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 /** 上菜 then 下一題 (monster-cuisine.md cooking I2), skipping the cooking's hold a real host waits out. */
 function serveNext(room: DungeonRoom, conn: Conn, eventId: number) {
   send(room, conn, { type: "HOST_SERVE", eventId });
@@ -121,9 +122,11 @@ describe("saving", () => {
     const storage = memoryStorage(log);
     const { room } = makeRoom(storage, {}, log);
     const { host, a } = startedGame(room);
-    log.length = 0;
-    judgeCorrect(room, host, T1);
+    // 答對 rolls the dish die first: the judgment lands when it does (class-dice-rework.md).
+    room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: T1, questionId: lastOf(host, "HOST_ANSWER").questionId, correct: true }), host);
     void a;
+    log.length = 0;
+    settleDish(room);
     expect(log[0]).toBe("put"); // the judgment is saved first
     expect(log).toContain("broadcast");
     expect((storage.data.get(SNAPSHOT_KEY) as any).game.teams.find((t: any) => t.id === T1).score).toBe(1);
@@ -607,6 +610,7 @@ describe("restoring after a restart", () => {
     expect((second.room as any).cue).toBe("flee");
     serveNext(second.room, host, (second.room as any).eventSeq);
     vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
+    settleDish(second.room); // the natural 20 rolls its dish die
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
     // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
     const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);

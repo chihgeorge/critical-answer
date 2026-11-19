@@ -1,6 +1,7 @@
 // 叉路 in the room (docs/designs/branch-fork.md): the roll after a correct answer, the door clock that starts on the
 // team's turn, ⚔️ / ❓ / timeout, the door opening (forkBeat) and what STATE shows meanwhile, and a restart.
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { sendSettled } from "./test-send";
 import { DungeonRoom, FORK_BEAT_MS } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import type { NarrationProvider } from "../narration/scripted";
@@ -24,7 +25,7 @@ type Spy = ReturnType<typeof vi.fn>;
 function makeConn(id: string) {
   return { id, send: vi.fn(), close: vi.fn() } as unknown as Conn & { send: Spy };
 }
-const send = (room: DungeonRoom, conn: Conn, msg: object) => room.onMessage(JSON.stringify(msg), conn);
+const send = (room: DungeonRoom, conn: Conn, msg: object) => sendSettled(room, conn, msg);
 const broadcasts = (room: DungeonRoom) => (room.room.broadcast as Spy).mock.calls.map((c) => JSON.parse(c[0]));
 const state = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "STATE").at(-1);
 const narrations = (room: DungeonRoom) => broadcasts(room).filter((m) => m.type === "NARRATION");

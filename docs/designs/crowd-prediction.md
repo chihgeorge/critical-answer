@@ -174,7 +174,7 @@ waiting phone                         big screen (reveal)
 
 ## Risks
 
-- `judgeNow` runs twice for a chef's or armed thief's fill-in (first pass returns early to roll the answer die) and
+- `judgeNow` runs twice for a right turn-based answer (first pass returns early to roll the dish die, class-dice-rework.md) and
   for a killing blow; resolution must sit only on the applied path next to `recordJudgment`, never before the early
   returns, or teams get counted twice.
 - PR #388 and PR #391 touch the same TITLES list, rules docs, STATE and phone page: merge conflicts are certain for
@@ -206,7 +206,7 @@ Where the code follows its own patterns instead of the plan above:
   carry the current `eventId`. A turn that ends without a judgment (skip, dropped phone, event) leaves the round
   stale, and `predictionsView()` drops it at the next STATE, so the team's next turn on the same question starts
   empty (tested: skip, two misses, back to the same team and question).
-- **Resolution sits next to `recordJudgment`** in `judgeNow`, after both early returns (answer die, kill roll), and
+- **Resolution sits next to `recordJudgment`** in `judgeNow`, after both early returns (dish die, kill roll), and
   passes the locks into `recordJudgment(…, predictions)`, which stores them on the entry and adds the
   `predictionsRight`. `hostRejudge` keeps `predictions` on the rebuilt entry and moves the tally. A chef's fill-in is
   tested to count once over its two `judgeNow` passes.
