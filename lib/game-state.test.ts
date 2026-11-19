@@ -1997,6 +1997,9 @@ describe("class dice: every tier per class", () => {
     for (const v of [1, 4, 12]) expect(() => startSneak(sneak(v).game, "T0")).toThrow(/sneak_used/);
     // A press whose die never landed (a restart cut the beat) rolls again without a second use.
     expect(startSneak(startSneak(g0, "T0"), "T0").teams[0].abilityUses).toBe(2);
+    // So does the last use's press (#416): the reroll costs nothing, so it needs no use left.
+    const last = { ...g0, teams: g0.teams.map((t) => (t.id === "T0" ? { ...t, abilityUses: 1 } : t)) };
+    expect(startSneak(startSneak(last, "T0"), "T0").teams[0]).toMatchObject({ abilityUses: 0, sneakTry: { questionId: q0(g0) } });
     // A wrong answer pays no sneak bonus.
     expect(answerQuestion(sneak(12).game, "T0", q0(g0), false, "retry").game.teams[0].reward).toBe(30);
   });

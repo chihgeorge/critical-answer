@@ -491,7 +491,7 @@ describe("buzzer boss phase in the room", () => {
     g.buzz(1);
     g.judge(IDS[1], true);
     // Both fields right: the defeated boss is announced before the kill's 4d20.
-    expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: null, view: { bossHp: 0 } });
+    expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
     expect(g.state().stageMonster).toMatchObject(g.state().view.bossLook); // the boss stays on stage (#401)
   });
 

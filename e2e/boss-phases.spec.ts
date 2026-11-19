@@ -88,7 +88,10 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 2/2 階段・最後階段");
 
   await host.getByRole("button", { name: "答對！" }).click();
-  // The defeated boss shows first (#364), then the kill's 4d20; the podium waits for both (docs/designs/kill-roll.md).
+  // The defeated boss shows first (#364), with no dice yet (STATE carries the kill roll during this card, #394), then
+  // the kill's 4d20; the podium waits for both (docs/designs/kill-roll.md).
+  await expect(screen.getByTestId("screen-kill-defeated")).toBeVisible();
+  await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toHaveCount(0);
   await expect(screen.locator('[data-testid="roll-overlay"][data-kind="kill"]')).toBeVisible({ timeout: 10_000 });
   await expect(screen.getByText(/奪得榜首/)).toHaveCount(0);
   await advanceAwards(host);

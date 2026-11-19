@@ -37,11 +37,11 @@ import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABE
 /** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
  * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
 const CLASS_HINTS: Record<ClassId, string> = {
-  mage: "刪掉錯的選項／看第一個字",
-  cleric: "答錯可以當場再答一次",
-  warrior: "不會的題，擲骰代替作答",
-  thief: "先擲偷襲骰，成功的話答對加碼",
-  chef: "料理骰加成更多，不用按",
+  mage: "洞悉：刪掉錯的選項／看第一個字",
+  cleric: "祈禱：答錯可以當場再答一次",
+  warrior: "衝鋒：不會的題，擲骰代替作答",
+  thief: "偷襲：先擲偷襲骰，成功的話答對加碼",
+  chef: "提鮮：料理骰加成更多，不用按",
 };
 
 /** The lobby's class picker (D10=A): one row per class, then 不選. */
@@ -149,7 +149,9 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
   const gone = (q && game.view.eliminated?.[q.id]) ?? [];
   // Which question this phone's mage press was for and how many options were out before it: the bar counts the rest.
   const [cast, setCast] = useState<{ qid: string; eventId: number; before: number } | null>(null);
-  const ready = !!me && me.abilityUses > 0 && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
+  // A 偷襲 whose die never landed (a restart cut its beat) rolls again for free (startSneak), even on the last use.
+  const unrolledSneak = me?.classId === "thief" && !!q && me.sneakTry?.questionId === q.id && me.sneakTry.value === undefined;
+  const ready = !!me && (me.abilityUses > 0 || unrolledSneak) && !frozen && !game.pendingRoll && !game.pendingLock && !game.view.pendingWrong && !!q;
   const button = (icon: string, label: string, sub: string, background: string, onClick: () => void) => (
     <PixelButton className="!m-0 mt-1 flex !min-h-[62px] flex-col !text-[21px]" style={{ background }} onClick={onClick}>
       {icon} {label}
@@ -190,7 +192,7 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     return null;
   } else if (me.classId === "warrior" && !(q.options === undefined && q.items === undefined && !me.inBossPhase && game.view.checks !== undefined && !game.view.checks[checkKey(q.id, teamId)])) {
     // On a fill-in question the warrior rolls only after its persuasion check (dnd design R2); the boss room has none (#364).
-    body = button("🎲", "擲骰代替答題", `${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
+    body = button("⚔️", "衝鋒", `擲 d20 代替答題：${WARRIOR_TARGET} 以上算答對・剩 ${me.abilityUses} 次`, "#ffa94d", use);
   } else if (me.classId === "thief" && !q.checkFirst && (me.sneakTry?.questionId !== q.id || me.sneakTry.value === undefined)) {
     // Not before the check: 偷襲 rolls once the question is up, once per question.
     body = button("🗡️", "偷襲：先擲偷襲骰", `7 以上答對 ×${SNEAK_REWARD_MULTIPLIER}、20 ×${SNEAK_CRIT_MULTIPLIER}・擲 1 扣一成・剩 ${me.abilityUses} 次`, "#ff8787", use);
@@ -199,17 +201,17 @@ function ClassAbility({ game, teamId, send, frozen = false, noHint = false }: { 
     return null;
   } else if (me.classId === "mage" && q.options && q.options.length - 1 - gone.length >= 2) {
     // The skill die decides how many go (class dice); the bar after counts what went.
-    body = button("🔮", "施法：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
+    body = button("🔮", "洞悉：刪錯的選項", `擲 d20：7 以上刪 ${Math.min(2, q.options.length - 2 - gone.length)} 個，20 刪光・剩 ${me.abilityUses} 次`, "#c9b3ff", () => {
       setCast({ qid: q.id, eventId: game.eventId, before: gone.length });
       use();
     });
   } else if (me.classId === "mage" && q.items && game.view.mageHints[q.id] === undefined) {
-    body = button("🔮", "施法：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看第 1 個是誰", `擲 d20：7 以上看第 1 個，20 看整個順序・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else if (me.classId === "mage" && !q.options && !q.items && game.view.mageHints[q.id] === undefined && !q.checkFirst && game.view.checks?.[checkKey(q.id, teamId)]?.hint === undefined) {
     // Not before the check (the question is not up yet); after it, only when it gave no first character.
     // The room refused this question (no_hint): a 1-character answer has no first character to give.
     if (noHint) return <div className="px-bar mt-1 !text-[17px]" role="status">🔮 這題答案太短，不能看第一個字・剩 {me.abilityUses} 次</div>;
-    body = button("🔮", "施法：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
+    body = button("🔮", "洞悉：看答案提示", `擲 d20：7 以上看第一個字，20 看整個答案・剩 ${me.abilityUses} 次`, "#c9b3ff", use);
   } else return null;
   return body;
 }
@@ -1323,7 +1325,7 @@ export default function PlayPage() {
         {game && !finished && !intro && !initiative && turn && (
           <TurnRibbon
             color={isMyTurn ? undefined : "#6ab4ff"}
-            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" /> : undefined}
+            end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" paused={disconnected} /> : undefined}
           >
             {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
@@ -1415,7 +1417,7 @@ export default function PlayPage() {
         {/* Our own dish die, once its answer is scored (and its dish served): what it did to the reward. */}
         {game && !finished && revealed?.scored?.teamId === teamId && revealed.scored.dishDie !== undefined && (!revealed.dish || revealed.served) && (
           <div data-testid="dish-roll-row" className="px-bar mt-1 !text-[19px]" role="status" style={revealed.scored.dishDie === 1 ? { background: "var(--danger)", color: "#fff" } : revealed.scored.dishDie === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -5px 0 var(--orange)" } : undefined}>
-            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine))}
+            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine), game.view.teams.find((t) => t.id === teamId)?.classId === "chef")}
           </div>
         )}
 
@@ -1500,7 +1502,7 @@ function EventPanel({ reveal, game, teamId }: { reveal: EventReveal; game: State
         <LabelChip>❓ 神秘房</LabelChip>
         <div className="px-title-gold px-title-sm text-[26px]">{EVENT_OUTCOME_TITLE[reveal.outcome]}</div>
         <div className="text-[18px]">{reveal.dish ? `${reveal.dish.name}！` : ""}{eventEffectLine({ ...reveal, chefBonus: undefined })}</div>
-        {reveal.chefBonus ? <div className="text-[15px]">（廚師 {signed(reveal.chefBonus)}）</div> : null}
+        {reveal.chefBonus ? <div className="text-[15px]">（提鮮 {signed(reveal.chefBonus)}）</div> : null}
       </Panel>
       <Panel className="px-3 py-[10px] text-[16px]">看大螢幕 📺　主持人按「下一題」後，我們{reveal.entersBoss ? "走進首領房" : "走到下一間房"}</Panel>
     </div>
