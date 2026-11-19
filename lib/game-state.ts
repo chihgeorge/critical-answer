@@ -1133,8 +1133,8 @@ function pickDue(game: GameState, open: boolean): boolean {
   return !open && !buzz.open && !buzz.teamId;
 }
 
-/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in bank
- * order. `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
+/** The categories a buzz winner may pick for the next question: those of the phase's unrevealed questions, in phase
+ * order (random each game under 首領題隨機順序). `categoryOf` maps a question id to its bank category (the room's, from the bank). Empty when no pick is due. */
 export function pickableCategories(game: GameState, categoryOf: Record<string, string | undefined>, open: boolean): string[] {
   const buzz = currentBuzz(game);
   if (!pickDue(game, open) || !buzz.picker || buzz.hostPicked) return [];
@@ -1142,7 +1142,7 @@ export function pickableCategories(game: GameState, categoryOf: Record<string, s
   return [...new Set(found.filter((c): c is string => !!c))];
 }
 
-/** The question types of the phase, in bank order, `left` false once all of that type are revealed (#321: shown greyed).
+/** The question types of the phase, in phase order, `left` false once all of that type are revealed (#321: shown greyed).
  * `typeOf` maps a question id to its questionType. Empty when no pick is due or no type has a question left. Offered
  * to the host even without a winner. */
 export function pickableTypes(game: GameState, typeOf: Record<string, string | undefined>, open: boolean): { type: string; left: boolean }[] {
