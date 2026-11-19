@@ -721,7 +721,7 @@ function FinishedPanel({ place, reward, cuisine, finale, podium }: { place: numb
 
 /** 抓包與神諭 (docs/designs/anti-ai-cheating.md) on a phone: 🔮 公開問神諭 under the answer on our own turn, 🚨 抓包 for a
  * waiting team, the open catch's status for everyone. Shown only while the room's window is open (the question up, not
- * yet answered, a room turn); the room checks every press again. */
+ * yet answered, a room or boss turn); the room checks every press again. */
 function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; teamId: string; isMyTurn: boolean; send: (m: ClientMessage) => void }) {
   const ac = game.view.antiCheat;
   const q = game.question;
@@ -739,11 +739,12 @@ function AntiCheatPanel({ game, teamId, isMyTurn, send }: { game: StateMessage; 
   if (isMyTurn && me.oracle) {
     return <div data-testid="oracle-on" role="status" className="px-bar mt-1 !text-[17px]" style={{ background: "#c9b3ff" }}>🔮 請示了神諭：這題答對獎勵減半</div>;
   }
-  // The window: a room turn whose question is up and not answered (a typed answer waiting still lets a catch in).
-  const open = ac.on && !q.checkFirst && !q.memorize && !accused.inBossPhase && !game.view.buzz && !game.view.pendingWrong && !game.pendingLock && !game.pendingRoll;
+  // The window: a turn (room or boss) whose question is up and not answered (a typed answer waiting still lets a catch in).
+  const open = ac.on && !q.checkFirst && !q.memorize && !game.view.buzz && !game.phaseCard && !game.phaseCardDue && !game.view.pendingWrong && !game.pendingLock && !game.pendingRoll;
   if (!open) return null;
   if (isMyTurn) {
-    if (!me.oracleLeft || me.typedAnswer !== null) return null;
+    // No oracle on the boss's 尾刀 (finishingBlow): the button is not shown.
+    if (!me.oracleLeft || me.typedAnswer !== null || ac.finishingBlow) return null;
     return (
       <PixelButton data-testid="use-oracle" className="!m-0 mt-2 flex !min-h-[56px] flex-col !text-[20px]" style={{ background: "#c9b3ff" }} onClick={() => send({ type: "TEAM_ORACLE", questionId: q.id })}>
         🔮 公開問神諭<small className="text-[13px]">整場 {ORACLE_USES} 次・這題答對獎勵減半・這題不會被抓包</small>

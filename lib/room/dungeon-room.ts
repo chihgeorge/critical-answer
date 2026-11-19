@@ -381,13 +381,15 @@ function legacyDish(j: Judgment): Judgment {
   return reads === "chef" ? { ...rest, dish: { chef: true } } : reads === "thief" ? { ...rest, dish: { sneak: SNEAK_REWARD_MULTIPLIER } } : rest;
 }
 
-/** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's room question, or it is
- * called off and refunded. */
+/** The same for a saved open catch (anti-ai-cheating.md): it names both teams and the accused's question (its room's, or
+ * the boss question taking turns), or it is called off and refunded. Not while a boss phase waits for its card (the
+ * card deals a new question) or in a buzzer phase (no turns). */
 function restoredCatch(g: GameState): GameState {
   const c = g.antiCheat?.openCatch;
   if (!c) return g;
   const accused = g.teams.find((t) => t?.id === c.teamId);
-  const fits = !!g.antiCheat?.on && !!accused && !accused.inBoss && accused.currentQuestionId === c.questionId && g.teams.some((t) => t?.id === c.by);
+  const faces = !accused ? undefined : !accused.inBoss ? accused.currentQuestionId : !g.boss || g.boss.phasePending || isBuzzPhase(g) ? undefined : g.boss.currentQuestionId;
+  const fits = !!g.antiCheat?.on && !!accused && faces === c.questionId && g.teams.some((t) => t?.id === c.by);
   return fits ? g : g.teams.some((t) => t?.id === c.by) ? cancelCatch(g) : { ...g, antiCheat: { ...g.antiCheat!, openCatch: undefined } };
 }
 
@@ -3788,7 +3790,8 @@ export class DungeonRoom {
   private rulingUndoOpen(): boolean {
     const undo = this.undo;
     if (!undo?.verdict || this.game !== undo.after) return false;
-    return undo.verdict.upheld ? !!this.reveal?.caught : !this.undoHeld();
+    // An upheld catch may have finished the game (the boss room's last phase): logged and narrated, never reopened.
+    return undo.verdict.upheld ? !!this.reveal?.caught && this.game.phase !== "finished" : !this.undoHeld();
   }
 
   /** `undo.prev`, keeping what changed since without being a move (keepUndoOpen): phones on or offline, other teams'
@@ -5276,8 +5279,9 @@ export class DungeonRoom {
     if (!this.antiCheatWindow(false)) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "not_now" });
     try {
       const asked = askOracle(this.game, teamId, questionId);
-      // A ruling's undo would bring a catch back over an oracle question, which no catch may name: it closes.
-      if (this.undo?.verdict) {
+      // A ruling's undo would bring a catch back over an oracle question, which no catch may name: it closes. So does
+      // 改判答對 in the boss room: re-judging the earlier answer can change the shared question this oracle was asked on.
+      if (this.undo?.verdict || this.game.teams.find((t) => t.id === teamId)?.inBoss) {
         this.game = asked;
         this.undo = null;
       } else this.keepUndoOpen(asked);
