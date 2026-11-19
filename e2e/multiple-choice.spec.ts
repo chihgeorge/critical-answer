@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, serveDish, startGame, screenUrl, openSettings, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -404,7 +404,7 @@ test("boss room: a wrong lock shows no choice, then the boss brings a new questi
   await startGame(host);
   await expect(team.getByText("輪到我們了！")).toBeVisible();
 
-  await host.getByRole("button", { name: /更多/ }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();

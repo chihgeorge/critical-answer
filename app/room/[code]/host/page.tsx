@@ -602,7 +602,9 @@ export default function HostPage() {
   // holds the new turn when it is painted: a key pressed right after a turn change judges that turn.
   // The intro's own keys (D7): → / Enter and ←. The judge keys below stay off while it shows.
   const introPage = game?.phase === "playing" ? (game.intro?.page ?? null) : null;
-  useEffect(() => {
+  // A layout effect too: with a plain effect, a key pressed just after a page turn reached the old listener, which sent
+  // the old page ± 1 and the room dropped it (the e2e intro test flaked on this).
+  useLayoutEffect(() => {
     if (introPage === null || !ready) return;
     function onKey(e: KeyboardEvent) {
       if (picking || drawer || !swapArmed) return;
@@ -808,38 +810,37 @@ export default function HostPage() {
     />
   );
 
-  // ⚙ 更多's 隊伍: each team's rarer buttons, by its hero so the host finds the team at a glance.
-  const teamTools = game?.phase === "playing" && (
-    <div className="flex flex-col gap-3">
-      {game.view.teams.map((t, i) => (
-        <div key={t.id} className="flex flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={2} className="flex-none" />
-            <span className="min-w-0 flex-1 truncate text-[16px]">{t.name}{t.online ? "" : "（離線）"}</span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {picks && !t.inBossPhase && pickButton(t.id)}
-            {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone from 修正. */}
-            <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在下面的「修正」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
-              {t.item ? "🧪 已有" : "🧪 給藥水"}
-            </PixelButton>
-            <PixelButton
-              className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
-              // The code shows on the page, where the host reads it out: the drawer closes for it.
-              onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && (send({ type: "HOST_HANDOFF", teamId: t.id }), setDrawer(false))}
-            >
-              交給新手機
-            </PixelButton>
-          </div>
-          {picks?.queued[t.id] && <div className="min-w-0 truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
-        </div>
-      ))}
-      {picks && game.view.teams.some((t) => t.inBossPhase) && (
-        <div className="flex items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
-          {pickButton("boss")}
-        </div>
-      )}
+  // ⚙ 更多's 隊伍 (ui-simplify H2): one row per team with its character; these are the rarer tools under its ⋯.
+  const playingTeams = game?.phase === "playing" ? game.view.teams : [];
+  const teamSprite = (id: string) => {
+    const i = playingTeams.findIndex((t) => t.id === id);
+    return i < 0 ? null : <Sprite kind="hero" variant={lookOf(playingTeams[i], i)} cls={playingTeams[i].classId} scale={2} className="flex-none" />;
+  };
+  const teamTools = (id: string) => {
+    const t = playingTeams.find((x) => x.id === id);
+    if (!t) return null;
+    return (
+      <>
+        {picks && !t.inBossPhase && pickButton(t.id)}
+        {/* 🧪 幸運藥水 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🧪. */}
+        <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一瓶幸運藥水？（給錯了可以在同一列的 ⋯ 收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+          {t.item ? "🧪 已有" : "🧪 給藥水"}
+        </PixelButton>
+        <PixelButton
+          className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
+          // The code shows on the page, where the host reads it out: the drawer closes for it.
+          onClick={() => (!t.online || confirm(`${t.name}還在線上，確定要交給新手機？`)) && (send({ type: "HOST_HANDOFF", teamId: t.id }), setDrawer(false))}
+        >
+          交給新手機
+        </PixelButton>
+        {picks?.queued[t.id] && <div className="min-w-0 basis-full truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
+      </>
+    );
+  };
+  const bossPick = picks && playingTeams.some((t) => t.inBossPhase) && (
+    <div className="flex items-center gap-2">
+      <span className="min-w-0 flex-1 truncate text-[14px]">首領房下一題：{picks.queued.boss ? pickLabel(picks.queued.boss) : "照順序"}</span>
+      {pickButton("boss")}
     </div>
   );
 
@@ -1682,7 +1683,9 @@ export default function HostPage() {
           onClose={() => setDrawer(false)}
           send={send}
           ai={aiPanel}
-          teams={teamTools || null}
+          teamTools={teamTools}
+          teamSprite={teamSprite}
+          bossPick={bossPick || null}
           pacing={pacingSwitch}
           lobby={lobbyTools || null}
           narration={

@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
-import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { restoreRoom0AfterEach, revealLock, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -102,7 +102,7 @@ async function wrongBossLock(browser: Browser, request: APIRequestContext) {
   expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
   const room = await start(browser, "牧師");
   const { host, team } = room;
-  await host.getByRole("button", { name: "⚙ 更多" }).click();
+  await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();
   await host.getByRole("button", { name: "關閉" }).click();
