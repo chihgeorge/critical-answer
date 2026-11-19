@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { sendSettled, settleCheck, settleDish } from "./test-send";
-import { DungeonRoom, fixedDie, passwordSource, sprintLine } from "./dungeon-room";
+import { CHECK_GRACE_MS, DungeonRoom, fixedDie, passwordSource, sprintLine } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
@@ -1219,9 +1219,9 @@ describe("TEAM_SELECT_OPTION", () => {
     const checkBank: Bank = { ...mcBank, pools: { ...mcBank.pools, 1: [{ kind: "text", id: "r0-t1", content: { kind: "text", value: "？" }, answer: "萬家福" }] } };
     /** `value`: the first team's check rolls itself on that face as the game starts and stays in its beat; without it,
      * sendSettled lands a plain failed check at once. */
-    function checkGame(teamCount = 1, value?: number) {
+    function checkGame(teamCount = 1, value?: number, io: RoomIO = makeRoom()) {
       const r = value === undefined ? 0 : (value - 1) / 20; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-      const room = new DungeonRoom(makeRoom() as any, () => r, { bank: checkBank });
+      const room = new DungeonRoom(io as any, () => r, { bank: checkBank });
       (room as any).holdCheck = value !== undefined;
       const hostConn = makeConn("host-conn");
       room.onConnect(hostConn);
@@ -1281,6 +1281,9 @@ describe("TEAM_SELECT_OPTION", () => {
       const { room, hostConn, ids } = checkGame(2, 3);
       vi.advanceTimersByTime(2000);
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      // The host's window first: the next team's check waits CHECK_GRACE_MS.
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      vi.advanceTimersByTime(CHECK_GRACE_MS);
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).undoWrong).toMatchObject({ teamId: ids[0], questionId: "r0-t1" });
@@ -1299,7 +1302,7 @@ describe("TEAM_SELECT_OPTION", () => {
       const { room, hostConn, ids } = checkGame(2, 18);
       vi.advanceTimersByTime(10_000);
       send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(CHECK_GRACE_MS + 2000);
       expect(lastBroadcast(room).stageBeat).toBe("check-success");
       expect(lastBroadcast(room).undoWrong).toBeFalsy();
       send(room, hostConn, { type: "HOST_UNDO_WRONG", teamId: ids[0], questionId: "r0-t1", eventId: seqOf(room) });
@@ -1307,6 +1310,50 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(10_000);
       expect(lastBroadcast(room).stageBeat).toBeUndefined();
       expect(lastBroadcast(room).undoWrong).toMatchObject({ teamId: ids[0] });
+    });
+
+    // Value: protects=the owner's PR 422 ruling: after a 答錯 that hands the turn on, the next team's check waits
+    // CHECK_GRACE_MS so a 20 cannot end 改判答對 before the host can press it; an overturn inside the window cancels that
+    // check cleanly; a restart (no undo) rolls at once; fails_when=the check rolls at once, rolls after an overturn, or
+    // never rolls after a restart
+    it("waits CHECK_GRACE_MS before the next team's check after a 答錯; an overturn inside it means that check never rolls", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids } = checkGame(2, 3);
+      vi.advanceTimersByTime(2000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      expect(lastBroadcast(room).view.currentTurnTeamId).toBe(ids[1]);
+      vi.advanceTimersByTime(CHECK_GRACE_MS - 1000);
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      expect(lastBroadcast(room).undoWrong).toMatchObject({ teamId: ids[0] });
+      send(room, hostConn, { type: "HOST_UNDO_WRONG", teamId: ids[0], questionId: "r0-t1", eventId: seqOf(room) });
+      vi.advanceTimersByTime(CHECK_GRACE_MS * 2);
+      const b = room.game!.teams.find((t) => t.id === ids[1])!;
+      expect(room.game!.checks?.[checkKey(b.currentQuestionId, ids[1])]).toBeUndefined();
+      const states = room.room.broadcast as unknown as ReturnType<typeof vi.fn>;
+      const sent = states.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE");
+      expect(sent.some((m) => m.pendingRoll?.teamId === ids[1])).toBe(false);
+    });
+
+    it("rolls the next team's check at once after a restart inside that window (a restart keeps no 改判答對)", async () => {
+      vi.useFakeTimers();
+      const data = new Map<string, unknown>();
+      const storage = { get: async (k: string) => structuredClone(data.get(k)), put: (k: string, v: unknown) => void data.set(k, structuredClone(v)) };
+      const { room, hostConn, ids } = checkGame(2, 3, { ...makeRoom(), storage } as unknown as RoomIO);
+      vi.advanceTimersByTime(2000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      vi.advanceTimersByTime(1000);
+      expect(lastBroadcast(room).pendingRoll).toBeNull();
+      const second = new DungeonRoom({ ...makeRoom(), storage } as any, () => 0.1, { bank: checkBank });
+      expect(await second.restore()).toBe("restored");
+      const host2 = makeConn("host-conn-2");
+      second.onConnect(host2);
+      claim(second, host2);
+      expect(second.game!.teams.find((t) => t.id === ids[1])).toBeDefined();
+      const b = second.game!.teams.find((t) => t.id === ids[1])!;
+      // The next STATE the restored room sends (a phone or the host reconnecting) runs autoCheck: no window to wait out.
+      (second as unknown as { broadcastState(): void }).broadcastState();
+      expect(lastBroadcast(second).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
+      expect(second.game!.checks?.[checkKey(b.currentQuestionId, ids[1])]).toBeDefined();
     });
 
     // Value: protects=a restored natural 20 waits for its own team's turn only (adversarial review); fails_when=autoCheck

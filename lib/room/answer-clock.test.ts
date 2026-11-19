@@ -164,8 +164,10 @@ describe("每題作答倒數 in the room", () => {
     g.check();
     vi.advanceTimersByTime(25000);
     g.judge(false, "retry");
-    // Turn passes on: the other team answers its own question with a fresh count.
+    // Turn passes on: the other team answers its own question with a fresh count, once its check rolled (after the
+    // host's 改判答對 window and the die's 2 s).
     expect(g.state().view.currentTurnTeamId).toBe(B);
+    vi.advanceTimersByTime(7000);
     g.check();
     expect(g.state().answerClock).toEqual({ left: 60000 });
     vi.advanceTimersByTime(5000);

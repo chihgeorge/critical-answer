@@ -236,6 +236,8 @@ export const HOST_AWAY_GRACE_MS = 8000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** How long the next team's auto check waits after a 答錯 that 改判答對 can still undo: the host's window before a 20 ends it. */
+export const CHECK_GRACE_MS = 5000;
 /** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
 export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
@@ -650,7 +652,9 @@ export class DungeonRoom {
   /** The host's last 答錯 on a fill-in, which 改判答對 undoes while the game is still `after`: any later move in the game
    * ends it, a phone going on or offline does not (setOnline). `prev` is the game before that 答錯. Memory only.
    * `verdict`: instead the last catch ruling, which 撤回裁決 takes back (rulingUndoOpen); 改判答對 never sees it. */
-  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean } } | null = null;
+  private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
+  /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
+  private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -3169,6 +3173,8 @@ export class DungeonRoom {
     if (lockTeam) this.syncLockTeam(lockTeam);
     if (this.lostCritTimer) clearTimeout(this.lostCritTimer);
     this.lostCritTimer = null;
+    if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
+    this.checkGraceTimer = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
     this.tapReveal = null;
@@ -3837,7 +3843,7 @@ export class DungeonRoom {
     } finally {
       const pending = this.undoPending;
       this.undoPending = null;
-      if (pending && this.game && this.game !== prev) this.undo = { ...pending, after: this.game };
+      if (pending && this.game && this.game !== prev) this.undo = { ...pending, after: this.game, at: this.now() };
     }
   }
 
@@ -5238,6 +5244,20 @@ export class DungeonRoom {
     const q = this.question(questionId);
     // A typed answer already waits for the host: a natural 20 must not win over it.
     if (q?.kind !== "text" || game.checks?.[checkKey(questionId, teamId)] || team.typedAnswer !== undefined) return false;
+    // Another team's 答錯 that 改判答對 can still undo gives the host CHECK_GRACE_MS first: a 20 here would end that undo.
+    // Inside the 答錯 itself (withUndo) the undo is still pending: it opens now.
+    const undo = this.undo;
+    const opened = this.undoPending ? (this.undoPending.teamId !== teamId ? this.now() : undefined) : undo && !undo.verdict && undo.teamId !== teamId && this.undoOpen(undo) ? undo.at : undefined;
+    const wait = opened === undefined ? 0 : opened + CHECK_GRACE_MS - this.now();
+    if (wait > 0) {
+      if (!this.checkGraceTimer) {
+        this.checkGraceTimer = setTimeout(() => {
+          this.checkGraceTimer = null;
+          if (!this.judging && this.autoCheck()) this.broadcastState();
+        }, wait);
+      }
+      return false;
+    }
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
     // Not a move: an open 改判答對 stays open (undoneGame keeps this check).

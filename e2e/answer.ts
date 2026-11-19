@@ -12,9 +12,10 @@ const JUDGE_LANDS_MS = 9000;
 
 /** A fill-in's persuasion check rolls itself (dnd design R6, owner 2026-11-19): the answer box shows once its beat ends,
  * after the 說服成功 card. The e2e worker fixes every d20 at 10 (playwright.config.ts E2E_DIE), so the check passes a
- * room's DC and never wins outright. */
+ * room's DC and never wins outright. After another team's 答錯 the check first waits out the host's 改判答對 window
+ * (CHECK_GRACE_MS, 5 s), so the wait covers that, the 2 s die and the 2 s card. */
 export async function checkLanded(team: Page) {
-  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 8000 });
+  await expect(team.getByRole("textbox", { name: "你們的答案" })).toBeVisible({ timeout: 15_000 });
 }
 
 /** The big screen link on the host page. It carries the room's screen key: only a screen opened by it is sent the
