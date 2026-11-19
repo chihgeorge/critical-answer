@@ -252,7 +252,7 @@ function play(classes: C[], maxTurns = 600) {
       }
     }
     const flee = text || (!inBoss && !g.pendingWrong?.prayed && gone().length >= 2);
-    g = G.answerQuestion(g, id, q, false, flee ? (inBoss || R() < 0.5 ? "flee" : "switch") : "retry", R).game;
+    g = G.answerQuestion(g, id, q, false, flee ? "switch" : "retry", R).game;
   }
   return g;
 }
