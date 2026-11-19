@@ -143,3 +143,35 @@ y_Y2_df.txt:dish chef-rolls/team 6.97 20s/team 0.410 team-with-20 34.2% game-wit
 y_Y2_ev.txt:dish chef-rolls/team 6.68 20s/team 0.420 team-with-20 34.6% game-with-chef-20 34.6% | all-rolls/game 28.4 20s/game 1.42 game-with-any-20 76.5%
 y_Y_df.txt:dish chef-rolls/team 6.96 20s/team 0.390 team-with-20 32.9% game-with-chef-20 32.9% | all-rolls/game 29.4 20s/game 1.47 game-with-any-20 77.6%
 y_Y_ev.txt:dish chef-rolls/team 6.68 20s/team 0.394 team-with-20 32.8% game-with-chef-20 32.8% | all-rolls/game 28.4 20s/game 1.42 game-with-any-20 76.5%
+
+--- Plan Y follow-ups (10k each): q12 = chef 2-19 x1.2 (chef check +8; _ch1 / _chm3 = chef check +1 / -3; _pg0 / _pg02 = host potion chance 0 / 0.2). s1-s6 = starting potions (STARTPOT), see the names; s4/s5 use today's CHECK_BONUS.
+q12_ch1_df                         th=28.0 ch=26.1 cl=28.3 wa=28.0 ma=26.1 no=13.6 gap=2.2
+q12_ch1_ev                         th=26.2 ch=27.4 cl=26.8 wa=27.5 ma=27.5 no=14.8 gap=1.3
+q12_ch1_pg02_df                    th=27.3 ch=26.7 cl=28.1 wa=27.4 ma=26.1 no=14.2 gap=2.0
+q12_ch1_pg02_ev                    th=26.6 ch=27.3 cl=27.1 wa=28.6 ma=26.3 no=14.0 gap=2.3
+q12_ch1_pg0_df                     th=27.6 ch=26.6 cl=28.2 wa=26.7 ma=26.5 no=14.6 gap=1.7
+q12_ch1_pg0_ev                     th=26.6 ch=26.4 cl=27.0 wa=26.6 ma=28.2 no=15.1 gap=1.8
+q12_chm3_df                        th=27.8 ch=25.7 cl=29.9 wa=27.4 ma=25.3 no=13.8 gap=4.6
+q12_chm3_ev                        th=27.6 ch=26.6 cl=26.7 wa=27.5 ma=27.0 no=14.4 gap=1.0
+q12_df                             th=25.4 ch=30.3 cl=28.8 wa=26.4 ma=25.7 no=13.6 gap=4.9
+q12_ev                             th=26.1 ch=28.7 cl=27.8 wa=26.8 ma=26.6 no=14.1 gap=2.6
+q12_pg02_df                        th=26.2 ch=28.8 cl=29.0 wa=27.4 ma=24.9 no=13.7 gap=4.1
+q12_pg02_ev                        th=26.2 ch=29.1 cl=26.3 wa=27.8 ma=26.8 no=13.7 gap=2.9
+q12_pg0_df                         th=27.3 ch=28.8 cl=27.2 wa=26.8 ma=25.7 no=14.2 gap=3.1
+q12_pg0_ev                         th=25.5 ch=28.0 cl=26.7 wa=26.7 ma=28.4 no=14.9 gap=2.9
+s1_y1_chef_df                      th=26.9 ch=27.1 cl=27.3 wa=28.3 ma=25.4 no=14.8 gap=2.9
+s1_y1_chef_ev                      th=26.5 ch=25.8 cl=26.7 wa=28.0 ma=28.4 no=14.6 gap=2.6
+s2_y1_chefnone_df                  th=27.4 ch=27.9 cl=28.0 wa=28.0 ma=25.0 no=13.7 gap=3.0
+s2_y1_chefnone_ev                  th=26.7 ch=26.8 cl=27.3 wa=26.9 ma=27.9 no=14.6 gap=1.2
+s3_y1_ch1_chef_df                  th=26.9 ch=25.4 cl=28.4 wa=27.9 ma=27.0 no=14.3 gap=3.0
+s3_y1_ch1_chef_ev                  th=27.7 ch=24.3 cl=26.7 wa=28.3 ma=28.1 no=15.0 gap=4.0
+s4_pg02_df                         th=27.1 ch=27.3 cl=28.5 wa=28.1 ma=26.1 no=12.9 gap=2.4
+s4_pg02_ev                         th=26.8 ch=27.1 cl=26.3 wa=29.4 ma=25.7 no=14.6 gap=3.7
+s4_pg0_df                          th=27.1 ch=26.1 cl=28.7 wa=28.3 ma=26.1 no=13.6 gap=2.6
+s4_pg0_ev                          th=27.5 ch=27.1 cl=26.3 wa=26.6 ma=28.3 no=14.2 gap=2.0
+s4_y12_curcb_mage_df               th=27.1 ch=26.8 cl=27.8 wa=27.3 ma=26.6 no=14.3 gap=1.2
+s4_y12_curcb_mage_ev               th=27.5 ch=26.9 cl=26.5 wa=28.2 ma=26.8 no=13.9 gap=1.7
+s5_y12_curcb_df                    th=27.9 ch=27.2 cl=28.2 wa=27.6 ma=24.9 no=14.1 gap=3.3
+s5_y12_curcb_ev                    th=26.5 ch=27.7 cl=26.6 wa=28.1 ma=26.9 no=14.4 gap=1.6
+s6_y12_ch1_none_df                 th=27.5 ch=27.3 cl=28.6 wa=27.1 ma=25.4 no=14.2 gap=3.2
+s6_y12_ch1_none_ev                 th=27.0 ch=27.1 cl=27.0 wa=27.1 ma=26.8 no=14.8 gap=0.3

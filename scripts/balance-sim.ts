@@ -106,6 +106,8 @@ for (const k of Object.keys(G.CATCH_PAY)) if (process.env[k.toUpperCase()]) (G.C
 const FLEESAME = env("FLEESAME", 0);
 const TEAMS = env("TEAMS", 4), CHEFS = env("CHEFS", 0), DISHALL = process.env.DISHALL === "1";
 // What-if chef abilities: CHEFADV=1 the chef always rolls one more dish die and keeps the highest; CHEFSTEAL see settle.
+// STARTPOT="chef,none": these classes start the game holding one potion.
+const STARTPOT = (process.env.STARTPOT ?? "").split(",").filter(Boolean);
 const SNEAKLOSE = process.env.SNEAKLOSE === "1", CHEFADV = process.env.CHEFADV === "1", CHEFSTEAL = env("CHEFSTEAL", 0);
 // Dish-die counts of the game being played: every correct turn-based answer (a roll if everyone rolled), each chef team's rolls and 20s.
 let dishAll = 0;
@@ -117,6 +119,7 @@ function play(classes: C[], tags: Tag[], maxTurns = 600) {
   const later = HP2 > 0 ? [{ maxHp: HP2, questionIds: songs, buzzer: true as const }] : [];
   let g = G.createGame(teams, rooms, pools, boss, { bossThreshold: THRESH }, HP1, R, undefined, {}, later, undefined, [], bossDifficulties);
   if (AC) g = G.setAntiCheat(g, true);
+  for (const [k, c] of classes.entries()) if (STARTPOT.includes(c ?? "none")) g = G.giveItem(g, `T${k}`);
   const sneakDie = new Map<string, number>(), sneakTried = new Set<string>(), chefBoost = new Map<string, number>();
   const latent = new Map<string, { known: boolean; hintable: boolean; weak: boolean }>();
   // A team knows a buzz song for good too, so a skipped song that comes back is not re-rolled.
