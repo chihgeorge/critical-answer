@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, startGame, screenUrl, closeLeftoverContexts, rollDish } from "./answer";
 
 closeLeftoverContexts();
 
@@ -52,5 +52,7 @@ test("the check rolls itself, passes the DC, the team sees the first character, 
   await team.getByRole("button", { name: "送出" }).click();
   await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：萬家福");
   await host.getByRole("button", { name: "答對！" }).click();
-  await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled(); // the answer is on show (cooked monster)
+  await expect(host.getByRole("button", { name: "🎲 擲料理骰", exact: true })).toBeEnabled(); // the answer is on show, before the dish die
+  await rollDish(host);
+  await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled(); // then the cooked monster
 });

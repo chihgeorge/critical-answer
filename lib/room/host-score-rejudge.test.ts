@@ -1,7 +1,7 @@
 // ⚙ 更多 › 修正's 設定 (an exact reward) and 改判 (a past judgment's reward points flipped) (docs/hosting.md).
 // Host only, the same holds as 修正, no line on the big screen, every press kept in the game log and the transcript.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sendSettled } from "./test-send";
+import { sendSettled, settleDish } from "./test-send";
 import { DungeonRoom } from "./dungeon-room";
 import type { Conn, RoomIO, RoomStorage } from "./io";
 import { parseBank } from "../question-bank";
@@ -69,9 +69,10 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
     vi.advanceTimersByTime(2000);
     // A hit rolls its dish die (the same fixed value) in a beat of its own.
     if ((room as unknown as { pendingRoll: { kind: string } | null }).pendingRoll?.kind === "dish") vi.advanceTimersByTime(2000);
-    // A hit's reveal closes as judge() closes one.
+    // A hit's reveal (the answer first, then its dish die) closes as judge() closes one.
     if (state().reveal) {
       vi.advanceTimersByTime(10_000);
+      settleDish(room);
       send(room, host, { type: "HOST_SERVE", eventId: state().eventId });
       vi.advanceTimersByTime(30_000);
       send(room, host, { type: "HOST_NEXT", eventId: state().eventId });

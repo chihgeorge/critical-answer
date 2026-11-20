@@ -239,7 +239,7 @@ test("screen TTS: a host correction is spoken, both of the line replayed at conn
 // A live epilogue is read aloud: main-line.spec.ts ("game over: the boss cooks, then the podium, then the epilogue ...").
 
 test("screen TTS: an epilogue replayed at connect is shown but never spoken", async ({ browser }) => {
-  test.setTimeout(110_000); // every cooked monster is served and waited out (cooking I2), then the podium reveal
+  test.setTimeout(180_000); // every check rolls itself, every dish die waits for its answer, every cooked monster is served (cooking I2), then the podium reveal
   const code = "EPLH"; // distinct from EPLG — same shared server
   const partyUrl = `ws://localhost:1996/parties/main/${code}`;
   const open = (u: string) => new Promise<WebSocket>((res, rej) => { const w = new WebSocket(u); w.onopen = () => res(w); w.onerror = rej; });

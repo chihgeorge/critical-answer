@@ -48,7 +48,8 @@ describe("#362 the next question under a reveal", () => {
     sendSettled(room, phone, { type: "TEAM_SELECT_OPTION", questionId: first.question.id, optionIndex: 0 });
     sendSettled(room, phone, { type: "TEAM_LOCK_OPTION", questionId: first.question.id });
     sendSettled(room, host, { type: "HOST_REVEAL", teamId: first.view.currentTurnTeamId, questionId: first.question.id });
-    vi.advanceTimersByTime(8000); // the lock's beat, then the dish die's
+    vi.advanceTimersByTime(8000); // the lock's beat; the answer's reveal then waits for 🎲 擲料理骰
+    sendSettled(room, host, { type: "HOST_NEXT", eventId: state().eventId }); // the dish die, landed at once
 
     const during = state();
     expect(during.reveal).toMatchObject({ questionId: first.question.id });

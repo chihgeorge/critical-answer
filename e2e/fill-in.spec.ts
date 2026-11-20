@@ -1,5 +1,5 @@
 import { test, expect, type Browser } from "@playwright/test";
-import { textOnlyBank, startGame, checkLanded, screenUrl, closeLeftoverContexts } from "./answer";
+import { textOnlyBank, startGame, checkLanded, screenUrl, closeLeftoverContexts, rollDish } from "./answer";
 
 closeLeftoverContexts();
 
@@ -34,7 +34,9 @@ test("the team types an answer, the host and the TV show it, the host judges it 
   await expect(host.getByTestId("host-typed-answer")).toHaveText("隊伍答：Don't Stop");
   await expect(screen.getByTestId("screen-typed-answer")).toHaveText("⚔️ 填空隊：Don't Stop");
   await host.getByRole("button", { name: "答對！" }).click();
-  await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled(); // the answer is on show (cooked monster)
+  await expect(host.getByRole("button", { name: "🎲 擲料理骰", exact: true })).toBeEnabled(); // the answer is on show, before the dish die
+  await rollDish(host);
+  await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled(); // then the cooked monster
   await expect(screen.getByTestId("screen-typed-answer")).toHaveCount(0);
 });
 

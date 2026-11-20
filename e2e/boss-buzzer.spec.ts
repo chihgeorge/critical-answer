@@ -1,5 +1,5 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
-import { hostCheckSettled, startGame, screenUrl, closeLeftoverContexts, openMore } from "./answer";
+import { hostCheckSettled, startGame, screenUrl, closeLeftoverContexts, openMore, rollDish } from "./answer";
 import { E2E_OWNER_KEY } from "../playwright.config";
 
 closeLeftoverContexts();
@@ -49,6 +49,7 @@ async function restore(request: APIRequestContext) {
 // on turn, or a shut-out phone can still buzz; why_new=room tests cover messages, not the pages; seam=none;
 // no_claim=the ▶-gated video path and auto pause/resume (lib/room/boss-buzzer.test.ts)
 test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut out, the host can skip", async ({ browser }) => {
+  test.setTimeout(60_000); // 答錯 until the wanted boss question, each turn now with its own self-rolling check (#422)
   const host = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
@@ -78,6 +79,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
     await expect(host.getByTestId("host-answer")).toHaveText("答案 buzz-p1", { timeout: 2_000 });
   }).toPass();
   await host.getByRole("button", { name: "答對！" }).click();
+  await rollDish(host); // a turn-based boss hit: its answer first, then the dish die
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByTestId("phase-card")).toContainText("最終決戰");
   await host.getByRole("button", { name: "下一題", exact: true }).click();

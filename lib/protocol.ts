@@ -178,6 +178,9 @@ export type AnswerReveal = {
   };
   /** The host pressed 🍲 上菜 (HOST_SERVE): the panel goes away and the screen cooks the monster. Only with `dish`. */
   served?: true;
+  /** A correct answer's reveal before its dish die: answer and explanation first, nothing scored yet (no `scored` or
+   * `dish`). The host's 🎲 擲料理骰 (HOST_NEXT) rolls the die over it; the scored reveal replaces it once the die lands. */
+  dishNext?: true;
 };
 
 /** 上菜's cooking on the big screen (monster-cuisine.md cooking R7): monster 0–0.4 s, pot to 1.2 s, smoke to 1.6 s, then the dish. */
@@ -230,7 +233,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "dish-intro" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "check-success" | "kill-defeated" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -616,7 +619,7 @@ export type ServerMessage =
       pacing?: "manual";
       hold?: Hold;
       /** A narrated pause before the next question or die. */
-      stageBeat?: "dish-intro" | "check-success" | "kill-defeated";
+      stageBeat?: "check-success" | "kill-defeated";
       /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.
        * Absent from older servers. */
       stageMonster?: PublicQuestion["monster"];

@@ -683,7 +683,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             next question never shows underneath (or behind) the previous answer. */}
         {stageBeat ? (
           <div data-testid={`screen-${stageBeat}`} className="px-title-boss px-title-sm text-center" style={{ fontSize: 34, lineHeight: 1.3 }}>
-            {stageBeat === "dish-intro" ? "答對了！接下來擲料理骰" : stageBeat === "check-success" ? "說服成功！準備看題目" : "首領被擊敗了！接下來擲尾刀骰"}
+            {stageBeat === "check-success" ? "說服成功！準備看題目" : "首領被擊敗了！接下來擲尾刀骰"}
           </div>
         ) : card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">

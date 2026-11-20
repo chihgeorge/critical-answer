@@ -116,7 +116,10 @@ test("an unused room closes its connections after the idle time, keeps the game,
       await wait(() => last(host, "STATE")?.pendingLock, "the lock is in");
       send(host, { type: "HOST_REVEAL", teamId: last(host, "STATE").pendingLock.teamId, questionId: dealt.questionId });
     } else send(host, { type: "HOST_JUDGE", teamId: last(a, "STATE").view.currentTurnTeamId, questionId: dealt.questionId, correct: true });
-    // A right lock is judged after its beats (reveal, dish intro, dish die), so wait for the score itself.
+    // The answer's reveal comes first; 🎲 擲料理骰 (HOST_NEXT) rolls the dish die, and the judgment lands after it.
+    await wait(() => last(host, "STATE")?.reveal?.dishNext, "the answer's reveal, before the dish die");
+    send(host, { type: "HOST_NEXT", eventId: last(host, "STATE").eventId });
+    // A right lock is judged after its beats (reveal, dish die), so wait for the score itself.
     await wait(() => last(a, "STATE")?.view.teams.some((t: any) => t.score > 0), "the judgment is applied");
     const before = last(a, "STATE");
     const epoch = before.roomEpoch;

@@ -97,6 +97,7 @@ test("a team at a fork opens ❓ from its phone, the door opens, everyone sees t
 // Value: protects=a ⚔️ fork (press → door beat → the room's monster and question); fails_when=⚔️ never leaves the
 // fork or skips the room's question; why_new=the fork is new; seam=worker E2E_EVENT_TEAM; no_claim=the narration line
 test("a team at a fork takes ⚔️ and then faces the room's monster", async ({ browser }) => {
+  test.setTimeout(60_000); // two checks that roll themselves and two dish dice after their answers push the walk past 30 s
   const { host, screen, eventTeam } = await toTheFork(browser);
   // Regression: ISSUE-001 — the host page showed the ⚔️ question's answer under the fork card while the door opened.
   // Found by /qa on 2026-11-09. Watched in the page, every frame from the opening line's first to its last: the answer
