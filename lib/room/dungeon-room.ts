@@ -897,7 +897,8 @@ export class DungeonRoom {
           } else lines = [...lines.slice(0, -1), this.freshHandoff(handoff, event.next) ?? handoff];
         }
         // A held line goes out with its narration, unless the game ended meanwhile.
-        if (this.game?.phase === "playing") lines = [...lead, ...lines, ...held];
+        // Capped: a save past NARRATION_MAX_LINES would not restore (held lines can pile up while the LLM call runs).
+        if (this.game?.phase === "playing") lines = [...lead, ...lines, ...held].slice(0, NARRATION_MAX_LINES);
         this.lastNarration = { eventId, lines, rev: 0, done: 0 };
         this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
@@ -3420,7 +3421,7 @@ export class DungeonRoom {
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
       this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1, ...(jump ? { jump: true as const } : {}) });
     } else if (!n || n.eventId < eventId) {
-      this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
+      this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line].slice(0, NARRATION_MAX_LINES) };
     }
   }
 
@@ -5649,7 +5650,8 @@ export class DungeonRoom {
   private handleHostBossHp(conn: Conn, delta: number) {
     if (!this.requireHost(conn)) return;
     if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
-    if (this.forkBeat || this.bossEntryBefore || this.pendingLock || this.pendingRoll || this.game.pendingWrong) {
+    // An open phase card draws the new phase's full bar: a press would not show until it closes.
+    if (this.forkBeat || this.bossEntryBefore || this.pendingLock || this.pendingRoll || this.game.pendingWrong || this.phaseCard) {
       return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
     }
     if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });

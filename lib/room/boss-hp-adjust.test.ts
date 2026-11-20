@@ -8,6 +8,7 @@ import { parseBank } from "../question-bank";
 import { parseClientMessage } from "../protocol";
 import { adjustBossHp, MAX_BOSS_HP } from "../game-state";
 import { bossHpBanner } from "../transitions";
+import { NARRATION_MAX_LINES } from "./snapshot";
 
 const IDS = ["00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002"];
 const [A] = IDS;
@@ -106,13 +107,29 @@ describe("首領血量 −5 / +5", () => {
     expect(g.lastTo(g.host)).toMatchObject({ type: "ERROR", detail: "boss_hp_limit" });
   });
 
-  it("is refused while a die is in its beat (a kill roll included)", () => {
+  it("is refused while a die, a lock or a phase card is in its beat (a kill roll included)", () => {
     const g = started();
     send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
-    (g.room as unknown as { pendingRoll: object }).pendingRoll = { teamId: A, questionId: "b1", value: 20, kind: "kill" };
-    g.hp(-5);
-    expect(g.lastTo(g.host)).toMatchObject({ type: "ERROR", detail: "lock_pending" });
-    expect(g.room.game!.boss.hp).toBe(3);
+    const r = g.room as unknown as Record<string, unknown>;
+    for (const [key, value] of [["pendingRoll", { teamId: A, questionId: "b1", value: 20, kind: "kill" }], ["pendingLock", { teamId: A, questionId: "b1", index: 0 }], ["phaseCard", true]] as const) {
+      r[key] = value;
+      g.hp(-5);
+      expect(g.lastTo(g.host)).toMatchObject({ type: "ERROR", detail: "lock_pending" });
+      expect(g.room.game!.boss.hp).toBe(3);
+      r[key] = key === "phaseCard" ? false : null;
+    }
+    const game = g.room.game!;
+    expect(() => adjustBossHp({ ...game, boss: { ...game.boss, killedByTeamId: A } }, 5)).toThrow("boss_phase_changing");
+    expect(() => adjustBossHp({ ...game, phase: "finished" }, 5)).toThrow("not_playing");
+  });
+
+  it("presses while this turn's narration is still coming never hold more lines than a save keeps", () => {
+    const g = started();
+    send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
+    const r = g.room as unknown as { lastNarration: { eventId: number } | null; eventSeq: number; heldLines: { lines: string[] } | null };
+    r.lastNarration = r.lastNarration && { ...r.lastNarration, eventId: r.eventSeq - 1 };
+    for (let i = 0; i < 30; i++) g.hp(i % 2 ? 5 : -5);
+    expect(r.heldLines!.lines.length).toBeLessThanOrEqual(NARRATION_MAX_LINES);
   });
 
   it("survives a restart", async () => {
