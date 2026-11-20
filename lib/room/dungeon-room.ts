@@ -4882,8 +4882,9 @@ export class DungeonRoom {
     this.pendingRoll = roll;
     const kind = roll.kind;
     // A dish die (擲料理骰, 改成答對) and a check (rolled on the host's 下一題) follow a host press, so they land on their timer
-    // in manual too. So does a warrior's die: its result holds instead (a hit's answer, a miss's charge-fail beat).
-    const timed = kind === "dish" || kind === "check" || kind === "warrior";
+    // in manual too. So does a warrior's die: its result holds instead (a hit's answer, a miss's charge-fail beat). So do the
+    // class dice a player presses (mage, cleric, thief; owner 2026-11-20). Only the kill's 4d20 holds.
+    const timed = kind !== "kill";
     this.pace("lock", "roll", kind === "kill" ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kind === "kill" ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll(), timed);
   }
 

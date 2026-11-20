@@ -29,7 +29,6 @@ Held in 手動 (the room would otherwise move the game on by itself):
 | 擲先攻, waiting for rolls | `armInitiative(INITIATIVE_MS)` | rolls for the teams left (as 全部代擲) |
 | 擲先攻, the order on show | `armInitiative(n × INITIATIVE_TIE_MS + INITIATIVE_ORDER_MS)` | start cue, narration, first question |
 | Boss phase card after a miss | the read-out time of the retry line, `BEAT_MS` .. `ADVANCE_CAP_MS` | opens the card (下一題 did this already) |
-| Class dice: mage, cleric, thief | `BEAT_MS` → `resolveRoll` | applies the die shown |
 | A warrior's missed charge (`charge-fail` beat, 2026-11-19) | `BEAT_MS` → `chargeFailBeat` | judges the miss (a 1 takes the reward), next team |
 | Defeated-boss card | `BEAT_MS` (`kill-defeated`) | rolls the 4d20 |
 | Kill 4d20 | `KILL_BEAT_MS` → `resolveRoll` | scores the kill, ends the game |
@@ -42,7 +41,7 @@ Held in 手動 (the room would otherwise move the game on by itself):
 At a fork in 手動 there is no countdown on any screen (`forkLeft` is not sent) and a late press is not a timeout: the
 team may pick whenever it likes. 擲先攻 shows no countdown either (`initiative.untimed`).
 
-Run on their auto timer in 手動 too (`pace(..., timed)`, owner 2026-11-19): the direct result of a host's press.
+Run on their auto timer in 手動 too (`pace(..., timed)`, owner 2026-11-19): the direct result of a host's press, or of a team's class-die press (2026-11-20).
 
 | Pause | Timer / length | Started by |
 | --- | --- | --- |
@@ -51,6 +50,7 @@ Run on their auto timer in 手動 too (`pace(..., timed)`, owner 2026-11-19): th
 | Persuasion check die | `BEAT_MS` → `resolveRoll` | 下一題 or a ruling (the room rolls as the turn opens) |
 | Persuasion success card | `BEAT_MS` (`check-success`) | the check above |
 | Warrior's charge die | `BEAT_MS` → `resolveRoll` | ⚔️ 衝鋒; its result holds (a hit's answer reveal, a miss's `charge-fail` beat) |
+| Class dice: mage 洞悉, cleric 祈禱, thief 偷襲 (owner 2026-11-20) | `BEAT_MS` → `resolveRoll` | the team's own press on its phone |
 
 A wrong answer (下輪再答, 換隊) never held: the host's 答錯 is the press, so it already matches this split.
 
