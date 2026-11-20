@@ -1598,13 +1598,17 @@ describe("TEAM_SELECT_OPTION", () => {
     // natural 1 stays on the question and the question shows
     it("a natural 1 whose card was lost starts it again on the next STATE", () => {
       vi.useFakeTimers();
-      const { room, ids } = checkGame(2, 1);
+      const { room, ids, hostConn } = checkGame(2, 1);
       vi.advanceTimersByTime(2000);
       // What a restart loses: the card and its step (the check itself is saved).
       (room as any).unpace("lock");
       (room as any).stageBeat = null;
       (room as any).checkBeatAt = null;
       expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1 });
+      // Until the card is back, the host cannot judge it: a natural 1 is never judged (review).
+      room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: true, fleeChoice: "retry" }), hostConn);
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", detail: "check_pending" });
+      expect(room.game!.teams[0].reward).toBe(0);
       (room as any).broadcastState();
       expect(lastBroadcast(room)).toMatchObject({ stageBeat: "thrown-out", question: null });
       vi.advanceTimersByTime(2000);

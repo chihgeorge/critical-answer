@@ -2758,7 +2758,8 @@ export class DungeonRoom {
     this.sendPicks(conn);
     // After a restart a check owed in the 答錯 grace window rolls at the next STATE: send it now, or the host's judge
     // buttons stay dark (checkDue) until a phone comes back (review).
-    if (this.autoCheck()) this.broadcastState();
+    // A natural 1 whose card a restart lost starts again here too, before the host can judge it.
+    if (this.autoCheck() || this.autoThrowOut()) this.broadcastState();
     const closing = this.closingMessage();
     if (closing.minutesLeft !== null) this.sendTo(conn, closing);
   }
@@ -3834,6 +3835,8 @@ export class DungeonRoom {
     }
     // The team's question is not out until its check has rolled (QA P2-11).
     if (this.checkDue()?.teamId === teamId) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_pending" });
+    // A natural 1 is thrown out, never judged (throwOut); one saved with a typed answer under the old rule still is.
+    if (this.game.checks?.[checkKey(questionId, teamId)]?.value === 1 && this.game.teams.find((t) => t.id === teamId)?.typedAnswer === undefined) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_pending" });
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
     // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
@@ -5111,7 +5114,8 @@ export class DungeonRoom {
     if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
-    if (!teamId || !team || team.inBoss || atFork(team)) return false;
+    // A typed answer saved under the old rule (deployed mid-game) waits for the host instead.
+    if (!teamId || !team || team.inBoss || atFork(team) || team.typedAnswer !== undefined) return false;
     const questionId = currentQuestionIdOf(game, teamId);
     if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) return false;
     this.thrownOutBeat(teamId, questionId);
@@ -5973,7 +5977,7 @@ export class DungeonRoom {
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
     // No check in a buzzer phase (boss-buzzer.md D6): the team that buzzed may type at once (boss-music-buzzer.md M2).
     // No check in the boss room either (#364).
-    if (!isBuzzPhase(this.game) && !this.game.teams.find((t) => t.id === teamId)?.inBoss && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    if (!isBuzzPhase(this.game) && !this.game.teams.find((t) => t.id === teamId)?.inBoss && (!this.game.checks?.[checkKey(questionId, teamId)] || this.game.checks[checkKey(questionId, teamId)].value === 1)) return reject("check_needed");
     // A music question with fields: one box per field, blanks allowed, at least one filled (multi-field.md F4).
     if (q.fields && rawFields?.length !== q.fields.length) return reject("fields_mismatch");
     const fields = q.fields ? rawFields!.map(cleanTypedAnswer) : undefined;

@@ -1810,7 +1810,10 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
 export function throwOut(game: GameState, teamId: string, questionId: string, rng: () => number = Math.random): { game: GameState; outcome: AnswerOutcome } {
   if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) throw new InvalidActionError("no_natural_1");
   const { game: fled, outcome } = answerQuestion(game, teamId, questionId, false, "switch", rng);
-  return { game: fled, outcome: outcome.type === "incorrect-flee" ? { ...outcome, thrownOut: true } : outcome };
+  // The 1 goes with the throw-out, even when a short bank deals the same question back (it rolls afresh then).
+  const checks = { ...fled.checks };
+  delete checks[checkKey(questionId, teamId)];
+  return { game: { ...fled, checks }, outcome: outcome.type === "incorrect-flee" ? { ...outcome, thrownOut: true } : outcome };
 }
 
 /** The thief presses 偷襲 on its current question (class-dice-rework.md): the use is spent at once and the room rolls the
