@@ -95,6 +95,27 @@ describe("parseSnapshot", () => {
     }
   });
 
+  // Value: protects=QA B1/B2: a saved charge-fail beat, lock or kill comes back, a damaged one is dropped and the rest of
+  // the save restores; fails_when=a guard is removed and a bad die or index reaches the room; seam=none
+  it("keeps a saved chargeBeat, lock and kill, and drops damaged ones", () => {
+    const chargeBeat = { teamId: "a", questionId: "q", value: 1 };
+    const lock = { teamId: "a", questionId: "q", optionIndex: 2, revealing: true };
+    const kill = { teamId: "a", questionId: "q", values: [7, 7, 7, 7], value: 40, correct: true, fleeChoice: "retry", roll: { kind: "warrior", value: 15 }, defeated: true };
+    expect(parseSnapshot({ ...valid(), chargeBeat, lock, kill })).toMatchObject({ chargeBeat, lock, kill });
+    for (const bad of [
+      { chargeBeat: { ...chargeBeat, value: 21 } },
+      { lock: { ...lock, optionIndex: -1 } },
+      { lock: { ...lock, revealing: "yes" } },
+      { kill: { ...kill, values: [7, 7, 7] } },
+      { kill: { ...kill, fleeChoice: "x" } },
+      { kill: { ...kill, roll: { kind: "check", value: 3 } } },
+    ]) {
+      const s = parseSnapshot({ ...valid(), ...bad });
+      expect(s).not.toBeNull();
+      expect([s?.chargeBeat, s?.lock, s?.kill]).toEqual([undefined, undefined, undefined]);
+    }
+  });
+
   // Value: protects=a room saved mid-intro past the last page (a longer intro) still restores; fails_when=the old upper bound comes back;
   // seam=parseSnapshot; no_claim=the screen's drawing of the page
   it("shows the last intro page for a save from a longer intro", () => {

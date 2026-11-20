@@ -612,7 +612,9 @@ export default function HostPage() {
   const phaseNext = !!game?.reveal && !!game.phaseCardDue && !!turn?.inBoss;
   // Under a reveal the card already holds the next team's question (#339): folded (true) until 先看題目 (false), so a host
   // reading the page aloud does not read it before the reveal is over (QA 2026-11-19). null: no next question on the card.
-  const nextFolded = revealUp && !game?.phaseCard && !phaseNext && !turn?.team?.fork ? peek !== turn?.questionId : null;
+  // Keyed by the answered question too: the same next question under a later reveal (下輪再答) folds again.
+  const peekKey = `${game?.reveal?.questionId}:${turn?.questionId}`;
+  const nextFolded = revealUp && !game?.phaseCard && !phaseNext && !turn?.team?.fork ? peek !== peekKey : null;
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
@@ -1247,7 +1249,7 @@ export default function HostPage() {
                     <div data-testid="host-next-label" className="flex flex-wrap items-center gap-2 text-[13px]" style={{ color: "#6b4a2a" }}>
                       ⏭ 下一題（揭曉完才出題）
                       {nextFolded && (
-                        <button type="button" data-testid="host-next-peek" className="min-h-[32px] border-2 border-[var(--k)] bg-white px-2 text-[13px]" onClick={() => setPeek(turn.questionId ?? null)}>
+                        <button type="button" data-testid="host-next-peek" className="min-h-[44px] border-2 border-[var(--k)] bg-white px-3 text-[14px]" onClick={() => setPeek(peekKey)}>
                           先看題目
                         </button>
                       )}

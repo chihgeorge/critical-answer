@@ -1,4 +1,4 @@
-import { abilityUsesFor, isClassId, isFortuneCondition, isFortuneEffect, type ClassId, type GameState } from "../game-state";
+import { abilityUsesFor, isClassId, isFortuneCondition, isFortuneEffect, type ClassId, type FleeChoice, type GameState, type LockedOption } from "../game-state";
 import { UUID_RE, parseBank, type Bank } from "../question-bank";
 import type { Initiative } from "../initiative";
 import { MAX_TAP_LATENCY_MS } from "../tap-clock";
@@ -121,10 +121,10 @@ export interface RoomSnapshot {
   chargeBeat?: { teamId: string; questionId: string; value: number };
   /** A multipleChoice/sort lock waiting for 公布答案, or in its reveal beat (`revealing`): restore() keeps it, so the
    * team does not lock again and the beat lands once. Missing (or damaged) means none. */
-  lock?: { teamId: string; questionId: string; optionIndex: number; revealing?: true };
+  lock?: LockedOption;
   /** The kill's 4d20 in its beat with the judgment it holds back (kill-roll.md): restore() lands the same dice. `defeated`:
    * the 擊倒 card before the dice was still on. Missing (or damaged) means none: the team answers the final blow again. */
-  kill?: { teamId: string; questionId: string; values: number[]; value: number; defeated?: true; correct: boolean; fleeChoice: "retry" | "flee" | "switch"; roll?: { kind: "warrior" | "dish"; value: number; dish?: number }; fields?: boolean[] };
+  kill?: { teamId: string; questionId: string; values: number[]; value: number; defeated?: true; correct: boolean; fleeChoice: FleeChoice; roll?: { kind: "warrior" | "dish"; value: number; dish?: number }; fields?: boolean[] };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -258,7 +258,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       bossEntry: isObject(raw.bossEntry) && Number.isInteger(raw.bossEntry.eventId) && isString(raw.bossEntry.teamId) ? { eventId: raw.bossEntry.eventId as number, teamId: raw.bossEntry.teamId, ...(raw.bossEntry.sprint === true ? { sprint: true as const } : {}) } : undefined,
       dish: dishOk ? (dish as RoomSnapshot["dish"]) : undefined,
       chargeBeat: chargeOk ? { teamId: cb.teamId as string, questionId: cb.questionId as string, value: cb.value as number } : undefined,
-      lock: lockOk ? (lk as RoomSnapshot["lock"]) : undefined,
+      lock: lockOk ? { teamId: lk.teamId as string, questionId: lk.questionId as string, optionIndex: lk.optionIndex as number, ...(lk.revealing ? { revealing: true as const } : {}) } : undefined,
       kill: killOk ? (kl as RoomSnapshot["kill"]) : undefined,
       game: withUses as GameState | null,
       lateTeams,

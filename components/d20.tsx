@@ -302,7 +302,8 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
   }, [rollKey]);
   const landed = rollKey !== null && landedKey === rollKey;
   // The dice tumble in the lobby order and line up in the initiative order once they land (QA 2026-11-19 B3).
-  const ids = tie ? tie.teams : ini.order && landed ? ini.order : teams.map((t) => t.id);
+  // Once any roll has landed (a tie's reroll too) the row stays sorted, so it never jumps back to the lobby order.
+  const ids = tie ? tie.teams : ini.order && landedKey !== null ? ini.order : teams.map((t) => t.id);
   const value = (id: string, i: number) => (tie ? tie.values[i] : ini.order ? ini.rolls[id] : undefined);
   const size = ids.length <= 4 ? 150 : 90;
   const left = ids.filter((id) => ini.rolls[id] === undefined).length;

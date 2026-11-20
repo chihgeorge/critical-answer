@@ -774,25 +774,67 @@ describe("restoring after a restart", () => {
     expect(second.room.game!.teams.find((t) => t.id === T1)!.abilityUses).toBe(first.room.game!.teams.find((t) => t.id === T1)!.abilityUses);
   });
 
-  // Value: protects=QA B2: a restart during a lock's 公布答案 beat keeps the lock and lands the beat once; fails_when=the
-  // lock is memory only and the team locks again; seam=none; no_claim=a real multipleChoice question (text bank here)
+  // Value: protects=QA B2: a restart during a lock's 公布答案 beat keeps the lock and lands it once after the beat;
+  // fails_when=the lock is memory only and the team locks again, or a damaged index reaches resolveLock; seam=the real bank
+  // in storage (this file otherwise plays a text bank)
   it("a restart during a lock's reveal beat keeps the lock and lands it after the beat", async () => {
     vi.useFakeTimers();
     const storage = memoryStorage();
-    const first = makeRoom(storage);
-    const { host } = startedGame(first.room);
-    vi.advanceTimersByTime(10_000);
-    const t0 = currentTurnTeamId(first.room.game!)!;
-    const q = lastOf(host, "HOST_ANSWER").questionId;
-    const lock = { teamId: t0, questionId: q, optionIndex: 0, revealing: true };
-    (first.room as any).pendingLock = lock;
-    (first.room as any).broadcastState();
+    startedGame(makeRoom(storage).room);
+    const { BANK: real } = await vi.importActual<typeof import("../question-bank-data")>("../question-bank-data");
+    const { allQuestions } = await import("../question-bank");
+    const mc = allQuestions(real).find((x) => x.kind === "multipleChoice")!;
+    storage.data.set(BANK_KEY, structuredClone(real));
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    saved.game.teams = saved.game.teams.map((t: any) => (t.id === t0 ? { ...t, currentQuestionId: mc.id } : t));
+    const lock = { teamId: t0, questionId: mc.id, optionIndex: 0, revealing: true };
+    storage.data.set(SNAPSHOT_KEY, { ...saved, lock });
 
     const second = makeRoom(storage);
     await second.room.restore();
     expect((second.room as any).pendingLock).toEqual(lock);
     vi.advanceTimersByTime(2000);
     expect((second.room as any).pendingLock).toBeNull();
+    // Judged once: a right lock opens its answer before the dish die, a wrong one waits for its choice.
+    expect(!!(second.room as any).reveal?.dishNext !== (second.room.game!.pendingWrong?.teamId === t0)).toBe(true);
+
+    // A damaged index (past the options) is not restored.
+    storage.data.set(SNAPSHOT_KEY, { ...saved, lock: { ...lock, optionIndex: 99 } });
+    const third = makeRoom(storage);
+    await third.room.restore();
+    expect((third.room as any).pendingLock).toBeNull();
+  });
+
+  // Value: protects=QA B2: a restart during the 擊倒 card lands the card, then the same 4d20; fails_when=the defeated flag
+  // is dropped (no card) or the dice reroll; seam=none
+  it("a restart during the kill's 擊倒 card shows it again, then lands the same dice", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    startedGame(makeRoom(storage).room);
+    const saved = structuredClone(storage.data.get(SNAPSHOT_KEY)) as any;
+    const t0 = saved.game.turnOrder[saved.game.currentTurnIndex];
+    saved.game.teams = saved.game.teams.map((t: any) => ({ ...t, inBoss: true }));
+    saved.game.boss = { ...saved.game.boss, hp: 1, phaseIndex: saved.game.boss.phases.length - 1 };
+    const q = saved.game.boss.currentQuestionId;
+    storage.data.set(SNAPSHOT_KEY, saved);
+    const first = makeRoom(storage);
+    await first.room.restore();
+    const host = makeConn("host2");
+    first.room.onConnect(host);
+    send(first.room, host, { type: "HOST_CLAIM", token: TOKEN });
+    (first.room as any).fixedDie = 7;
+    send(first.room, host, { type: "HOST_JUDGE", teamId: t0, questionId: q, correct: true });
+    expect((first.room as any).stageBeat).toBe("kill-defeated");
+
+    const second = makeRoom(storage);
+    await second.room.restore();
+    expect((second.room as any).stageBeat).toBe("kill-defeated");
+    expect((second.room as any).pendingRoll).toMatchObject({ kind: "kill", values: [7, 7, 7, 7] });
+    vi.advanceTimersByTime(2000);
+    expect((second.room as any).stageBeat).toBeNull();
+    vi.advanceTimersByTime(6000);
+    expect(second.room.game!.phase).toBe("finished");
   });
 
   // Value: protects=QA B2: a restart inside the kill's beat lands the same 4d20 (no reroll, no answering the final blow

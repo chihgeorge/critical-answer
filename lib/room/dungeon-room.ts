@@ -613,9 +613,9 @@ export class DungeonRoom {
   /** The lock being held for the beat (E2). Saved (snapshot `lock`, QA 2026-11-19 B2): a restart keeps it and its beat. */
   private pendingLock: LockedOption | null = null;
   /** Dice in their beat: a warrior's roll, a correct answer's dish die, a class die, a persuasion check, or the kill's 4d20 (value is
-   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a correct
-   * answer's dish die is saved instead, with its value, and lands after the restart (snapshot `dish`, QA P2-16); a cut-off kill, with pendingKill, is lost: the kill's dice are saved too (snapshot `kill`), and a lost natural 20 comes back
-   * through lostCrit with fresh dice). Shares the "lock" step. */
+   * then the scored bonus). A warrior's, check's or class die is memory only: a restart drops it (the use stays spent). A
+   * correct answer's dish die (snapshot `dish`, QA P2-16) and the kill's 4d20 with pendingKill (snapshot `kill`) are saved
+   * and land with the same values; a lost natural 20 comes back through lostCrit with fresh dice. Shares the "lock" step. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
    * question whose video clip the big screen reported ended (D4). Saved with a wall-clock deadline: a restart keeps
@@ -1369,7 +1369,9 @@ export class DungeonRoom {
     const onTurn = (b: { teamId: string; questionId: string } | undefined) => !!b && currentTurnTeamId(game) === b.teamId && currentQuestionIdOf(game, b.teamId) === b.questionId;
     if (onTurn(s.chargeBeat)) this.chargeFailBeat(s.chargeBeat!.teamId, s.chargeBeat!.questionId, s.chargeBeat!.value, true);
     const l = s.lock;
-    if (l && onTurn(l) && !this.pendingRoll && !game.pendingWrong) {
+    // A damaged index must not reach resolveLock: the same checks as a phone's lock (handleTeamLockOption).
+    const lq = l ? this.question(l.questionId) : undefined;
+    if (l && onTurn(l) && !this.pendingRoll && !game.pendingWrong && isAutoJudged(lq) && l.optionIndex < this.pickCount(lq)) {
       this.pendingLock = l;
       if (l.revealing) this.pace("lock", "lock", BEAT_MS, () => (this.pendingLock?.revealing ? "接下來揭曉答對或答錯" : null), () => this.resolveLock(), true);
     }
