@@ -101,8 +101,9 @@ is set, STATE sends `podium.beats: null` (名次揭曉中…), and the step sets
 The snapshot gains `pacing?: "manual"` and `revealHeld?: true`. Both are optional, and a missing or unknown value is
 自動, so `SCHEMA_VERSION` stays 5 and an older save restores as before. The steps themselves are not saved: `restore()`
 arms again what the saved room still waits on (擲先攻, a boss miss, a fork, the podium flag), and `pace` turns each
-into a waiting step because the mode is restored first. A lock's beat, the dice and a door opening were memory only
-before this and still are: a restart drops them as it always did.
+into a waiting step because the mode is restored first. A door opening and most dice are memory only: a restart drops
+them. Saved since (QA 2026-11-19): a correct answer's dish die (`dish`), a lock and its 公布答案 beat (`lock`), a missed
+charge's beat (`chargeBeat`) and the kill's 4d20 (`kill`, with its 擊倒 card); each comes back as the same step.
 
 ### What never leaves the room
 

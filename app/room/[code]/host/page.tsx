@@ -124,7 +124,10 @@ export default function HostPage() {
   // And the next question under a reveal (#362): STATE blanks its text until 下一題, the ⏭ preview reads it here.
   // A persuasion 20's dish die: STATE has no question (it is never shown), but the host still reads which one it won.
   const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (!state?.question && answer?.question?.checkFirst && state?.pendingRoll?.questionId === answer.questionId) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) || (state?.reveal && answer?.question && answer.questionId === state.question?.id) ? { ...state!, question: answer!.question! } : state, [state, answer]);
-  const [drawer, setDrawer] = useState(false);
+  /** ⚙ 更多: closed (false), open (true), or open on one section (the quick row's 改判). */
+  const [drawer, setDrawer] = useState<boolean | "rejudge">(false);
+  /** The next question the host chose to see under a reveal (先看題目): folded until then, so it is not read out early. */
+  const [peek, setPeek] = useState<string | null>(null);
   /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
   const [fxOpen, setFxOpen] = useState(false);
   /** The lobby's game settings, a one-line summary until 修改 opens them. */
@@ -607,6 +610,11 @@ export default function HostPage() {
   const atFork = !revealUp && !atFortune && !game?.phaseCardDue && (!!game?.forkBeat || turn?.team?.fork === "choosing");
   // A phase-clearing hit's reveal with a boss team next: `question` is still the boss question just answered (#328 m5).
   const phaseNext = !!game?.reveal && !!game.phaseCardDue && !!turn?.inBoss;
+  // Under a reveal the card already holds the next team's question (#339): folded (true) until 先看題目 (false), so a host
+  // reading the page aloud does not read it before the reveal is over (QA 2026-11-19). null: no next question on the card.
+  // Keyed by the answered question too: the same next question under a later reveal (下輪再答) folds again.
+  const peekKey = `${game?.reveal?.questionId}:${turn?.questionId}`;
+  const nextFolded = revealUp && !game?.phaseCard && !phaseNext && !turn?.team?.fork ? peek !== peekKey : null;
 
   // Keyboard shortcuts for a host on a laptop (lib/host-keys.ts): each key does exactly what its
   // button does, and only while that button is enabled. A layout effect, so the listener already
@@ -836,16 +844,19 @@ export default function HostPage() {
     const i = playingTeams.findIndex((t) => t.id === id);
     return i < 0 ? null : <Sprite kind="hero" variant={lookOf(playingTeams[i], i)} cls={playingTeams[i].classId} scale={2} className="flex-none" />;
   };
+  /** 🍀 幸運骰 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🍀. */
+  const potionButton = (t: { id: string; name: string; item?: unknown }, testId: string) => (
+    <PixelButton data-testid={testId} className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一顆幸運骰？（給錯了可以在「⚙ 更多 → 隊伍 → ⋯」收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
+      {t.item ? "🍀 已有" : "🍀 給幸運骰"}
+    </PixelButton>
+  );
   const teamTools = (id: string) => {
     const t = playingTeams.find((x) => x.id === id);
     if (!t) return null;
     return (
       <>
         {picks && !t.inBossPhase && pickButton(t.id)}
-        {/* 🍀 幸運骰 (docs/designs/lucky-potion.md D3): one at a time, greyed while the team holds one. It asks first: a mistap is only undone with 收回🍀. */}
-        <PixelButton data-testid="give-potion" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" disabled={!!t.item} onClick={() => confirm(`給${t.name}一顆幸運骰？（給錯了可以在同一列的 ⋯ 收回）`) && send({ type: "HOST_GIVE_ITEM", teamId: t.id })}>
-          {t.item ? "🍀 已有" : "🍀 給幸運骰"}
-        </PixelButton>
+        {potionButton(t, "give-potion")}
         <PixelButton
           className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3"
           // The code shows on the page, where the host reads it out: the drawer closes for it.
@@ -1235,20 +1246,27 @@ export default function HostPage() {
                   <div className="text-[13px]" style={{ color: "#6b4a2a" }}>{turn.inBoss ? "首領房" : `第 ${turn.room + 1} 房`}　{turn.team?.fork ? "🔀 叉路" : turn.monster.name}</div>
                   {/* The turn has moved on under a reveal: this card is what comes after it (#339). */}
                   {revealUp && !game.phaseCard && !turn.team?.fork && (
-                    <div data-testid="host-next-label" className="text-[13px]" style={{ color: "#6b4a2a" }}>⏭ 下一題（揭曉完才出題）</div>
+                    <div data-testid="host-next-label" className="flex flex-wrap items-center gap-2 text-[13px]" style={{ color: "#6b4a2a" }}>
+                      ⏭ 下一題（揭曉完才出題）
+                      {nextFolded && (
+                        <button type="button" data-testid="host-next-peek" className="min-h-[44px] border-2 border-[var(--k)] bg-white px-3 text-[14px]" onClick={() => setPeek(peekKey)}>
+                          先看題目
+                        </button>
+                      )}
+                    </div>
                   )}
                   <div data-testid="host-question" className="text-[20px] leading-snug">
-                    {turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : phaseNext ? "新階段的第一題（轉場卡之後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
+                    {nextFolded ? "（先收起來，免得念成剛揭曉的題目）" : turn.team?.fork ? <>⚔️ 怪物房，<span className="inline-block">還是 ❓ 神秘房？</span></> : game.phaseCard ? "新階段的第一題（按「下一題」後出題）" : phaseNext ? "新階段的第一題（轉場卡之後出題）" : game.question?.content.kind === "text" ? game.question.content.value : (game.question?.prompt ?? `題目 ${turn.questionId}`)}
                   </div>
                   {/* The host previously never saw question media at all (text-only preview) —
                       a small preview so judging an image/video question doesn't mean squinting
                       at the big screen from across the room (complexity-gate scope, /plan-eng-review). */}
-                  {game.question?.content.kind === "image" && !phaseNext && (
+                  {game.question?.content.kind === "image" && !phaseNext && !nextFolded && (
                     <QuestionMedia key={game.question.id} content={game.question.content} maxWidth={120} maxHeight={90} className="mt-1" />
                   )}
                   {/* A 120px YouTube embed is below the player's minimum size and won't play — the
                       host watches the big screen instead. */}
-                  {game.question?.content.kind === "youtube" && !phaseNext && (
+                  {game.question?.content.kind === "youtube" && !phaseNext && !nextFolded && (
                     <div className="mt-1 inline-block bg-[var(--k)] px-2 py-[2px] text-[14px] text-[var(--cream)]">
                       {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
                     </div>
@@ -1356,7 +1374,7 @@ export default function HostPage() {
                 <ScoreMeter score={turn.team.score} max={game.view.bossThreshold ?? BOSS_THRESHOLD} active />
               </div>
               )}
-              {game.question && !game.question.options && (
+              {game.question && !game.question.options && !nextFolded && (
                 <MageHint hint={game.view.mageHints?.[game.question.id]} kind={game.view.mageHintKinds?.[game.question.id]} sort={!!game.question.items} testId="host-mage-hint" className="mt-2 inline-block px-2 py-1 text-[18px]" />
               )}
               {/* #104: a text question's typed answer, judged with the buttons below. */}
@@ -1367,7 +1385,7 @@ export default function HostPage() {
               )}
               {/* The team's current tap on a multipleChoice question, if any — lets the host see
                   what they picked before judging, same panel timing as the answer reveal below. */}
-              {game.question?.options && (
+              {game.question?.options && !nextFolded && (
                 <div className="mt-2 flex flex-col gap-1">
                   {game.question.options.map((opt, i) => (
                     <div
@@ -1585,6 +1603,16 @@ export default function HostPage() {
             {!turn?.team && !revealUp && revealButton}
             </div>
 
+            {/* The team on turn's common tools, one tap away (QA 2026-11-19): 🍀 給幸運骰 and 改判 (⚙ 更多's 改判 group). The rarer ones stay under ⋯. */}
+            {turn?.team && !buzz && (
+              <div data-testid="host-quick" className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 truncate text-[14px] text-white">{turn.team.name}：</span>
+                {potionButton(turn.team, "quick-potion")}
+                <PixelButton className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" onClick={() => setDrawer("rejudge")}>
+                  ⚖️ 改判已判過的題目
+                </PixelButton>
+              </div>
+            )}
             {/* 指定下一題 for the team up next only; every team's is in ⚙ 更多. */}
             {nextUp && (
               <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
@@ -1604,16 +1632,17 @@ export default function HostPage() {
                     <Sprite kind="hero" variant={lookOf(t, i)} cls={t.classId} scale={1} className="flex-none" />
                     <span className="min-w-0 flex-1 truncate text-[15px]">{t.name}{t.online ? "" : "（離線）"}</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-x-2 text-[13px]">
-                    {t.classId && <span title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "" : t.abilityUses}</span>}
+                  <div className="flex flex-wrap items-center gap-x-3 text-[13px]">
+                    {/* Each number with its label (QA 2026-11-19: 「⚔️3 0/10 0」 read as one blob). */}
+                    {t.classId && <span title={t.classId === "chef" ? `${CLASS_LABELS.chef}，被動` : `${CLASS_LABELS[t.classId]}，剩 ${t.abilityUses} 次`}>{CLASS_ICONS[t.classId]}{t.classId === "chef" ? "被動" : `技能 ${t.abilityUses}`}</span>}
                     {t.fork && <span data-testid="host-team-fork">🚪 叉路</span>}
                     {t.sneakArmed && <span title={t.sneakCrit ? `完美偷襲：這題答對${scoreName(game.cuisine)} ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `偷襲就位：這題答對${scoreName(game.cuisine)} ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`}>🗡️</span>}
                     {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                     {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                     {t.item && <span title="有一顆幸運骰">🍀</span>}
                     {picks?.queued[t.id] && <span title={`${PICK_WHEN}${pickLabel(picks.queued[t.id])}`}>📌</span>}
-                    <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
-                    <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
+                    <span style={{ color: "#a8470f" }}>進度 <span className="px-num text-[10px]">{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span></span>
+                    <span style={{ color: "#2f6a2c" }}>{scoreName(game.cuisine)} <span className="px-num text-[10px]">{t.reward}</span></span>
                   </div>
                 </Panel>
               ))}
@@ -1702,6 +1731,7 @@ export default function HostPage() {
           origin={origin}
           code={code}
           onClose={() => setDrawer(false)}
+          start={drawer === true ? undefined : drawer}
           send={send}
           ai={aiPanel}
           teamTools={teamTools}

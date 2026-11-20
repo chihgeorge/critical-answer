@@ -537,7 +537,7 @@ export class DungeonRoom {
   private reveal: AnswerReveal | null = null;
   /** Short narrated cards before the next die or question. The step owns their duration. */
   private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | null = null;
-  /** A warrior's missed charge on show before it is judged (charge-fail beat): its die and what a 1 takes. Memory only. */
+  /** A warrior's missed charge on show before it is judged (charge-fail beat): its die and what a 1 takes. Saved (snapshot `chargeBeat`). */
   private chargeBeat: { teamId: string; questionId: string; value: number; penalty: number } | null = null;
   /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller. */
   private checkBeatAt: { teamId: string; questionId: string } | null = null;
@@ -610,12 +610,12 @@ export class DungeonRoom {
   private initiativeOn = false;
   /** When the initiative step fires, for the countdown on the big screen. Memory only. */
   private initiativeEndsAt = 0;
-  /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
+  /** The lock being held for the beat (E2). Saved (snapshot `lock`, QA 2026-11-19 B2): a restart keeps it and its beat. */
   private pendingLock: LockedOption | null = null;
   /** Dice in their beat: a warrior's roll, a correct answer's dish die, a class die, a persuasion check, or the kill's 4d20 (value is
-   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a correct
-   * answer's dish die is saved instead, with its value, and lands after the restart (snapshot `dish`, QA P2-16); a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
-   * through lostCrit with fresh dice). Shares the "lock" step. */
+   * then the scored bonus). A warrior's, check's or class die is memory only: a restart drops it (the use stays spent). A
+   * correct answer's dish die (snapshot `dish`, QA P2-16) and the kill's 4d20 with pendingKill (snapshot `kill`) are saved
+   * and land with the same values; a lost natural 20 comes back through lostCrit with fresh dice. Shares the "lock" step. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
    * question whose video clip the big screen reported ended (D4). Saved with a wall-clock deadline: a restart keeps
@@ -1144,11 +1144,18 @@ export class DungeonRoom {
   }
 
   /** The beats a restart can bring back (#364 follow-up): a passed check's card, the boss entrance a dish was holding
-   * back, and a correct answer waiting for its dish die (its reveal, or the die in its beat with the same value). The crit and kill beats are not saved: their lock or dice are memory only, and the team answers again. */
-  private savedBeats(): Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish"> {
+   * back, and a correct answer waiting for its dish die (its reveal, or the die in its beat with the same value). A missed charge, a lock and the kill's dice (QA 2026-11-19 B1/B2). The crit's beat is not saved (lostCrit rolls it fresh). */
+  private savedBeats(): Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish" | "chargeBeat" | "lock" | "kill"> {
     const game = this.game;
     if (game?.phase !== "playing") return {};
-    const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish"> = {};
+    const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish" | "chargeBeat" | "lock" | "kill"> = {};
+    // A missed charge, a lock and the kill's dice come back where they were (QA 2026-11-19 B1/B2): same die, same dice.
+    if (this.stageBeat === "charge-fail" && this.chargeBeat) out.chargeBeat = { teamId: this.chargeBeat.teamId, questionId: this.chargeBeat.questionId, value: this.chargeBeat.value };
+    if (this.pendingLock) out.lock = { ...this.pendingLock };
+    const kill = this.pendingRoll?.kind === "kill" ? this.pendingRoll : null;
+    if (kill?.values && this.pendingKill) {
+      out.kill = { teamId: kill.teamId, questionId: kill.questionId, values: kill.values, value: kill.value, ...this.pendingKill, ...(this.stageBeat === "kill-defeated" ? { defeated: true as const } : {}) };
+    }
     const roll = this.pendingRoll?.kind === "dish" && !this.pendingRoll.rejudge ? this.pendingRoll : null;
     const dishTeam = roll?.teamId ?? (this.reveal?.dishNext ? currentTurnTeamId(game) : null);
     if (dishTeam) {
@@ -1358,6 +1365,23 @@ export class DungeonRoom {
       if (d.reveal) this.reveal = this.answerFirst(d.teamId, d.questionId, marks);
       if (d.value !== undefined) this.paceRoll({ teamId: d.teamId, questionId: d.questionId, value: d.value, kind: "dish", ...(d.warrior !== undefined ? { warrior: d.warrior } : {}), ...(d.values ? { values: d.values } : {}) });
       if (this.reveal || this.pendingRoll) this.pendingAnswer = { ...(d.fields ? { fields: d.fields } : {}), ...(d.warrior !== undefined ? { warrior: d.warrior } : {}) };
+    }
+    const onTurn = (b: { teamId: string; questionId: string } | undefined) => !!b && currentTurnTeamId(game) === b.teamId && currentQuestionIdOf(game, b.teamId) === b.questionId;
+    if (onTurn(s.chargeBeat)) this.chargeFailBeat(s.chargeBeat!.teamId, s.chargeBeat!.questionId, s.chargeBeat!.value, true);
+    const l = s.lock;
+    // A damaged index must not reach resolveLock: the same checks as a phone's lock (handleTeamLockOption).
+    const lq = l ? this.question(l.questionId) : undefined;
+    if (l && onTurn(l) && !this.pendingRoll && !game.pendingWrong && isAutoJudged(lq) && l.optionIndex < this.pickCount(lq)) {
+      this.pendingLock = l;
+      if (l.revealing) this.pace("lock", "lock", BEAT_MS, () => (this.pendingLock?.revealing ? "接下來揭曉答對或答錯" : null), () => this.resolveLock(), true);
+    }
+    const k = s.kill;
+    if (k && onTurn(k) && !this.pendingRoll && !this.pendingLock) {
+      const { teamId, questionId, values, value, defeated, ...held } = k;
+      this.pendingKill = held;
+      const roll: PendingRoll = { teamId, questionId, value, values, kind: "kill" };
+      if (defeated) this.killDefeatedBeat(roll);
+      else this.paceRoll(roll);
     }
     const e = s.bossEntry;
     const n = this.lastNarration;
@@ -4189,17 +4213,9 @@ export class DungeonRoom {
         // Pin the turn, as a lock does: a skipped offline team whose phone comes back must not take it during the beat.
         this.game = { ...prev, currentTurnIndex: prev.turnOrder.indexOf(teamId) };
         this.startRoll("kill", teamId, questionId, { values: dice, value: shown.type === "correct-boss-hit" ? shown.killBonus! : 0 });
-        this.unpace("lock");
-        this.stageBeat = "kill-defeated";
+        this.killDefeatedBeat(this.pendingRoll!);
         this.setCue("boss-kill");
         this.writeScripted([`${prev.teams.find((t) => t.id === teamId)?.name ?? "冒險者"}擊倒了首領！最後一擊已經命中，接下來擲四顆骰子結算獎勵。`]);
-        this.pace("lock", "kill-defeated", BEAT_MS, () => this.stageBeat === "kill-defeated" ? "接下來擲尾刀骰" : null, () => {
-          this.stageBeat = null;
-          this.setCue("roll");
-          const roll = this.pendingRoll;
-          this.pace("lock", "roll", KILL_BEAT_MS, () => this.pendingRoll === roll ? "接下來結算擊殺擲骰" : null, () => this.resolveRoll());
-          this.broadcastState();
-        });
         this.broadcastState();
         this.sendNarration();
         return;
@@ -5044,8 +5060,8 @@ export class DungeonRoom {
   }
 
   /** A missed charge stays on show before it is judged (QA 2026-11-19 P1-2): the big screen and the warrior's phone say it
-   * missed and what a 1 takes, then the miss is judged and the turn moves on. Held in manual. A restart drops it, like a die. */
-  private chargeFailBeat(teamId: string, questionId: string, value: number) {
+   * missed and what a 1 takes, then the miss is judged and the turn moves on. Held in manual. restore() starts it again (QA B1). */
+  private chargeFailBeat(teamId: string, questionId: string, value: number, restoring = false) {
     const tried = warriorRoll(this.game!, teamId, questionId, value, () => 0).outcome;
     const penalty = tried.type === "incorrect-retry" ? (tried.penalty ?? 0) : 0;
     this.stageBeat = "charge-fail";
@@ -5064,7 +5080,19 @@ export class DungeonRoom {
       // A phone that dropped during the beat (kept on turn by onClose) shows offline now.
       this.syncLockTeamAndShow(teamId);
     });
-    this.broadcastState();
+    if (!restoring) this.broadcastState();
+  }
+
+  /** The 擊倒 card before the kill's 4d20 (#364), then the dice's own beat; restore() starts it again for a save made during it. */
+  private killDefeatedBeat(roll: PendingRoll) {
+    this.pendingRoll = roll;
+    this.stageBeat = "kill-defeated";
+    this.pace("lock", "kill-defeated", BEAT_MS, () => this.stageBeat === "kill-defeated" ? "接下來擲尾刀骰" : null, () => {
+      this.stageBeat = null;
+      this.setCue("roll");
+      this.paceRoll(roll);
+      this.broadcastState();
+    });
   }
 
   /** The passed check's card before the question; restore() starts it again for a save made during it. */
