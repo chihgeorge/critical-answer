@@ -195,6 +195,10 @@ describe("記憶題 with an image", () => {
     const g = started(bank(memText("t1")), {}, true);
     expect(g.state().question).toMatchObject({ checkFirst: true, content: { kind: "text", value: "" } });
     vi.advanceTimersByTime(4000); // the check's beat and its 說服成功 card (the mage's +6 passes a 2); no image seconds run before
+    // The card waits for the screen to read its 說服成功 line, then the question comes on the next poll.
+    const n = (g.room as unknown as { lastNarration: { eventId: number; rev: number; lines: string[] } }).lastNarration;
+    send(g.room, g.screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: n.lines.length });
+    vi.advanceTimersByTime(250);
     expect(g.state().question).toMatchObject({ memorize: true, memoryLeft: 5000, content: { kind: "image" } });
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "咪咪" });
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "memorizing" });

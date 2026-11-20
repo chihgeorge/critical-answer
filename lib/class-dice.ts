@@ -84,6 +84,17 @@ export const NATURAL_ONE_CHIP = { text: "🗣️ 擲出 1：被轟出門", tone:
 /** A natural 20's chip: no answer needed (the monster steps aside, then the dish die). */
 export const NATURAL_TWENTY_CHIP = { text: "🗣️ 擲出 20：免答", tone: "ok" } as const;
 
+/** The host page's line once a pass or a fail lands (the host may not hear the narrator): the screen's chip, then
+ * what the team got. `held`: the question is not up yet (the 說服成功 card, or a memory question's media), so the room
+ * holds the first letter back. */
+export function hostCheckLine(check: { value: number; bonus: number; dc: number; passed: boolean; hint?: string }, held: boolean): string {
+  const chip = checkChip(check, check).text;
+  if (!check.passed) return `${chip}・直接作答`;
+  if (held) return `${chip}・稍後出題`;
+  // No hint: the mage gave it already, or the answer is too short; the chip alone says nothing wrong.
+  return check.hint ? `${chip}・提示第一個字「${check.hint}」` : chip;
+}
+
 export function checkChip(target: { bonus: number; dc: number }, check?: { value: number; bonus: number; dc: number; passed: boolean }): { text: string; tone: "warn" | "ok" | "danger" } {
   if (!check) return { text: `🗣️ 說服擲骰檢定 ${target.dc}（加值 +${target.bonus}）`, tone: "warn" };
   if (check.value === 1) return NATURAL_ONE_CHIP;

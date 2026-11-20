@@ -715,6 +715,10 @@ export function createScriptedProvider(rng: () => number = Math.random) {
     checkLine(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string; gift?: string }): string {
       return fill(pick(CHECK_VARIANTS[kind], `check-${kind}`), vars);
     },
+    /** Every variant of that line, filled: to find one already said. */
+    checkLines(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string; gift?: string }): string[] {
+      return CHECK_VARIANTS[kind].map((t) => fill(t, vars));
+    },
     /** 🍀 The lucky die's line: used, or its two dice landed (POTION_VARIANTS). */
     potionLine(kind: keyof typeof POTION_VARIANTS, team: string): string {
       return fill(pick(POTION_VARIANTS[kind], `potion-${kind}`), { team });

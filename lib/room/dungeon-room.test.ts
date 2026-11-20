@@ -17,6 +17,7 @@ import { sortCode } from "../sort-order";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
 import { MAX_LINE } from "../narration/runner";
+import { NARRATION_MAX_LINES } from "./snapshot";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -1368,6 +1369,71 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(told[0]).toMatchObject({ eventId, rev: 1 });
     });
 
+    // Value: protects=a failed check's line is said even when the turn's narration is full (#438 audit: appendLine
+    // dropped it); fails_when=the 說服失敗 line goes missing; seam=none
+    it("says a failed check's line, even into a full narration", () => {
+      vi.useFakeTimers();
+      const { room } = checkGame(1, 3);
+      const r = room as any;
+      r.lastNarration = { eventId: r.eventSeq, lines: Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`), rev: 0, done: 0 };
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).cue).toBe("check-fail");
+      expect(r.lastNarration.lines.at(-1)).toMatch(/^說服失敗！/);
+    });
+
+    // Value: protects=a turn whose narration is still being written (an LLM line not back) keeps it: the fail line waits
+    // with it rather than starting a new event that would drop it (#442 review); fails_when=eventSeq moves on; seam=none
+    it("holds a failed check's line while the turn's narration is still being written", () => {
+      vi.useFakeTimers();
+      const { room } = checkGame(1, 3);
+      const r = room as any;
+      r.lastNarration = { eventId: r.eventSeq - 1, lines: ["上一隊的結果。"], rev: 0, done: 1 };
+      r.narrating = 1;
+      const seq = r.eventSeq;
+      vi.advanceTimersByTime(2000);
+      expect(r.eventSeq).toBe(seq);
+      expect(r.heldLines).toMatchObject({ eventId: seq, lines: [expect.stringMatching(/^說服失敗！/)] });
+      // Nothing in flight (a restart lost it): the line is said now, never held for a narration that will not come.
+      const lost = checkGame(1, 3);
+      const l = lost.room as any;
+      l.lastNarration = { eventId: l.eventSeq - 1, lines: ["上一隊的結果。"], rev: 0, done: 1 };
+      l.narrating = 0;
+      vi.advanceTimersByTime(2000);
+      expect(l.heldLines?.lines ?? []).toEqual([]);
+      expect(l.lastNarration.lines.at(-1)).toMatch(/^說服失敗！/);
+    });
+
+    // Value: protects=the rules' order (旁白說明成功，再顯示題目): the 說服成功 card holds until the big screen has read its
+    // line, up to the cap; fails_when=the question cuts in while the narrator still reads the pass, or a silent screen
+    // holds the card forever; seam=none
+    it("holds the 說服成功 card until the big screen reads its line, up to the cap", () => {
+      vi.useFakeTimers();
+      const watch = (die: number) => {
+        const g = checkGame(1, die);
+        const screen = makeConn("screen-conn");
+        g.room.onConnect(screen);
+        send(g.room, screen, { type: "SCREEN_HELLO", key: (g.room as any).screenKey });
+        return { ...g, screen };
+      };
+      const { room, screen } = watch(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-success");
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "check-success", question: null });
+      const n = (room as any).lastNarration;
+      const at = (room as any).beatLine;
+      expect(n.lines[at.index]).toMatch(/^說服成功！/);
+      send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: at.index + 1 });
+      vi.advanceTimersByTime(250);
+      expect(lastBroadcast(room).question).toMatchObject({ id: "r0-t1" });
+      // A screen that never reports: the question comes once the cap is over.
+      const quiet = watch(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000 + 2000 + 6000 - 250);
+      expect(lastBroadcast(quiet.room).stageBeat).toBe("check-success");
+      vi.advanceTimersByTime(500);
+      expect(lastBroadcast(quiet.room).question).toMatchObject({ id: "r0-t1" });
+    });
+
     // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
     // turn under it; fails_when=an offline team loses the turn, or 跳過 is let through during the card; seam=none;
     // no_claim=the screen's card art (e2e)
@@ -1745,6 +1811,24 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.advanceTimersByTime(NATURAL_BEAT_MS);
       expect(room.game!.teams[0]).toMatchObject({ flees: 1, reward: 0 });
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    // Value: protects=a restart during the natural-1 card keeps its kick line in the saved narration (every broadcast
+    // saves), so the replayed card points at it rather than saying it twice (#442 review); fails_when=the narration holds
+    // two kick lines; seam=none
+    it("a natural 1's card replayed after a restart does not say its kick line twice", () => {
+      vi.useFakeTimers();
+      const { room } = checkGame(2, 1);
+      vi.advanceTimersByTime(2000);
+      (room as any).unpace("lock");
+      (room as any).stageBeat = null;
+      (room as any).checkBeatAt = null;
+      (room as any).beatLine = null;
+      (room as any).broadcastState();
+      const n = (room as any).lastNarration;
+      const kicks = n.lines.flatMap((l: string, i: number) => (/擲出 1|丟出去|轟走/.test(l) ? [i] : []));
+      expect(kicks).toHaveLength(1);
+      expect((room as any).beatLine).toMatchObject({ eventId: n.eventId, index: kicks[0] });
     });
 
     it("skips persuasion on a boss fill-in turn", () => {
