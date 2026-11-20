@@ -16,6 +16,8 @@ describe("tapButtonState", () => {
     ["not synced yet", { synced: false }, { tone: "grey", label: "連線中…", enabled: false }],
     ["host paused", { paused: true }, { tone: "grey", label: "主持人暫停了", enabled: false }],
     ["open but the screen's clock is gone", { tapLive: false }, { tone: "grey", label: "大螢幕卡住了，等一下", enabled: false }],
+    ["just after ▶, the clock not in yet", { tapLive: false, starting: true }, { tone: "grey", label: "等音樂開始…", enabled: false }],
+    ["the clock in within the grace", { starting: true }, { tone: "red", label: "按！", enabled: true }],
     ["sending", { sending: true }, { tone: "gold", label: "送出中…", enabled: false }],
     ["acked", { acked: true }, { tone: "gold", label: "已按 ✓ 等結果", enabled: false }],
     ["refused not_playing", { tapLive: false, refused: "not_playing" }, { label: "大螢幕卡住了，等一下", hint: "沒算到：音樂剛停，等音樂再按" }],

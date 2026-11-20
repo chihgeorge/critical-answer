@@ -154,9 +154,10 @@ export function seekRange(clip: { start?: number; end?: number } | null, duratio
   return { min, max: Math.max(min, Math.min(clip?.end ?? full, full)) };
 }
 
-/** The host's 大螢幕： status. After a clip error and the 🎤 open, the host plays the song live (boss-music-buzzer.md M4). */
-export function hostMediaStatus(playing: boolean, liveOpen: boolean): string {
-  return liveOpen ? "現場放歌中" : playing ? "播放中" : "已暫停";
+/** The host's 大螢幕： status. After a clip error and the 🎤 open, the host plays the song live (boss-music-buzzer.md M4).
+ * `ended`: the screen reported the end of this ▶ (STATE's clipPlaying gone while ▶ is still the last command). */
+export function hostMediaStatus(playing: boolean, liveOpen: boolean, ended = false): string {
+  return liveOpen ? "現場放歌中" : playing ? (ended ? "播完了" : "播放中") : "已暫停";
 }
 
 /** The host's line while no team holds the buzz. None on a clip error: the red warning and its 🎤 button say what to do. */

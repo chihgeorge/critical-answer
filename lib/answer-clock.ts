@@ -40,9 +40,18 @@ export function stuckDelayMs(clock: { left: number | null } | undefined): number
 
 /** The host's stuck row's key, or null for no row; a new key re-arms its timer. A multiple-choice turn with no lock and no
  * roll (a fill-in's persuasion check rolls itself, so it never waits on the team). Not while a memory question's media plays (memory-questions.md): the
- * teams cannot see the question yet, so the timer starts once the question is shown. */
-export function stuckKey(s: { teamId?: string; questionId?: string; mc: boolean; lock: boolean; roll: boolean; wrong: boolean; eventId?: number; clock?: { left: number | null }; memorize?: boolean }): string | null {
-  if (!s.teamId || s.memorize) return null;
+ * teams cannot see the question yet, so the timer starts once the question is shown. Nor while `clipIdle`: a video
+ * question whose ▶ the host has not pressed yet, with no count running and no clip error (the host's move, not the team's). */
+export function stuckKey(s: { teamId?: string; questionId?: string; mc: boolean; lock: boolean; roll: boolean; wrong: boolean; eventId?: number; clock?: { left: number | null }; memorize?: boolean; clipIdle?: boolean }): string | null {
+  if (!s.teamId || s.memorize || s.clipIdle) return null;
   if (s.mc && !s.lock && !s.roll) return `${s.teamId}|${s.questionId}|${s.wrong ? "wrong" : "pick"}|${s.eventId}|${s.clock?.left === null ? "clip" : "count"}`;
   return null;
+}
+
+/** stuckKey's `clipIdle` from STATE: a video question no ▶ or ⏸ has touched yet, no clip error, no count running. A count
+ * means the clip ended (a saved fact, so a restart that loses `media` still arms the row with the countdown on).
+ * shortcut: with the countdown off, a restart (media is memory-only) hides the row again until the host's next ▶. */
+export function clipIdle(s: { question: { id: string; content: { kind: string } } | null; media?: { questionId: string }; clipError?: true; answerClock?: { left: number | null } } | null | undefined): boolean {
+  const q = s?.question;
+  return !!q && q.content.kind === "youtube" && s!.media?.questionId !== q.id && !s!.clipError && typeof s!.answerClock?.left !== "number";
 }

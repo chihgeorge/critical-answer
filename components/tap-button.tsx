@@ -1,10 +1,10 @@
 "use client";
 // The phone's timing button (docs/designs/timing-tap.md 畫面): one TEAM_TAP per press, stamped with the room's clock,
 // and the button's text from lib/tap-button-state.ts. Client-safe: no bank data.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ClientMessage, ServerMessage, StateMessage } from "@/lib/protocol";
 import { stunLifted } from "@/lib/game-state";
-import { tapButtonState, type TapTone } from "@/lib/tap-button-state";
+import { TAP_CLOCK_GRACE_MS, tapButtonState, type TapTone } from "@/lib/tap-button-state";
 import { useClockPings, useRoomClock } from "./room-clock";
 
 /** Resend an unanswered tap once after this long (a dropped socket, a rate-limited message). */
@@ -102,6 +102,15 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
   const me = game.view.teams.find((t) => t.id === teamId);
   const playing = game.media?.questionId === questionId && game.media.state === "playing";
   useClockPings(tap.clock.ping, !reveal, questionId);
+  // Each ▶ gives the screen's play clock a grace to report, ended early by the first clock seen: a later loss is a real stall.
+  const pressKey = playing && buzz?.open ? `${questionId}:${round}:${game.media!.press}` : null;
+  const [graceOver, setGraceOver] = useState<string | null>(null);
+  if (pressKey && game.tapLive && graceOver !== pressKey) setGraceOver(pressKey);
+  useEffect(() => {
+    if (!pressKey) return;
+    const t = setTimeout(() => setGraceOver(pressKey), TAP_CLOCK_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [pressKey]);
 
   const s = tapButtonState({
     inBoss: !!me?.inBossPhase,
@@ -111,6 +120,7 @@ export function TapButton({ game, teamId, tap }: { game: StateMessage; teamId: s
     open: !!buzz?.open,
     paused: !playing,
     tapLive: game.tapLive === true,
+    starting: !!pressKey && graceOver !== pressKey,
     synced: tap.clock.offset() !== null,
     acked: tap.ack?.questionId === questionId && tap.ack.round === round,
     sending: tap.sending,
