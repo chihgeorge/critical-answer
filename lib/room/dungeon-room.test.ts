@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { sendSettled, settleCheck, settleDish } from "./test-send";
-import { CHECK_GRACE_MS, DungeonRoom, fixedDie, NATURAL_BEAT_CAP_MS, NATURAL_BEAT_MS, passwordSource, sprintLine } from "./dungeon-room";
+import { CHECK_GRACE_MS, CHECK_READ_BASE_MS, CHECK_READ_MS_PER_CHAR, DungeonRoom, fixedDie, NATURAL_BEAT_CAP_MS, NATURAL_BEAT_MS, passwordSource, sprintLine } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
@@ -1648,6 +1648,48 @@ describe("TEAM_SELECT_OPTION", () => {
       // The last poll lands within one poll step past the cap.
       vi.advanceTimersByTime(750);
       expect(lastBroadcast(nat.room).pendingRoll).toMatchObject({ kind: "dish" });
+    });
+
+    // Value: protects=the owner's order (2026-11-20): the turn's narration, then the check die, then its result; fails_when=
+    // the die rolls under the 「輪到」 line, or a screen that never reports holds the game past the cap
+    it("the check die waits for the big screen to read the turn's narration, up to its cap", async () => {
+      vi.useFakeTimers();
+      const start = async (report: boolean) => {
+        const room = new DungeonRoom(makeRoom() as any, () => 0.5, { bank: checkBank });
+        (room as any).holdCheck = true;
+        const hostConn = makeConn("host-conn");
+        room.onConnect(hostConn);
+        claim(room, hostConn);
+        joinTeams(room, hostConn, 2);
+        const screen = makeConn("screen-conn");
+        room.onConnect(screen);
+        send(room, screen, { type: "SCREEN_HELLO", key: (room as any).screenKey });
+        room.onMessage(JSON.stringify({ type: "HOST_START" }), hostConn);
+        await vi.advanceTimersByTimeAsync(0); // the opening narration lands
+        const n = (room as any).lastNarration;
+        expect(n.lines.length).toBeGreaterThan(0);
+        expect(n.done).toBe(0);
+        expect(lastBroadcast(room).pendingRoll ?? null).toBeNull();
+        vi.advanceTimersByTime(1000);
+        expect(lastBroadcast(room).pendingRoll ?? null).toBeNull();
+        if (report) room.onMessage(JSON.stringify({ type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: n.lines.length }), screen);
+        return { room, chars: n.lines.join("").length };
+      };
+      // Read, but a narration still on its way (a flee's landing line): the die waits for it too, then rolls at the next poll.
+      const read = await start(true);
+      (read.room as any).narrating = 1;
+      vi.advanceTimersByTime(500);
+      expect(lastBroadcast(read.room).pendingRoll ?? null).toBeNull();
+      (read.room as any).narrating = 0;
+      vi.advanceTimersByTime(250);
+      expect(lastBroadcast(read.room).pendingRoll).toMatchObject({ kind: "check" });
+      // Never reported: the die waits CHECK_READ_MS_PER_CHAR per character plus CHECK_READ_BASE_MS, then rolls anyway.
+      const silent = await start(false);
+      const cap = silent.chars * CHECK_READ_MS_PER_CHAR + CHECK_READ_BASE_MS;
+      vi.advanceTimersByTime(cap - 1000 - 250);
+      expect(lastBroadcast(silent.room).pendingRoll ?? null).toBeNull();
+      vi.advanceTimersByTime(500);
+      expect(lastBroadcast(silent.room).pendingRoll).toMatchObject({ kind: "check" });
     });
 
     // Value: protects=a natural 20's beat keeps its team on turn and judges nothing if the game ends meanwhile;

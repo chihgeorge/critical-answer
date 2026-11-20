@@ -198,6 +198,8 @@ const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px marg
 // The stepped-down plate is a size smaller (18 px, no vertical padding), so its top stays clear of the player's frame (art QA 2026-11-17).
 const PLAYER_BOTTOM = 396;
 const CHIP_TOP = 262;
+/** With the persuasion pill under it, a question fits above this: the pill then ends above the monster's face. */
+const CHECK_CARD_LIMIT = 226;
 /** While the frames are on the question fits this much higher (globals.css .px-stone): its frame and drop reach 6 px lower
  * than the plain panel's, and a wooden tile's ink ring stands 3 px above the tile. */
 const STONE_REACH = 9;
@@ -502,6 +504,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       ? PLAYER_BOTTOM + 8
     : wall || sortWall
       ? TILE_SPOTS[0].top - 8
+      : question?.content.kind === "text" && dcChip && !asking
+        ? CHECK_CARD_LIMIT
       : question?.content.kind === "text" && (dcChip || sneakChip)
         ? CHIP_TOP - 6
         : Infinity;
@@ -819,6 +823,12 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
         )}
+        {/* The persuasion pill hangs just under the card, past its stone frame: over neither the question nor the monster's face (owner, 2026-11-20). */}
+        {dcChip && !asking && (
+          <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: `calc(100% + ${STONE_REACH - 3}px)`, transform: "translateX(-50%)", fontSize: 16, lineHeight: 1.2, whiteSpace: "nowrap", padding: "1px 12px", color: "var(--k)", border: "3px solid var(--k)", ...CHIP_TONE[dcChip.tone] }}>
+            {dcChip.text}
+          </div>
+        )}
       </Panel>
       )}
       {/* With option or sort tiles on the wall the panel has no room for an image: it would grow over the tiles.
@@ -840,11 +850,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           {sneakText}
         </div>
       )}
-      {dcChip && !asking && (
-        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, whiteSpace: "nowrap", padding: "6px 14px", color: "var(--k)", border: "4px solid var(--k)", ...CHIP_TONE[dcChip.tone] }}>
-          {dcChip.text}
-        </div>
-      )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
       <div key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
@@ -859,11 +864,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         </div>
       </div>
       )}
-      {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage (💢), then vanishes in a puff (💨, px-poof on the sprite). */}
+      {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage (💢), then simply fades away (px-poof on the sprite, no smoke). */}
       {act && stageBeat === "thrown-out" && (
         <div data-testid="screen-monster-angry" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 150, width: 0, zIndex: 6, fontSize: 56, lineHeight: 1 }}>
           <span className="px-anger absolute" style={{ left: 60, bottom: 170 }}>💢</span>
-          <span className="px-poof-cloud absolute" style={{ left: -60, bottom: -10, fontSize: 96 }}>💨</span>
         </div>
       )}
       {/* A natural 20: the monster hops for joy (💗), then its gift flies to the team on turn, up by its ribbon. */}
@@ -906,13 +910,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           over its one-row height): a longer line (two 20-character team names) would take three and lift the nameplate about
           40 px over the player, so beside a player it is set smaller, two rows again. */}
       <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
+      {/* After a die's or a lock's caption the narration comes back where it was read to, not from its first line (`read`). */}
       <DialogueBox
         className="relative"
         accent={bossScene ? "var(--boss)" : undefined}
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
         style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
-        {...(narrating && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? Math.max(1, typedTo) : 0, jump: jump?.eventId === narration.eventId ? jump.line : undefined } : {})}
+        {...(narrating && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? Math.max(1, typedTo) : typedTo, jump: jump?.eventId === narration.eventId ? jump.line : undefined } : {})}
       />
       {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
       </div>

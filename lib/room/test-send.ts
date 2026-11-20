@@ -23,7 +23,16 @@ export function settleDish(room: DungeonRoom): void {
  * as before the check rolled itself; a test about the check sets room.fixedDie before the question comes up, or
  * room.holdCheck to watch the beat. */
 export function settleCheck(room: DungeonRoom): void {
-  const r = room as unknown as { pendingRoll: PendingRoll | null; fixedDie?: number; game: GameState; resolveRoll(): void; unpace(k: string): void; broadcastState(): void; keepUndoOpen(g: GameState): void; checkGraceTimer: ReturnType<typeof setTimeout> | null; undo: { at: number } | null };
+  const r = room as unknown as { pendingRoll: PendingRoll | null; fixedDie?: number; game: GameState; resolveRoll(): void; unpace(k: string): void; broadcastState(): void; keepUndoOpen(g: GameState): void; checkGraceTimer: ReturnType<typeof setTimeout> | null; undo: { at: number } | null; checkReadTimer: ReturnType<typeof setTimeout> | null; checkRead: { since: number } | null; lastNarration: { lines: string[]; done: number } | null };
+  // The wait for a big screen to read the turn's narration passes at once (the screen has read it all), even under
+  // holdCheck: the check's own beat is what those tests watch.
+  if (r.checkReadTimer) {
+    clearTimeout(r.checkReadTimer);
+    r.checkReadTimer = null;
+    if (r.lastNarration) r.lastNarration.done = r.lastNarration.lines.length;
+    if (r.checkRead) r.checkRead.since = -Infinity; // and a narration still on its way waits no more
+    r.broadcastState();
+  }
   // holdCheck: a test about the check's own beat lands it with its timers.
   if ((room as unknown as { holdCheck?: boolean }).holdCheck) return;
   // A 答錯's CHECK_GRACE_MS passes at once too: the room refuses a judge for the next team until its check rolls.

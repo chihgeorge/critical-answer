@@ -389,11 +389,9 @@ body {
    The 20: it hops for joy under rising 💗, and its gift flies off to the turn ribbon from 1.2 s. */
 @keyframes px-stomp { 0%, 49% { transform: translate(-8px, 0); } 50%, 100% { transform: translate(8px, -8px); } }
 .px-stomp { animation: px-stomp 0.2s steps(1) 9; }
-@keyframes px-poof { to { opacity: 0; scale: 1.25; } }
+@keyframes px-poof { to { opacity: 0; } }
 .px-poof { animation: px-poof 0.4s steps(2) 1.8s both; }
-@keyframes px-show { from { visibility: hidden; } }
 .px-anger { animation: px-out 0.01s 1.8s both, px-hop 0.4s steps(1) infinite; }
-.px-poof-cloud { animation: px-show 0.01s 1.8s both; }
 @keyframes px-happy { 50% { transform: translateY(-14px); } }
 .px-happy { animation: px-happy 0.3s steps(1) infinite; }
 .px-heart-rise { animation: px-rise 1.5s steps(6) infinite; }

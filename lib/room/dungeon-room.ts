@@ -252,6 +252,10 @@ export const NATURAL_BEAT_MS = READ_POLL_MS + NATURAL_ACT_MS;
 export const NATURAL_BEAT_CAP_MS = NATURAL_TELL_CAP_MS + NATURAL_ACT_MS;
 /** How long the next team's auto check waits after a 答錯 that 改判答對 can still undo: the host's window before a 20 ends it. */
 export const CHECK_GRACE_MS = 5000;
+/** The persuasion die waits for a big screen to read the turn's narration first (owner, 2026-11-20), never longer than
+ * this per character it had left to read, plus CHECK_READ_BASE_MS: a stuck screen never holds the game. */
+export const CHECK_READ_MS_PER_CHAR = 400;
+export const CHECK_READ_BASE_MS = 3000;
 /** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
 export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
@@ -308,6 +312,8 @@ export interface RoomOptions {
   e2eMonsterSide?: ForkSide;
   /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
   initiativeHoldMs?: number;
+  /** false (e2e, worker E2E_CHECK_NO_READ): the persuasion die rolls without waiting for the big screen's reading. */
+  checkReadsScreen?: boolean;
 }
 
 /** E2E_DIE as a die face: an integer 1-20, anything else is no fixed die. */
@@ -675,6 +681,12 @@ export class DungeonRoom {
   private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
   /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
   private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The check waiting for the big screen's reading: which turn, since when, and the most characters it had left. Memory
+   * only: after a restart the wait starts over, under the same cap. */
+  private checkRead: { key: string; since: number; chars: number } | null = null;
+  private checkReadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Narrations asked for and not landed yet (scripted ones land a tick later, AI ones seconds later). Memory only. */
+  private narrating = 0;
   /** Fires the STATE at the boss room's answer deadline (armBossDeadline). Memory only. */
   private bossDeadline: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
@@ -796,6 +808,7 @@ export class DungeonRoom {
   private e2eEventTeam: string | undefined;
   private e2eMonsterSide: ForkSide | undefined;
   private initiativeHoldMs: number;
+  private checkReadsScreen: boolean;
 
   constructor(
     readonly room: RoomIO,
@@ -812,6 +825,7 @@ export class DungeonRoom {
     this.e2eEventTeam = opts.e2eEventTeam;
     this.e2eMonsterSide = opts.e2eMonsterSide;
     this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
+    this.checkReadsScreen = opts.checkReadsScreen ?? true;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     // Its own shuffle bags and Math.random: the dice lines draw nothing from the room's rng, so they never shift a die.
@@ -2018,10 +2032,13 @@ export class DungeonRoom {
     }
     // The game-ending judgment narrates after its broadcastState(), so the line is dropped here, once that narration has it.
     this.dropUnsaidLine();
+    this.narrating++;
     return this.runner.run(eventId, event, this.scores()).catch((err) => {
       console.error("narration failed", err);
       this.hostLineGens.delete(eventId);
       this.dropUnsaidLine();
+    }).finally(() => {
+      this.narrating--;
     });
   }
 
@@ -3341,6 +3358,9 @@ export class DungeonRoom {
     this.lostCritTimer = null;
     if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
     this.checkGraceTimer = null;
+    if (this.checkReadTimer) clearTimeout(this.checkReadTimer);
+    this.checkReadTimer = null;
+    this.checkRead = null;
     if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
     this.bossDeadline = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
@@ -5629,11 +5649,34 @@ export class DungeonRoom {
       }
       return false;
     }
+    if (this.awaitReading(`${teamId}:${questionId}`)) return false;
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
     // Not a move: an open 改判答對 stays open (undoneGame keeps this check).
     this.keepUndoOpen(recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer));
     return true;
+  }
+
+  /** Whether the check for `key` still waits for a big screen to read the narration up (the turn's 「輪到」 line and the
+   * lines before it), so the die never rolls under them (owner, 2026-11-20). The first look always waits one poll: the
+   * turn's lines are often appended right after the STATE that frees the turn, and a narration still on its way (a flee's
+   * landing line, the next turn's) waits too. No keyed screen: no wait. */
+  private awaitReading(key: string): boolean {
+    if (!this.checkReadsScreen || this.screenSound() === "none") return false;
+    const n = this.lastNarration;
+    const left = n ? n.lines.slice(n.done).join("").length : 0;
+    const fresh = this.checkRead?.key !== key;
+    if (fresh) this.checkRead = { key, since: this.now(), chars: left };
+    const read = this.checkRead!;
+    read.chars = Math.max(read.chars, left);    if (fresh || ((left > 0 || this.narrating > 0) && this.now() - read.since < read.chars * CHECK_READ_MS_PER_CHAR + CHECK_READ_BASE_MS)) {
+      this.checkReadTimer ??= setTimeout(() => {
+        this.checkReadTimer = null;
+        if (!this.judging && this.autoCheck()) this.broadcastState();
+      }, READ_POLL_MS);
+      return true;
+    }
+    this.checkRead = null;
+    return false;
   }
 
   /** 🚨 開啟抓包與神諭 (anti-ai-cheating.md): on, the TV's banner (onCount) and the owl's rules line; off, an open catch is
