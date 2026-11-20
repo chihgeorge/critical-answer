@@ -96,7 +96,7 @@ describe("首領血量 −5 / +5", () => {
     // Said with this event's narration: at once when it is on screen, else held for it (as 🍀 給幸運骰's line).
     const r = g.room as unknown as { heldLines: { lines: string[] } | null };
     const lines = [...msgs(g.io.broadcast.mock.calls).filter((m) => m.type === "NARRATION").flatMap((m) => m.lines), ...(r.heldLines?.lines ?? [])];
-    expect(lines.join("\n")).toMatch(/首領體力不支了！血量 −2，只剩 1。/);
+    expect(lines.join("\n")).toMatch(/偷吃了地上的毒菇菇，肚子咕嚕咕嚕叫，只剩 1 顆心！/);
   });
 
   it("+5 never passes MAX_BOSS_HP", () => {

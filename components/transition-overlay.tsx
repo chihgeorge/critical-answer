@@ -74,10 +74,10 @@ export function TransitionOverlay({ play, onDone, flash }: { play: Transition; o
           </div>
         </div>
       ) : play.kind === "bossHp" ? (
-        // 首領血量 −5 / +5: the same calm band as 撤回裁決; the owl's line under it says the new HP.
+        // 首領血量 −5 / +5 (🍄 / 🍖): the same calm band as 撤回裁決; the owl's line under it says the new HP.
         <div className={`px-alarm-band px-sprint-band absolute inset-x-0${cls}`} style={{ top: 170, height: 170 }}>
           <div className={`px-alarm-text px-sprint-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
-            <div className="px-title-gold" style={{ fontSize: 56, lineHeight: 1.1 }}>{play.delta < 0 ? `首領虛弱 −${-play.delta}！` : `首領回血 +${play.delta}！`}</div>
+            <div className="px-title-gold" style={{ fontSize: 56, lineHeight: 1.1 }}>{play.delta < 0 ? `🍄 吃到毒菇菇 −${-play.delta}！` : `🍖 偷吃大餐 +${play.delta}！`}</div>
           </div>
         </div>
       ) : play.kind === "sprint" ? (

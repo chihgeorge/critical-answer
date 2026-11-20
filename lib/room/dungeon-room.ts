@@ -5662,7 +5662,11 @@ export class DungeonRoom {
     }
     const { hp, maxHp, hpAdjust } = this.game.boss;
     this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `boss hp ${hpAdjust!.delta > 0 ? "+" : ""}${hpAdjust!.delta} → ${hp}/${maxHp}` });
-    this.appendLine(this.eventSeq, hpAdjust!.delta < 0 ? `首領體力不支了！血量 −${-hpAdjust!.delta}，只剩 ${hp}。` : `首領恢復了力氣！血量 +${hpAdjust!.delta}，回到 ${hp}。`);
+    const boss = catalogMonster(this.bossId()).name;
+    const lines = hpAdjust!.delta < 0
+      ? [`${boss}偷吃了地上的毒菇菇，肚子咕嚕咕嚕叫，只剩 ${hp} 顆心！`, `${boss}誤喝了一鍋發霉的蘑菇湯，腳步一陣踉蹌，只剩 ${hp} 顆心！`]
+      : [`${boss}從角落拖出一大塊烤肉狼吞虎嚥，回到 ${hp} 顆心！`, `${boss}掏出藏在洞穴裡的蜂蜜烤雞一口吞下，回到 ${hp} 顆心！`];
+    this.appendLine(this.eventSeq, lines[Math.floor(this.rng() * lines.length)]);
     this.broadcastState();
   }
 

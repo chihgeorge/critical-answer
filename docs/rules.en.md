@@ -69,7 +69,7 @@ Each correct answer also adds **progress points** (equal to the current question
 
 A bank can split the boss fight into phases, each with its own name, rules, health bar and questions. When a phase's health runs out (or all its questions are used), the boss does not fall: the big screen reveals the answer as usual, and after the host presses 「下一題」 a 「還沒結束！」 (not over yet!) transition card appears with the new phase's name and rules; the boss changes color and its hearts fill back up one by one. Press 「下一題」 again to go on. Players do not know in advance how many phases there are; only the host page shows 「第 n/N 階段」 (phase n/N). Design in [docs/designs/boss-phases.md](designs/boss-phases.md).
 
-During the boss fight the host can move the current phase's boss HP by −5 or +5 (never below 1, at most 60) to make the game shorter or longer; later phases do not change, and the final blow is still a team's, with the finishing blow's 4 D20. The big screen shows 「首領虛弱 −5！」 (the boss weakens −5!) or 「首領回血 +5！」 (the boss heals +5!) and the owl says a line. How the host does it is in the [hosting guide](hosting.en.md).
+During the boss fight the host can move the current phase's boss HP by −5 or +5 (never below 1, at most 60) to make the game shorter or longer; later phases do not change, and the final blow is still a team's, with the finishing blow's 4 D20. The big screen shows 「🍄 吃到毒菇菇 −5！」 (ate a poison mushroom −5!) or 「🍖 偷吃大餐 +5！」 (sneaked a feast +5!) and the owl says a line. How the host does it is in the [hosting guide](hosting.en.md).
 
 ## Buzzer phases
 
