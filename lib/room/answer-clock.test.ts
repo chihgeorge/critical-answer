@@ -384,6 +384,26 @@ describe("HOST_START bossShuffle", () => {
   });
 });
 
+// 出題順序 rides HOST_START too. Value: protects=the default (bank order) and the host's 隨機 reach game.config and a
+// restored room; fails_when=the default deals at random, the flag accepts a non-boolean, or a restart drops it.
+describe("HOST_START roomShuffle", () => {
+  it("takes only a boolean; the default deals the room questions in bank order", () => {
+    expect(parseClientMessage({ type: "HOST_START", roomShuffle: true })).toMatchObject({ roomShuffle: true });
+    expect(parseClientMessage({ type: "HOST_START", roomShuffle: false })).not.toHaveProperty("roomShuffle");
+    expect(parseClientMessage({ type: "HOST_START", roomShuffle: 1 })).toBeNull();
+    expect(started().room.game!.config.roomInOrder).toBe(true);
+    expect(started({ roomShuffle: true }).room.game!.config).not.toHaveProperty("roomInOrder");
+  });
+
+  it("survives a restart", async () => {
+    const g = started();
+    send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: "x", optionIndex: 0 }); // any message saves
+    const second = makeRoom(g.storage);
+    expect(await second.room.restore()).toBe("restored");
+    expect(second.room.game!.config.roomInOrder).toBe(true);
+  });
+});
+
 // Value: protects=the owner's QA P2-14 ruling: in the boss room, once the answer clock runs out the team on turn can no
 // longer pick or lock; a lock made in time still reveals; normal rooms keep the count as a reminder; fails_when=a lock
 // after 「⏰ 時間到」 lands, or a normal room refuses one

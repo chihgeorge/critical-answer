@@ -2698,13 +2698,18 @@ describe("questions and answers (T3)", () => {
     expect(state.question).toMatchObject({ boss: true, monster: { sprite: "dragon" } });
   });
 
-  it("dealing follows the injected rng (0.99 picks room 0's last question)", () => {
+  it("dealing follows the injected rng (0.99 picks room 0's last question) under 出題順序：隨機, the bank order by default", () => {
     const room = new DungeonRoom(makeRoom() as any, () => 0.99);
     const host = makeConn("h");
     claim(room, host);
     joinTeams(room, host, 1);
-    send(room, host, { type: "HOST_START" });
+    send(room, host, { type: "HOST_START", roomShuffle: true });
     expect(room.game!.teams[0].currentQuestionId).toBe("r0-q12");
+    const ordered = new DungeonRoom(makeRoom() as any, () => 0.99);
+    claim(ordered, host);
+    joinTeams(ordered, host, 1);
+    send(ordered, host, { type: "HOST_START" });
+    expect(ordered.game!.teams[0].currentQuestionId).toBe("r0-q1");
   });
 });
 
