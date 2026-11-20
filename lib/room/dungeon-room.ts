@@ -5086,8 +5086,7 @@ export class DungeonRoom {
     // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
     // older narration (a 🍀 give, the sprint line) come along, before the opening line, which stays last.
     const eventId = ++this.eventSeq;
-    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
-    if (held.length) this.heldLines = null;
+    const held = this.olderHeld(eventId);
     this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - 1)), this.scripted.forkOpening(team.name)], rev: 0, done: 0 };
     return true;
   }
@@ -5219,11 +5218,19 @@ export class DungeonRoom {
     this.writeScripted(this.scripted.fortuneOpening(fortune.condition, name));
   }
 
+  /** Lines held for a narration older than `eventId` that never ran (a 🍀 lead line first), taken off the room. */
+  private olderHeld(eventId: number): string[] {
+    const lead = this.leadLine && this.leadLine.eventId < eventId ? [this.leadLine.line] : [];
+    if (lead.length) this.leadLine = null;
+    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
+    if (held.length) this.heldLines = null;
+    return [...lead, ...held];
+  }
+
   /** A scripted narration of its own (no AI wait), keyed by a new eventId; lines held for an older one come first. */
   private writeScripted(lines: string[]) {
     const eventId = ++this.eventSeq;
-    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
-    if (held.length) this.heldLines = null;
+    const held = this.olderHeld(eventId);
     this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - lines.length)), ...lines], rev: 0, done: 0 };
   }
 
