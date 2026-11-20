@@ -60,10 +60,10 @@ test("manual pacing: 擲先攻 waits for 下一步, twice, and the switch goes b
   await expect(host.getByTestId("host-manual-mark")).toHaveCount(0);
 });
 
-// Value: protects=in manual pacing the dish die rolled under a correct answer's reveal can be landed from the host page;
-// fails_when=the reveal hides the roll's ▶ 下一步 and only a disabled 擲料理骰中… shows, so the answer is never scored;
-// seam=none; no_claim=auto pacing (answer.ts rollDish, every spec)
-test("manual pacing: a correct answer's dish die, rolled under its reveal, waits for 下一步, then 上菜", async ({ browser }) => {
+// Value: protects=in manual pacing the dish die rolled under a correct answer's reveal lands on its own timer (owner,
+// 2026-11-19, option 甲: a step the host's press starts does not hold), so 上菜 follows with no ▶ 下一步;
+// fails_when=the die waits for a hold again, or never lands; seam=none; no_claim=auto pacing (answer.ts rollDish, every spec)
+test("manual pacing: a correct answer's dish die, rolled under its reveal, lands by itself, then 上菜", async ({ browser }) => {
   const { host, code } = await hostRoom(browser);
   const a = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await a.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
@@ -78,7 +78,7 @@ test("manual pacing: a correct answer's dish die, rolled under its reveal, waits
   await expect(host.getByTestId("host-hold")).toContainText("第一題");
   await host.getByTestId("host-step").click();
   await expect(a.getByText("輪到我們了！")).toBeVisible();
-  // The fill-in's persuasion check rolls itself, and in manual its die and card wait for ▶ 下一步 too.
+  // The fill-in's persuasion check rolls itself; in manual its die and card play on their timers (a hold would be stepped).
   const judge = host.getByRole("button", { name: "答對！" });
   for (let i = 0; i < 10 && !(await judge.isEnabled({ timeout: 300 }).catch(() => false)); i++) {
     const step = host.getByTestId("host-step");
@@ -88,7 +88,6 @@ test("manual pacing: a correct answer's dish die, rolled under its reveal, waits
 
   await judge.click();
   await host.getByRole("button", { name: "🎲 擲料理骰", exact: true }).click();
-  await expect(host.getByTestId("host-hold")).toBeVisible();
-  await host.getByTestId("host-step").click();
   await expect(host.getByRole("button", { name: "🍲 上菜", exact: true })).toBeEnabled({ timeout: 10_000 });
+  await expect(host.getByTestId("host-hold")).toHaveCount(0);
 });
