@@ -44,6 +44,7 @@ import {
   sneakRoll,
   giveItem,
   hostFix,
+  adjustBossHp,
   hostRejudge,
   hostSetScore,
   recordJudgment,
@@ -896,7 +897,8 @@ export class DungeonRoom {
           } else lines = [...lines.slice(0, -1), this.freshHandoff(handoff, event.next) ?? handoff];
         }
         // A held line goes out with its narration, unless the game ended meanwhile.
-        if (this.game?.phase === "playing") lines = [...lead, ...lines, ...held];
+        // Capped: a save past NARRATION_MAX_LINES would not restore (held lines can pile up while the LLM call runs).
+        if (this.game?.phase === "playing") lines = [...lead, ...lines, ...held].slice(0, NARRATION_MAX_LINES);
         this.lastNarration = { eventId, lines, rev: 0, done: 0 };
         this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
@@ -2596,6 +2598,9 @@ export class DungeonRoom {
         case "HOST_FIX":
           this.handleHostFix(sender, msg.teamId, msg.fix);
           break;
+        case "HOST_BOSS_HP":
+          this.handleHostBossHp(sender, msg.delta);
+          break;
         case "HOST_SET_SCORE":
           this.handleHostSetScore(sender, msg.teamId, msg.score);
           break;
@@ -3416,7 +3421,7 @@ export class DungeonRoom {
       this.lastNarration = { ...n, lines: [...n.lines, line], rev: n.rev + 1 };
       this.broadcast({ type: "NARRATION", eventId, lines: this.lastNarration.lines, rev: n.rev + 1, ...(jump ? { jump: true as const } : {}) });
     } else if (!n || n.eventId < eventId) {
-      this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line] };
+      this.heldLines = { eventId, lines: [...(this.heldLines?.eventId === eventId ? this.heldLines.lines : []), line].slice(0, NARRATION_MAX_LINES) };
     }
   }
 
@@ -5637,6 +5642,32 @@ export class DungeonRoom {
    * a move: 改判答對 closes, so an undo can never wipe a correction. Kept in the team's game log and the transcript. */
   private handleHostFix(conn: Conn, teamId: string, fix: HostFix) {
     this.applyFix(conn, teamId, (g) => hostFix(g, teamId, fix), fix);
+  }
+
+  /** 首領血量 −5 / +5 (docs/hosting.md): the boss's HP moves (adjustBossHp), the owl says so in a scripted line and the
+   * big screen plays its notice from STATE's bossHpAdjust. The same holds as a 修正, for every team: a die, lock, door,
+   * waiting wrong answer or boss-entry dish in its beat would land on (or show) the HP from before. A kill roll is a die. */
+  private handleHostBossHp(conn: Conn, delta: number) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    // An open phase card draws the new phase's full bar: a press would not show until it closes.
+    if (this.forkBeat || this.bossEntryBefore || this.pendingLock || this.pendingRoll || this.game.pendingWrong || this.phaseCard) {
+      return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+    }
+    if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+    try {
+      this.game = adjustBossHp(this.game, delta);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const { hp, maxHp, hpAdjust } = this.game.boss;
+    this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `boss hp ${hpAdjust!.delta > 0 ? "+" : ""}${hpAdjust!.delta} → ${hp}/${maxHp}` });
+    const boss = catalogMonster(this.bossId()).name;
+    const lines = hpAdjust!.delta < 0
+      ? [`${boss}偷吃了地上的毒菇菇，肚子咕嚕咕嚕叫，只剩 ${hp} 顆心！`, `${boss}誤喝了一鍋發霉的蘑菇湯，腳步一陣踉蹌，只剩 ${hp} 顆心！`]
+      : [`${boss}從角落拖出一大塊烤肉狼吞虎嚥，回到 ${hp} 顆心！`, `${boss}掏出藏在洞穴裡的蜂蜜烤雞一口吞下，回到 ${hp} 顆心！`];
+    this.appendLine(this.eventSeq, lines[Math.floor(this.rng() * lines.length)]);
+    this.broadcastState();
   }
 
   /** 設定 (docs/hosting.md): the team's reward set exactly, like a 修正 press. */

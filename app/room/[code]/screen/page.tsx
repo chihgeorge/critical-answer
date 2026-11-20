@@ -33,7 +33,7 @@ import { AnswerClock } from "@/components/answer-clock";
 import { memoryLine } from "@/lib/memory-copy";
 import { fitQuestionSize } from "@/lib/question-fit";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
-import { antiCheatBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
+import { antiCheatBanner, bossHpBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
 import { DialogueBox, LabelChip, Nameplate, Panel, PixelButton, prefersReducedMotion, QuestionMedia, SceneBackground, Sprite, TurnRibbon } from "@/components/pixel";
 import { FogRevealContext, MapStrip } from "@/components/map-strip";
@@ -1273,6 +1273,8 @@ export default function ScreenPage() {
   const transitionSeen = useRef(UNSEEN);
   /** 抓包與神諭's banners (anti-ai-cheating.md): what this connection last saw; null until a STATE after connecting. */
   const cheatSeen = useRef<CheatSeen | null>(null);
+  /** 首領血量 −5 / +5 presses this connection last saw (bossHpBanner); null until a STATE after connecting. */
+  const hpSeen = useRef<number | null>(null);
   const [transition, setTransition] = useState<Transition | null>(null);
   /** A boss alarm due while ⚔️ 最後衝刺's banner shows waits for it to end, sound included (last-sprint.md: the sprint wins). */
   const queuedBoss = useRef<Transition | null>(null);
@@ -1927,6 +1929,7 @@ export default function ScreenPage() {
       lastPhase.current = null;
       transitionSeen.current = UNSEEN;
       cheatSeen.current = null;
+      hpSeen.current = null;
       stopTransitions();
       prevState.current = null;
       music.current = null;
@@ -1961,6 +1964,7 @@ export default function ScreenPage() {
           lastPhase.current = null;
           transitionSeen.current = IN_LOBBY;
           cheatSeen.current = null;
+          hpSeen.current = null;
           stopTransitions();
           prevState.current = null;
           music.current = songFor("lobby", false);
@@ -2046,6 +2050,9 @@ export default function ScreenPage() {
               // 撤回裁決's notice is calm: no alarm.
               if (c.play!.kind !== "undo") bgm.current?.playCue(BOSS_ALARM);
             }
+            const h = bossHpBanner(hpSeen.current, msg.view);
+            hpSeen.current = h.seen;
+            if (h.play && !t.play && !catchPlays && !queuedBoss.current && !sprintShowing.current && !msg.intro) setTransition(h.play);
             // ② A boss wrong answer: the parry. A transition or a phase card starting now cancels it (its retry plays at once).
             const prev = prevState.current;
             const k = parryFor(prev, msg, parryKey.current);

@@ -431,6 +431,12 @@ export default function HostPage() {
                 ? "卡點題要大螢幕放歌才量得到時間：大螢幕放不出來就按「沒人答對，換下一題」"
                 : msg.detail === "tap_live"
                 ? "這題已經有隊伍按了，揭曉後再改喇叭延遲"
+                : msg.detail === "boss_hp_limit"
+                ? "首領血量已經到底了（最少 1、最多 60）"
+                : msg.detail === "boss_phase_changing"
+                ? "首領正在換階段或已經倒下，等下一個階段開始再按"
+                : msg.detail === "boss_not_reached"
+                ? "還沒有隊伍進首領房"
                 : msg.detail === "no_undo"
                 ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
@@ -1755,6 +1761,7 @@ export default function HostPage() {
           }
           bossable={game?.phase === "playing" ? game.view.teams.filter((t) => !t.inBossPhase) : []}
           bossThreshold={game?.view.bossThreshold}
+          bossHp={game?.phase === "playing" && game.view.teams.some((t) => t.inBossPhase) ? { hp: game.view.bossHp, maxHp: game.view.bossMaxHp, phase: game.view.bossPhase } : undefined}
           playing={game?.phase === "playing"}
           antiCheat={game?.phase === "playing" ? (game.view.antiCheat?.on ?? false) : undefined}
           screen={game ? screenBlock : null}

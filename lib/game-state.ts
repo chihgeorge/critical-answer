@@ -349,9 +349,12 @@ export interface BossState {
   /** The host's pick for the boss's next question (queueQuestion): the next rotation takes it. */
   queuedQuestionId?: string;
   /** Every phase's bar and questions (docs/designs/boss-phases.md); `maxHp` and `questionIds` above are
-   * a copy of `phases[phaseIndex]`, written only by createGame and enterNextBossPhase. */
+   * a copy of `phases[phaseIndex]`, written only by createGame, enterNextBossPhase and adjustBossHp (a raised bar). */
   phases: BossPhaseState[];
   phaseIndex: number;
+  /** The host's last 首領血量 −5 / +5 (adjustBossHp): the HP it moved (clamped) and how many presses so far, so a big
+   * screen plays its notice once per press. Absent until the first. */
+  hpAdjust?: { delta: number; count: number };
   /** The current phase is over, its bar emptied ("cleared") or its questions all revealed ("exhausted"),
    * and the next has not started: the room starts it with enterNextBossPhase when the phase card opens. */
   phasePending?: "cleared" | "exhausted";
@@ -2023,6 +2026,12 @@ export type HostFix = (typeof HOST_FIXES)[number];
 export const FIX_SCORE_STEP = 5;
 /** The most reward 設定 (HOST_SET_SCORE) may set. */
 export const FIX_SCORE_MAX = 9999;
+/** The most HP a boss phase may have: the bank's ceiling (question-bank.ts) and 首領血量 +5's cap. The big screen draws one
+ * heart per HP up to MAX_HEARTS (lib/protocol.ts), a bar above (multi-field.md E5: a phase of multi-field questions loses
+ * more than 1 HP a hit). */
+export const MAX_BOSS_HP = 60;
+/** HP one 首領血量 −5 / +5 press takes or adds (game-length report A). */
+export const BOSS_HP_STEP = 5;
 /** One correction, for lib/game-log.ts: `from` and `to` are the reward, the uses left, or 1/0 for a held potion.
  * `set` is 設定 (an exact reward), `rejudge` is 改判 on the ledger's entry number `judgment` (1-based). */
 export interface FixRecord {
@@ -2047,6 +2056,30 @@ export interface Judgment {
   /** A wrong turn-based answer: its 改成答對 is paid through a dish die rolled then (class-dice-rework.md), a chef's
    * multipliers when `chef`, after the armed sneak's reward multiplier `sneak` (`points` is the plain reward). */
   dish?: { chef?: true; sneak?: number };
+}
+
+/** 首領血量 −5 / +5 (docs/hosting.md, game-length report A): the current phase's HP moves by `delta`, never below 1 (the
+ * finishing blow is always a team's) nor above MAX_BOSS_HP. +5 past the bar's top raises the bar with it, in `phases`
+ * too; later phases keep their bank HP. Only once a team is in the boss room, and never while a phase is changing over or
+ * the boss is down. A press that would change nothing throws, so nothing is recorded. */
+export function adjustBossHp(game: GameState, delta: number): GameState {
+  if (game.phase !== "playing") throw new InvalidActionError("not_playing");
+  const boss = game.boss;
+  if (!game.teams.some((t) => t.inBoss)) throw new InvalidActionError("boss_not_reached");
+  if (boss.phasePending || boss.hp <= 0 || boss.killedByTeamId) throw new InvalidActionError("boss_phase_changing");
+  const hp = Math.min(MAX_BOSS_HP, Math.max(1, boss.hp + delta));
+  if (hp === boss.hp) throw new InvalidActionError("boss_hp_limit");
+  const maxHp = Math.max(boss.maxHp, hp);
+  return {
+    ...game,
+    boss: {
+      ...boss,
+      hp,
+      maxHp,
+      phases: boss.phases.map((p, i) => (i === boss.phaseIndex ? { ...p, maxHp } : p)),
+      hpAdjust: { delta: hp - boss.hp, count: (boss.hpAdjust?.count ?? 0) + 1 },
+    },
+  };
 }
 
 /** The most ability uses 修正 may give `team` back: its class's set plus the uses event rooms gave it (resolveEvent's
@@ -2743,6 +2776,8 @@ export interface SpectatorView {
   bossThreshold?: number;
   bossHp: number;
   bossMaxHp: number;
+  /** The host's last 首領血量 −5 / +5 (BossState hpAdjust): the big screen's notice. Absent before the first. */
+  bossHpAdjust?: { delta: number; count: number };
   /** This game's boss as the map strip draws it (the room's bossLook: drawn, or the bank's). Absent from an older server. */
   bossLook?: { sprite: CatalogMonster["sprite"]; hue: number };
   /** The boss phase being fought, from 1. Only phases already reached: never the total (boss-phases.md). */
@@ -2814,6 +2849,7 @@ export function getSpectatorView(game: GameState): SpectatorView {
     bossThreshold: game.config.bossThreshold,
     bossHp: game.boss.hp,
     bossMaxHp: game.boss.maxHp,
+    ...(game.boss.hpAdjust ? { bossHpAdjust: game.boss.hpAdjust } : {}),
     bossPhase: game.boss.phaseIndex + 1,
     bossCurrentQuestionId: game.boss.currentQuestionId,
     bossKilledBy: game.boss.killedByTeamId,
