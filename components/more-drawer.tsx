@@ -23,6 +23,7 @@ export function MoreDrawer({
   origin,
   code,
   onClose,
+  start,
   send,
   ai,
   teamTools,
@@ -93,10 +94,12 @@ export function MoreDrawer({
   tapLatency?: number;
   /** 🎯 校正喇叭 (tap-calibrate.md), in the lobby only: shown under 開局準備. */
   calibrate?: ReactNode;
+  /** The section to open first instead of the phase's default (the host page's quick 改判). */
+  start?: string;
 }) {
   // One section open at a time (ui-simplify H1): the teams in a game, the setup in the lobby.
   // `undefined` = the phase's default, so a game starting (or ending) with the drawer open lands on a group that exists.
-  const [chosen, setOpen] = useState<string | null | undefined>(undefined);
+  const [chosen, setOpen] = useState<string | null | undefined>(start);
   const fallback = fixable.length > 0 ? "teams" : lobby || calibrate ? "setup" : null;
   const shown = new Set([fixable.length > 0 && "teams", fixable.length > 0 && "rejudge", (lobby || calibrate) && "setup", screen && "screen", "other"]);
   const open = chosen === undefined || (chosen !== null && !shown.has(chosen)) ? fallback : chosen;
@@ -106,7 +109,8 @@ export function MoreDrawer({
       {body}
     </Section>
   );
-  // 送王房 cannot be undone, so the first tap only arms it for 3 s.
+  // 送王房 and 結束冒險 cannot be undone, so the first tap only arms them. 送王房 stays armed until pressed again or
+  // 取消 (QA 2026-11-19: 3 s was too short to find the button again); 結束冒險 still disarms itself after 3 s.
   const [armed, setArmed] = useState<string | null>(null);
   // 修正 acts on every press: a double tap before the next STATE would apply twice (FIX_COOLDOWN_MS per button).
   const [fixAllowed] = useState(() => pressCooldown());
@@ -125,7 +129,7 @@ export function MoreDrawer({
   const [latencyText, setLatencyText] = useState("");
   const latencyOk = /^\d{1,4}$/.test(latencyText) && Number(latencyText) <= MAX_TAP_LATENCY_MS && Number(latencyText) !== tapLatency;
   useEffect(() => {
-    if (!armed) return;
+    if (armed !== "end") return;
     const t = setTimeout(() => setArmed(null), 3000);
     return () => clearTimeout(t);
   }, [armed]);
@@ -328,8 +332,14 @@ export function MoreDrawer({
               <div className="text-[15px]">{`送隊伍進王房（不用等到 ${bossThreshold} 分，送了不能退回）`}</div>
               {bossable.map((t) => (
                 <div key={t.id} className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-[16px]">{t.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-[16px]">{t.name}</span>
+                  {armed === t.id && (
+                    <PixelButton onClick={() => setArmed(null)} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]" style={{ background: "#fff" }}>
+                      取消
+                    </PixelButton>
+                  )}
                   <PixelButton
+                    variant={armed === t.id ? "flee" : undefined}
                     onClick={() => {
                       if (armed !== t.id) return setArmed(t.id);
                       setArmed(null);
@@ -376,7 +386,7 @@ export function MoreDrawer({
               <div className="text-[15px]">時間到了？現在就結束，照目前的分數排名，大螢幕出頒獎台和後記。</div>
               <PixelButton
                 onClick={() => {
-                  // Ending cannot be undone, so the first tap only arms it for 3 s, like 送王房.
+                  // Ending cannot be undone, so the first tap only arms it for 3 s.
                   if (armed !== "end") return setArmed("end");
                   setArmed(null);
                   send({ type: "HOST_END_GAME" });
