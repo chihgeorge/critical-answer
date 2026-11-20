@@ -20,6 +20,7 @@ Status: shipped in one PR (v0.81). Source: the 2026-11-16 art research (local-on
 | 6 | The monster's shadow stays the existing DOM hexagon, darker in this look | It already exists; a baked one would double it |
 | 7 | Map rooms tinted by each room's own biome | Each room is a place, not the team on turn |
 | 8 | Classic pixels pinned by hashes taken on `main` before the change | "false = today exactly" stays true |
+| 9 | The floor chip steps aside while a die rolls (`pendingRoll`, #443) | The die's banner (the dish die's 「答對！擲料理骰」 on every correct answer) covered it |
 | 9 | One PR with the map redesign kept (both CEO voices suggested splitting) | The owner's explicit choice |
 
 ## Not done / follow-ups
