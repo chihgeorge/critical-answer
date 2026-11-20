@@ -41,7 +41,7 @@ import { McOption, optionLetter, type OptionLook } from "@/components/mc-option"
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from "@/components/d20";
-import { checkChip, NATURAL_ONE_CHIP } from "@/lib/class-dice";
+import { checkChip, NATURAL_ONE_CHIP, NATURAL_TWENTY_CHIP } from "@/lib/class-dice";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
@@ -314,7 +314,7 @@ const CHIP_TONE = { warn: { background: "var(--warn)" }, ok: { background: "var(
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, charge, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, bossFinal, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; charge?: StateMessage["chargeBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; bossFinal?: true; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, gift, act, charge, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, bossFinal, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; gift?: string; act: boolean; charge?: StateMessage["chargeBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; bossFinal?: true; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster, stageMonster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -440,7 +440,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   const dcTarget = fillIn && !buzz && !inBoss && !turn?.sneakArmed ? turn?.checkTarget : undefined;
   // Its result replaces the DC once the die's beat is over (the record shows then).
   // A natural 1 throws the team out before any question shows: the 1 stands in the same pill as every check result.
-  const dcChip = stageBeat === "thrown-out" ? NATURAL_ONE_CHIP : dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
+  const dcChip = stageBeat === "thrown-out" ? NATURAL_ONE_CHIP : stageBeat === "check-twenty" || persuadedRoll ? NATURAL_TWENTY_CHIP : dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
@@ -659,7 +659,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll || stageBeat === "check-twenty" ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
             {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
@@ -692,7 +692,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             next question never shows underneath (or behind) the previous answer. */}
         {stageBeat ? (
           <div data-testid={`screen-${stageBeat}`} className="px-title-boss px-title-sm text-center" style={{ fontSize: 34, lineHeight: 1.3 }}>
-            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "thrown-out" ? "\u00a0" : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
+            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "thrown-out" || stageBeat === "check-twenty" ? "\u00a0" : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
           </div>
         ) : card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">
@@ -847,17 +847,37 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
-      <div key={`${monster.kind}-${hits}`} className="absolute" style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
+      <div key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
             (a class coming back would replay its animation, px-hit's shake after a miss). */}
         <div className={raging ? "px-rage" : undefined}>
           <div className={parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : undefined}>
-            <div key={card ? `card-${eventId}` : undefined} className={`${card ? "px-phase-blink" : hits > 0 && (stage ? bossScene : inBoss) ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
+            <div key={card ? `card-${eventId}` : act ? stageBeat : undefined} className={`${act && stageBeat === "thrown-out" ? "px-stomp" : act && stageBeat === "check-twenty" ? "px-happy" : card ? "px-phase-blink" : hits > 0 && (stage ? bossScene : inBoss) ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
               <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
             </div>
           </div>
         </div>
       </div>
+      )}
+      {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage (💢), then vanishes in a puff (💨, px-poof on the sprite). */}
+      {act && stageBeat === "thrown-out" && (
+        <div data-testid="screen-monster-angry" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 150, width: 0, zIndex: 6, fontSize: 56, lineHeight: 1 }}>
+          <span className="px-anger absolute" style={{ left: 60, bottom: 170 }}>💢</span>
+          <span className="px-poof-cloud absolute" style={{ left: -60, bottom: -10, fontSize: 96 }}>💨</span>
+        </div>
+      )}
+      {/* A natural 20: the monster hops for joy (💗), then its gift flies to the team on turn, up by its ribbon. */}
+      {act && stageBeat === "check-twenty" && (
+        <div data-testid="screen-monster-happy" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 150, width: 0, zIndex: 6, fontSize: 40, lineHeight: 1 }}>
+          <span className="px-heart-rise absolute" style={{ left: -110, bottom: 140 }}>💗</span>
+          <span className="px-heart-rise absolute" style={{ left: 70, bottom: 170, animationDelay: "-0.5s" }}>💗</span>
+          <span className="px-heart-rise absolute" style={{ left: -20, bottom: 210, animationDelay: "-1s" }}>💗</span>
+          {gift && (
+            <span data-testid="screen-gift" className="px-gift-fly px-chip absolute whitespace-nowrap" style={{ left: -70, bottom: 120, fontSize: 24, padding: "6px 12px", background: "var(--ok)", color: "var(--k)", border: "4px solid var(--k)" }}>
+              🎁 {gift}
+            </span>
+          )}
+        </div>
       )}
       {/* ② The parry (0.6–0.9 s): a shield in front of the boss, the attack's sword bounced off with a spark. */}
       {parry === "parry" && (
@@ -2207,7 +2227,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} charge={game.chargeBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} bossFinal={game.bossFinal} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} gift={game.checkTwenty?.gift} act={!!game.beatAct} charge={game.chargeBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} bossFinal={game.bossFinal} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

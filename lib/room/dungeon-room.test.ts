@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { sendSettled, settleCheck, settleDish } from "./test-send";
-import { CHECK_GRACE_MS, DungeonRoom, fixedDie, passwordSource, sprintLine } from "./dungeon-room";
+import { CHECK_GRACE_MS, DungeonRoom, fixedDie, NATURAL_BEAT_CAP_MS, NATURAL_BEAT_MS, passwordSource, sprintLine } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { DIFFICULTIES, answerText, bossPhaseStates, findQuestion, parseBank, roomTemplates, type Bank } from "../question-bank";
 import { MONSTERS, catalogMonster, variantOf } from "../monster-catalog";
@@ -1530,8 +1530,17 @@ describe("TEAM_SELECT_OPTION", () => {
 
     it("a natural 20 wins outright with no hint", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
-      const { room } = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      const { room, ids } = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.advanceTimersByTime(2000);
+      // The beat first (owner, 2026-11-20): the monster steps aside happily with its gift, the narrator says so, and the
+      // question stays unseen. Nothing is judged yet.
+      const beat = lastBroadcast(room);
+      const gift = catalogMonster(room.game!.rooms[0].monsterId!).gift.part;
+      expect(beat).toMatchObject({ stageBeat: "check-twenty", checkTwenty: { teamId: ids[0], gift }, question: null, pendingRoll: null, cue: "crit" });
+      expect((room as any).lastNarration.lines.join("")).toContain(gift);
+      expect(room.game!.teams[0].reward).toBe(0);
+      vi.advanceTimersByTime(NATURAL_BEAT_MS);
+      expect(lastBroadcast(room).stageBeat).toBeUndefined();
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ kind: "dish" }); // a win is a correct answer: its dish die rolls
       expect(lastBroadcast(room).question).toBeNull(); // the question the 20 won stays unseen through the dish beat too
       settleDish(room);
@@ -1564,7 +1573,11 @@ describe("TEAM_SELECT_OPTION", () => {
       const card = lastBroadcast(room);
       expect(card).toMatchObject({ stageBeat: "thrown-out", thrownOut: { teamId: ids[0] }, question: null, cue: "check-fail" });
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
-      vi.advanceTimersByTime(2000);
+      // The narrator says the kick at once, in the turn's narration (step 2 of the owner's flow).
+      expect((room as any).lastNarration.lines.join("")).toMatch(/踹出門|丟出去|轟走/);
+      vi.advanceTimersByTime(NATURAL_BEAT_MS - 1);
+      expect(lastBroadcast(room).stageBeat).toBe("thrown-out");
+      vi.advanceTimersByTime(1);
       const after = lastBroadcast(room);
       expect(after.stageBeat).toBeUndefined();
       expect(after.reveal).toBeNull();
@@ -1579,7 +1592,7 @@ describe("TEAM_SELECT_OPTION", () => {
       // The question's text and answer never went out.
       expect(JSON.stringify((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain("萬家福");
       await vi.runAllTimersAsync();
-      expect((room as any).lastNarration.lines.join("")).toMatch(/踹出門|關門送客|丟出去/);
+      expect((room as any).lastNarration.lines.join("")).toMatch(/站起來|四腳朝天|重新面對/);
     });
 
     // Value: protects=the thrown-out card follows the check-result rule (#429): it runs on its timer in manual too;
@@ -1590,8 +1603,63 @@ describe("TEAM_SELECT_OPTION", () => {
       send(room, hostConn, { type: "HOST_PACING", mode: "manual" });
       vi.advanceTimersByTime(2000);
       expect(lastBroadcast(room).stageBeat).toBe("thrown-out");
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(NATURAL_BEAT_MS);
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    // Value: protects=a natural 1's or 20's beat waits for the big screen to read the narrator's line (#425), up to the cap;
+    // fails_when=the flee's or the dish's narration cuts the line being read, or a silent screen holds the game forever
+    it("a natural beat acts once the big screen reaches its line, and waits for it up to the cap", () => {
+      vi.useFakeTimers();
+      const { room, ids } = checkGame(2, 1);
+      const screen = makeConn("screen-conn");
+      room.onConnect(screen);
+      send(room, screen, { type: "SCREEN_HELLO", key: (room as any).screenKey });
+      // The turn's narration, two lines the screen has not read yet.
+      (room as any).lastNarration = { eventId: (room as any).eventSeq, lines: ["上一隊的結果。", "輪到烤肉小隊。"], rev: 0, done: 0 };
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("thrown-out");
+      // The screen is still on the turn's earlier lines: the monster waits for the narrator.
+      vi.advanceTimersByTime(1000);
+      expect(lastBroadcast(room).beatAct).toBeUndefined();
+      const n = (room as any).lastNarration;
+      const at = (room as any).beatLine;
+      expect(at).toMatchObject({ eventId: n.eventId, index: n.lines.length - 1 });
+      // The narrator reaches the kick line: still waiting until it is read.
+      send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: at.index });
+      vi.advanceTimersByTime(500);
+      expect(lastBroadcast(room).beatAct).toBeUndefined();
+      // The kick line read: the monster acts, for the act's own length, then the flee.
+      send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: at.index + 1 });
+      vi.advanceTimersByTime(250);
+      expect(lastBroadcast(room).beatAct).toBe(true);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      vi.advanceTimersByTime(NATURAL_BEAT_MS);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      // A screen that never reports: the caps move the 20 on.
+      const nat = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      const s2 = makeConn("screen-2");
+      nat.room.onConnect(s2);
+      send(nat.room, s2, { type: "SCREEN_HELLO", key: (nat.room as any).screenKey });
+      (nat.room as any).lastNarration = { eventId: (nat.room as any).eventSeq, lines: ["上一隊的結果。"], rev: 0, done: 0 };
+      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(NATURAL_BEAT_CAP_MS - 250);
+      expect(lastBroadcast(nat.room)).toMatchObject({ stageBeat: "check-twenty", beatAct: true });
+      // The last poll lands within one poll step past the cap.
+      vi.advanceTimersByTime(750);
+      expect(lastBroadcast(nat.room).pendingRoll).toMatchObject({ kind: "dish" });
+    });
+
+    // Value: protects=a natural 20's beat keeps its team on turn and judges nothing if the game ends meanwhile;
+    // fails_when=the win lands after 結束冒險
+    it("a natural 20's beat wins nothing once the game ended during it", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const { room, hostConn } = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-twenty");
+      send(room, hostConn, { type: "HOST_END_GAME" });
+      vi.advanceTimersByTime(NATURAL_BEAT_CAP_MS);
+      expect(room.game!.teams[0].reward).toBe(0);
     });
 
     // Value: protects=a restart that cuts the thrown-out card (memory only) still throws the team out; fails_when=the
@@ -1611,7 +1679,7 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.teams[0].reward).toBe(0);
       (room as any).broadcastState();
       expect(lastBroadcast(room)).toMatchObject({ stageBeat: "thrown-out", question: null });
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(NATURAL_BEAT_MS);
       expect(room.game!.teams[0]).toMatchObject({ flees: 1, reward: 0 });
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
     });
@@ -1671,7 +1739,7 @@ describe("TEAM_SELECT_OPTION", () => {
       const g = room.game!;
       (room as any).game = { ...g, teams: g.teams.map((t, i) => (i === 0 ? { ...t, classId: "chef" } : t)) };
       room.onClose(conns[0]);
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000 + NATURAL_BEAT_MS);
       expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[0], kind: "dish" });
       vi.advanceTimersByTime(2000);
       expect(room.game!.teams[0].score).toBe(1);
@@ -1724,7 +1792,7 @@ describe("TEAM_SELECT_OPTION", () => {
     it("a reveal carries the question only when it was never shown and not persuaded", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       vi.useFakeTimers();
       const nat = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000 + NATURAL_BEAT_MS);
       settleDish(nat.room);
       expect(lastBroadcast(nat.room).reveal).toMatchObject({ answer: "", persuaded: true });
       expect(lastBroadcast(nat.room).reveal).not.toHaveProperty("asked");
@@ -1750,7 +1818,7 @@ describe("TEAM_SELECT_OPTION", () => {
       vi.useFakeTimers();
       const nat = checkGame(1, 20); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
       const monster = catalogMonster(nat.room.game!.rooms[0].monsterId!);
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(2000 + NATURAL_BEAT_MS);
       settleDish(nat.room);
       const reveal = lastBroadcast(nat.room).reveal;
       // Every STATE the room broadcast (the screen and the phones read these), from the start to the reveal.

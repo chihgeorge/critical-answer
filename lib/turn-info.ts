@@ -146,6 +146,12 @@ export function thrownOutText(team: string, monster: string): string {
   return `🗣️ 擲出 1！${monster}把${team || "你們"}轟出門了`;
 }
 
+/** A persuasion check's natural 20 (stageBeat `check-twenty`): the monster steps aside and gives `gift`, before the dish
+ * die. An empty `team` is the team's own phone. */
+export function giftText(team: string, monster: string, gift: string): string {
+  return `🗣️ 擲出 20！${monster}開心讓路，送${team || "你們"}${gift}`;
+}
+
 /** The host's answer box (HOST_ANSWER) shows only for the question on turn while nothing holds it: under a reveal the
  * turn has already moved on, and the next answer beside the revealed one gets read out (#339). A door opening holds it
  * too: ⚔️'s question is not up until the door has opened (branch-fork.md). A boss phase card still due (phaseCardDue)

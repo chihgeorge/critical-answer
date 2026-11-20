@@ -13,7 +13,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import { DEFAULT_BANK_ENTRY, FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
-import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline, thrownOutText } from "@/lib/turn-info";
+import { BOSS_THRESHOLD, describeTurn, giftText, hostAnswerShown, PAUSED_OFFLINE, pausedOffline, thrownOutText } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
@@ -1238,6 +1238,12 @@ export default function HostPage() {
             {game.stageBeat === "thrown-out" && game.thrownOut && (
               <Panel tone="lav" className="px-3 py-2 text-center text-[16px]" role="status">
                 <div data-testid="host-thrown-out">{thrownOutText(game.view.teams.find((t) => t.id === game.thrownOut!.teamId)?.name ?? "這隊", game.stageMonster?.name ?? "怪物")}：這題不算分，自動換一隻怪物、換下一隊</div>
+              </Panel>
+            )}
+            {/* A natural 20: nothing to judge, the dish die rolls by itself after the monster's gift. */}
+            {game.stageBeat === "check-twenty" && game.checkTwenty && (
+              <Panel tone="lav" className="px-3 py-2 text-center text-[16px]" role="status">
+                <div data-testid="host-check-twenty">{giftText(game.view.teams.find((t) => t.id === game.checkTwenty!.teamId)?.name ?? "這隊", game.stageMonster?.name ?? "怪物", game.checkTwenty.gift)}：免答算答對，接著自動擲料理骰</div>
               </Panel>
             )}
             <Panel tone="turn" className="px-3 py-[10px]">

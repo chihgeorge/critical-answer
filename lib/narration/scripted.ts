@@ -126,7 +126,7 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
 /** A natural 20 or 1 behind a hit (event.roll): a class die's 20 (`crit`: a warrior's roll or the sneak die), the dish
  * die's 20 (`legend`) or 1 (`burnt`), or the persuasion check's. This line replaces the usual one, it is not an extra
  * line (dnd design R1, E3; class-dice-rework.md). */
-export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded", { correct: string[]; "boss-hit": string[] }> = {
+export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt", { correct: string[]; "boss-hit": string[] }> = {
   crit: {
     correct: [
       "{team}擲出 20！一擊打飛{monster}，+{points}！",
@@ -155,20 +155,6 @@ export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded", { 
     "boss-hit": [
       "料理骰 1！{team}燒焦了，首領還剩 {bossHp} 顆心。",
       "{team}的料理骰擲出 1，滿室黑煙，首領剩 {bossHp} 顆心。",
-    ],
-  },
-  // A persuasion check (kind "check"): a natural 20 wins without an answer (a 1 throws the team out: THROWN_OUT_VARIANTS).
-  persuaded: {
-    correct: [
-      "擲出 20！{team}說動{monster}讓路，+{points}！",
-      "20 點！{team}三言兩語說動{monster}，+{points}！",
-      "嘴遁大成功！{monster}聽完直接讓路。",
-      "{monster}：我信了。{team}一句話就過關。",
-      "{team}一句話，{monster}自己把門打開。",
-    ],
-    "boss-hit": [
-      "擲出 20！{team}說服首領，剩 {bossHp} 顆心！",
-      "20 點！首領被{team}說動，剩 {bossHp} 顆心！",
     ],
   },
 };
@@ -391,11 +377,19 @@ export const CAUGHT_VARIANTS = [
   "🚨 抓包成立！{team}換題，{caught}領賞！",
   "🚨 {caught}眼尖！{team}這題作廢，換題！",
 ];
-/** 被轟出門 (owner, 2026-11-19): the persuasion check's natural 1, so {monster} threw {team} out unseen, into {to}. */
+/** 被轟出門 (owner, 2026-11-19): after a persuasion check's natural 1 (CHECK_VARIANTS.thrown said the kick), {team}
+ * lands in front of {to}, the new monster in the same room. */
 export const THROWN_OUT_VARIANTS = [
-  "說服擲出 1！{monster}一腳把{team}踹出門，外面站著{to}。",
-  "1 點！{team}一開口，{monster}直接關門送客，門外是{to}。",
-  "{monster}聽完拎起{team}丟出去，正好摔在{to}面前。",
+  "{team}拍拍屁股站起來，眼前換成{to}。",
+  "{team}摔個四腳朝天，抬頭是{to}。",
+  "{monster}不見了，{team}重新面對{to}。",
+];
+/** A persuasion 20's dish, once its dish die lands: the monster's gift cooked (the beat's line said the gift). Never a
+ * hit or a defeat: the monster lives. */
+export const GIFT_DISH_VARIANTS = [
+  "{team}把{monster}的心意下鍋，+{points}！",
+  "{monster}送的食材變成好菜，{team} +{points}！",
+  "嘴遁換來一頓飯！{team} +{points}。",
 ];
 /** 逃跑: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
@@ -453,9 +447,11 @@ export const DISH_TIER_VARIANTS: Tiers = [
 /** A chef's extra dish lines, on 7–19 and 20 only. */
 export const CHEF_DISH_VARIANTS = { success: ["廚師出手就是不一樣，{team}多拿兩成。"], legend: ["食神降臨！{team}這盤值兩倍。"] };
 
-/** The persuasion check as it lands (a 20 wins at once: its lines join ROLL_VARIANTS.persuaded). */
+/** The persuasion check as it lands. `thrown`: a natural 1, {monster} throws {team} out (the beat before it flees).
+ * `gift`: a natural 20, {monster} steps aside happily and hands over {gift} (its catalog gift part) for the dish die. */
 export const CHECK_VARIANTS = {
-  fumble: ["聽君一席話，如聽一席話。{monster}更生氣了。", "{team}一開口，{monster}：是在哈囉？", "{monster}：你說得很好，下次別說了。"],
+  thrown: ["擲出 1！{monster}氣炸了，把{team}踹出門！", "{team}一開口，{monster}就把人丟出去！", "{monster}臉都綠了，砰一聲轟走{team}！"],
+  gift: ["20 點！{monster}樂得送上{gift}！", "{monster}開心讓路，塞給{team}{gift}。", "嘴遁成功！{monster}笑著分出{gift}。"],
   fail: ["{monster}聽完了：可是我拒絕。", "{monster}：我不要你覺得，我要我覺得。", "{team}說了很多，{monster}一個字也沒聽進去。"],
   pass: ["{team}發動嘴遁，{monster}聽得頻頻點頭。", "{monster}，{team}是來談條件的。……談成了。", "{team}把{monster}誇上天，對方很受用。"],
 };
@@ -678,10 +674,11 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       // 7–19: the dish lines join the answer's usual pool.
       const served = dishTier === 2 ? [...DISH_TIER_VARIANTS[2], ...(chef ? CHEF_DISH_VARIANTS.success : [])] : [];
       if ((event.type === "correct" && !event.entersBoss) || event.type === "boss-hit") {
-        // A warrior answered with its own d20, so a check's line (說服, 答對) would tell the wrong story.
-        if (event.roll && !(event.roll.kind === "check" && event.warriorRoll !== undefined)) {
+        // A persuasion 20's dish: the check's beat said the gift (CHECK_VARIANTS.gift); now the gift cooked, never a hit.
+        if (event.type === "correct" && event.roll?.kind === "check" && event.warriorRoll === undefined) return fill(pick(GIFT_DISH_VARIANTS, "gift-dish"), event);
+        if (event.roll && event.roll.kind !== "check") {
           const twenty = event.roll.value === 20;
-          const kind = event.roll.kind === "check" ? "persuaded" : event.roll.kind === "dish" ? (twenty ? "legend" : "burnt") : "crit";
+          const kind = event.roll.kind === "dish" ? (twenty ? "legend" : "burnt") : "crit";
           saidDie = event.roll.kind === "crit";
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }
@@ -715,7 +712,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       return fill(pick(SKILL_TIER_VARIANTS[kind][t], `${kind}-${t}`), vars);
     },
     /** The persuasion check's line as it lands: a 1, a miss or a pass (CHECK_VARIANTS). */
-    checkLine(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string }): string {
+    checkLine(kind: keyof typeof CHECK_VARIANTS, vars: { team: string; monster: string; gift?: string }): string {
       return fill(pick(CHECK_VARIANTS[kind], `check-${kind}`), vars);
     },
     /** 🍀 The lucky die's line: used, or its two dice landed (POTION_VARIANTS). */

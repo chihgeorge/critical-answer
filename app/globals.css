@@ -384,6 +384,26 @@ body {
    from behind the option tiles (y 250) to the map (y 90). Reduced motion holds it still at its resting place (top 120). */
 @keyframes px-react-rise { 0% { transform: translateY(130px); opacity: 1; } 80% { opacity: 1; } 100% { transform: translateY(-30px); opacity: 0; } }
 .px-react-rise { animation: px-react-rise 2.4s steps(12) 1 both; }
+/* A persuasion check's natural 1 and 20 (owner, 2026-11-20), inside NATURAL_BEAT_MS (3 s). The 1: the monster stomps
+   (±8px, 1.8 s) under a 💢, then a 💨 and the sprite fades out (opacity and scale only: the wrapper's transform centres it).
+   The 20: it hops for joy under rising 💗, and its gift flies off to the turn ribbon from 1.2 s. */
+@keyframes px-stomp { 0%, 49% { transform: translate(-8px, 0); } 50%, 100% { transform: translate(8px, -8px); } }
+.px-stomp { animation: px-stomp 0.2s steps(1) 9; }
+@keyframes px-poof { to { opacity: 0; scale: 1.25; } }
+.px-poof { animation: px-poof 0.4s steps(2) 1.8s both; }
+@keyframes px-show { from { visibility: hidden; } }
+.px-anger { animation: px-out 0.01s 1.8s both, px-hop 0.4s steps(1) infinite; }
+.px-poof-cloud { animation: px-show 0.01s 1.8s both; }
+@keyframes px-happy { 50% { transform: translateY(-14px); } }
+.px-happy { animation: px-happy 0.3s steps(1) infinite; }
+.px-heart-rise { animation: px-rise 1.5s steps(6) infinite; }
+@keyframes px-gift-fly { from { translate: 0 0; } to { translate: -420px -360px; } }
+.px-gift-fly { animation: px-gift-fly 1s steps(5) 1.2s both; }
+@media (prefers-reduced-motion: reduce) {
+  .px-stomp, .px-happy, .px-heart-rise, .px-gift-fly, .px-anger { animation: none !important; }
+  .px-poof { animation-duration: 0.01s; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .px-tf1, .px-tf2, .px-glow, .px-nat20-spark, .px-idle, .px-float, .px-hit, .px-phase-blink, .px-heart-in, .px-hop, .px-spark, .px-run, .px-confetti, .px-hop-in, .px-charge, .px-roll-tumble, .px-eq, .px-react-rise, .px-parry-counter, .px-rage, .px-growl, .px-class-pop, .px-fog-blow, .px-room-lit { animation: none !important; }
   .px-tf2 { opacity: 0; }

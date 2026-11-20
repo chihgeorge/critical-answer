@@ -233,7 +233,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "check-success" | "kill-defeated" | "charge-fail" | "thrown-out" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "check-success" | "kill-defeated" | "charge-fail" | "thrown-out" | "check-twenty" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -624,10 +624,15 @@ export type ServerMessage =
       hold?: Hold;
       /** A narrated pause before the next question or die. `kill-roll`: the kill's 4d20 land over the defeated boss (no
        * question, no buzz). `charge-fail`: a warrior's missed charge before it is judged (`chargeBeat`). `thrown-out`: a
-       * persuasion check's natural 1, before the team flees unseen (`thrownOut`). */
-      stageBeat?: "check-success" | "kill-defeated" | "kill-roll" | "charge-fail" | "thrown-out";
+       * persuasion check's natural 1, before the team flees unseen (`thrownOut`). `check-twenty`: its natural 20, the monster
+       * stepping aside with a gift before the dish die (`checkTwenty`). */
+      stageBeat?: "check-success" | "kill-defeated" | "kill-roll" | "charge-fail" | "thrown-out" | "check-twenty";
       /** The team a natural 1 throws out (stageBeat `thrown-out`). */
       thrownOut?: { teamId: string };
+      /** The team a natural 20 talked past, and what the monster gives it (its catalog gift part; stageBeat `check-twenty`). */
+      checkTwenty?: { teamId: string; gift: string };
+      /** A natural 1's or 20's monster acts now (the narrator has reached its line): the screen plays its animation. */
+      beatAct?: true;
       /** The missed charge on show (stageBeat `charge-fail`): its die, and what a 1 takes (0 for 2–6). */
       chargeBeat?: { teamId: string; value: number; penalty: number };
       /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.

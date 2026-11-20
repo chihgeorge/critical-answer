@@ -525,13 +525,17 @@ describe("class attack lines (TODOS: 旁白的武器和招式要配合職業)", 
 // or a fumble line forgets the hit still landed
 describe("scripted: a roll's 20 or 1", () => {
   // Value: protects=a persuasion check's 20 or 1 (dnd design R7, R8) gets its own line, not the attack's 大成功 / 手滑
-  it("a check's 20 gets a 說服 win line, for room and boss hits", () => {
+  // Value: protects=a check's 20 (owner, 2026-11-20): the beat said the gift, so the dish die's judgment speaks of the dish,
+  // never a 說服 line or points before the dish; fails_when=a persuaded line comes back after the dish die
+  it("a check's 20: the beat's gift line names the gift, and the dish judgment says no 說服 line", () => {
     const p = createScriptedProvider(() => 0);
-    const correct = { type: "correct", team: "紅隊", monster: "史萊姆", points: 10 } as const;
-    const won = p.line({ ...correct, roll: { kind: "check", value: 20 } });
-    expect(ROLL_VARIANTS.persuaded.correct.map((t) => t.replace("{team}", "紅隊").replace("{monster}", "史萊姆").replace("{points}", "10"))).toContain(won);
-    expect(won).not.toContain("大成功");
-    for (const lines of Object.values(ROLL_VARIANTS.persuaded)) expect(lines.length).toBeGreaterThanOrEqual(2);
+    const gift = p.checkLine("gift", { team: "紅隊", monster: "史萊姆", gift: "一塊果凍" });
+    expect(gift).toContain("一塊果凍");
+    expect(gift).not.toMatch(/[{}]|\+/);
+    const won = p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 10, roll: { kind: "check", value: 20 } });
+    expect(won).not.toMatch(/說服|命中|倒下/);
+    expect(won).toContain("+10");
+    expect(Object.keys(ROLL_VARIANTS)).not.toContain("persuaded");
   });
 
   // Value: protects=a check's 1 says the monster threw the team out (owner, 2026-11-19), never 答錯 / 逃跑 / 一半;
@@ -781,7 +785,7 @@ describe("every scripted pool line fits the dialogue box", () => {
   };
   walk(Object.values(scripted).filter((v) => typeof v !== "function"));
   // {rule} and {condition} are the line's payload (a bank rule, a fortune condition), so they count as nothing here.
-  const vars: Record<string, string> = { rule: "", condition: "", monster: "史萊姆", to: "史萊姆", part: "霧狀身體", points: "3", bonus: "3", bossHp: "3", bossMaxHp: "5", ordinal: "二", name: "狂暴模式", phase: "狂暴模式", dish: "史萊姆凍", effect: "💫暈眩", names: "冒險小隊", caught: "冒險小隊", by: "冒險小隊" };
+  const vars: Record<string, string> = { rule: "", condition: "", monster: "史萊姆", to: "史萊姆", part: "霧狀身體", points: "3", bonus: "3", bossHp: "3", bossMaxHp: "5", ordinal: "二", name: "狂暴模式", phase: "狂暴模式", dish: "史萊姆凍", gift: "一顆溫熱的蛋", effect: "💫暈眩", names: "冒險小隊", caught: "冒險小隊", by: "冒險小隊" };
   const fill = (k: string, team: string) => {
     if (k === "team") return team;
     if (!(k in vars)) throw new Error(`no size for {${k}}`); // a new placeholder must get a size here, not count as nothing
@@ -818,7 +822,7 @@ describe("scripted: the dice lines by tier (class-dice-rework.md)", () => {
         const line = p.dieLine(kind, v, vars);
         expect(scripted.SKILL_TIER_VARIANTS[kind][t].map((l) => l.replaceAll("{team}", long).replaceAll("{monster}", "害羞幽靈"))).toContain(line);
       });
-    for (const kind of ["fumble", "fail", "pass"] as const) expect(p.checkLine(kind, vars)).not.toMatch(/[{}]/);
+    for (const kind of ["thrown", "gift", "fail", "pass"] as const) expect(p.checkLine(kind, { ...vars, gift: "一縷霧氣" })).not.toMatch(/[{}]/);
     for (const kind of ["drink", "saved", "bust"] as const) expect(p.potionLine(kind, long)).not.toMatch(/[{}]/);
   });
 
@@ -832,9 +836,10 @@ describe("scripted: the dice lines by tier (class-dice-rework.md)", () => {
       ...Object.values(scripted.POTION_VARIANTS).flat(),
     ];
     for (const l of all) {
-      const filled = `戰士擲出 20 點，命中！${l.replaceAll("{team}", long).replaceAll("{monster}", "害羞幽靈")}`;
+      // {gift}: the longest catalog gift part.
+      const filled = `戰士擲出 20 點，命中！${l.replaceAll("{team}", long).replaceAll("{monster}", "害羞幽靈").replaceAll("{gift}", "掉下來的一個點")}`;
       expect([...filled].length, filled).toBeLessThanOrEqual(MAX_LINE);
-      expect(l).not.toMatch(/擲筊|老六|\{(?!team\}|monster\})/);
+      expect(l).not.toMatch(/擲筊|老六|\{(?!team\}|monster\}|gift\})/);
     }
   });
 

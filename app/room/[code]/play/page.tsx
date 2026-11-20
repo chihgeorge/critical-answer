@@ -13,7 +13,7 @@ import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAns
 import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, hasSkillUses, skillRolledOn, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, thrownOutText, nextUp, ownReveal, turnLive, turnOpened } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, giftText, thrownOutText, nextUp, ownReveal, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
@@ -1278,6 +1278,15 @@ export default function PlayPage() {
           <div data-testid="phone-thrown-out">
             <Panel tone="lav" role="status" className="px-3 py-[14px] text-center text-[20px]">
               {thrownOutText(game.thrownOut.teamId === teamId ? "" : (game.view.teams.find((t) => t.id === game.thrownOut!.teamId)?.name ?? ""), game.stageMonster?.name ?? "怪物")}
+            </Panel>
+          </div>
+        )}
+
+        {/* A natural 20: the monster steps aside with its gift, before the dish die. */}
+        {game && !finished && game.stageBeat === "check-twenty" && game.checkTwenty && (
+          <div data-testid="phone-check-twenty">
+            <Panel tone="lav" role="status" className="px-3 py-[14px] text-center text-[20px]">
+              {giftText(game.checkTwenty.teamId === teamId ? "" : (game.view.teams.find((t) => t.id === game.checkTwenty!.teamId)?.name ?? ""), game.stageMonster?.name ?? "怪物", game.checkTwenty.gift)}
             </Panel>
           </div>
         )}

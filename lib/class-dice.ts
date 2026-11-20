@@ -81,6 +81,8 @@ export function rollStatus(kind: string | undefined): string {
  * (QA 2026-11-19, L7: a bare 「（+1）」 read like a roll of 1, and a failed check showed nothing). */
 /** A natural 1's chip: the team is thrown out, whatever the target. */
 export const NATURAL_ONE_CHIP = { text: "🗣️ 擲出 1：被轟出門", tone: "danger" } as const;
+/** A natural 20's chip: no answer needed (the monster steps aside, then the dish die). */
+export const NATURAL_TWENTY_CHIP = { text: "🗣️ 擲出 20：免答", tone: "ok" } as const;
 
 export function checkChip(target: { bonus: number; dc: number }, check?: { value: number; bonus: number; dc: number; passed: boolean }): { text: string; tone: "warn" | "ok" | "danger" } {
   if (!check) return { text: `🗣️ 說服擲骰檢定 ${target.dc}（加值 +${target.bonus}）`, tone: "warn" };

@@ -130,7 +130,8 @@ describe("prompt", () => {
   // Value: protects=a check's 20 or 1 is told as 說服, not as an attack (dnd design R7, R8); fails_when=describeRoll ignores kind
   it("tells the model a check's 20 persuaded the monster, and a 1 threw the team out", () => {
     const won = buildPrompt({ ...event, roll: { kind: "check", value: 20 } } as NarrationEvent, []).user;
-    expect(won).toContain("說服成功");
+    expect(won).toContain("說服檢定擲出 20");
+    expect(won).toContain("食材");
     expect(won).not.toContain("大成功");
     const thrown = buildPrompt({ type: "flee", team: "紅隊", monster: "史萊姆", to: "幽靈", thrownOut: true }, []).user;
     expect(thrown).toContain("轟出門");
