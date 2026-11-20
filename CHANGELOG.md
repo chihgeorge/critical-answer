@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.111.0.2] - 2026-11-21
+
+### Changed
+- The ❓ door now meets the fortune teller half the time (chest and statue a quarter each, was one third each), so she shows up about 1.9 times in a six-team game instead of 1.3. With no team fitting any condition yet, she still gives way to the chest or the statue.
+
 ## [0.111.0.1] - 2026-11-21
 
 ### Fixed
