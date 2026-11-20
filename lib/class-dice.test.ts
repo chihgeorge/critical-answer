@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clericEffect, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
+import { checkChip, clericEffect, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
 
 // Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰, class-dice-rework.md); fails_when=a tier
 // boundary (1, 2–6, 7–19, 20) shows another tier's effect, or a chef's dish die reads like everyone's; seam=none
@@ -7,7 +7,7 @@ describe("class dice words", () => {
   it("names every dish die tier with its multiplier, a chef's own on 7–19 and 20", () => {
     expect([1, 2, 7, 20].map((v) => dishEffect(v, false))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜，獎勵不變", "傳說級料理！獎勵 ×1.5"]);
     expect([1, 6, 19, 20].map((v) => dishEffect(v, true))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜！提鮮 ×1.2", "傳說級料理！獎勵 ×2"]);
-    expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！ 20 → 2 飽足感");
+    expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！+2 飽足感"); // only the result (owner review, 2026-11-20)
     expect(dishPhoneLine(12, 4, 24, "飽足感")).toBe("🍳 提鮮加成 20 → 24 飽足感");
     expect(dishPhoneLine(12, 0, 20, "飽足感")).toBe("🍳 料理骰 12：上菜");
     // A 2–6 pays as usual: served for anyone, only a chef hears it got no bonus (owner 2026-11-18).
@@ -35,5 +35,16 @@ describe("class dice words", () => {
   it("never names the value on the phone while the big screen rolls", () => {
     for (const kind of ["dish", "check", "mage", "cleric", "thief", "warrior", undefined]) expect(rollStatus(kind)).not.toMatch(/\d/);
     expect(rollStatus("kill")).toContain("4d20");
+  });
+});
+
+describe("checkChip", () => {
+  // Value: protects=the big screen says how a persuasion check ended and never shows a bare 「（+1）」 (QA 2026-11-19, L7);
+  // fails_when=the chip keeps the DC after the roll, or drops the word for the bonus.
+  it("shows the DC with its bonus before the roll, then the result", () => {
+    expect(checkChip({ bonus: 1, dc: 10 })).toEqual({ text: "🗣️ 說服擲骰檢定 10（加值 +1）", tone: "warn" });
+    expect(checkChip({ bonus: 1, dc: 10 }, { value: 1, bonus: 1, dc: 10, passed: false })).toEqual({ text: "🗣️ 擲出 1：答對只拿一半", tone: "danger" });
+    expect(checkChip({ bonus: 4, dc: 8 }, { value: 3, bonus: 4, dc: 8, passed: false }).text).toBe("🗣️ 說服失敗：3+4=7<8");
+    expect(checkChip({ bonus: 4, dc: 8 }, { value: 5, bonus: 4, dc: 8, passed: true })).toEqual({ text: "🗣️ 說服成功：5+4=9≥8", tone: "ok" });
   });
 });

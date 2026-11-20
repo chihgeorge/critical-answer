@@ -70,6 +70,10 @@ describe("toNarrationEvent", () => {
     const prayed = { ...game, pendingWrong: { teamId: "a", questionId: "q", optionIndex: null, prayed: true as const } };
     expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "a" }, "史萊姆")).toEqual({ type: "retry", team: "紅隊", monster: "史萊姆", prayed: true });
     expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "b" }, "史萊姆")).not.toHaveProperty("prayed");
+    // QA 2026-11-19: no 「X轉過彎，迎面撞上…」 handoff after it, as if the same team walked into a new room.
+    const next = { team: "紅隊", monster: "史萊姆", boss: false };
+    expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "a" }, "史萊姆", next)).not.toHaveProperty("next");
+    expect(toNarrationEvent(prayed, { type: "incorrect-retry", teamId: "b" }, "史萊姆", next)).toHaveProperty("next");
   });
 
   it("maps a boss hit that does not kill to 'boss-hit' with the HP left", () => {
@@ -79,7 +83,7 @@ describe("toNarrationEvent", () => {
 
   it("maps the killing blow to exactly one 'boss-kill' event carrying the bonus", () => {
     const o: AnswerOutcome = { type: "correct-boss-hit", teamId: "a", bossHpRemaining: 0, bossKilled: true, reward: 21, killBonus: 11 };
-    expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 11 });
+    expect(toNarrationEvent(game, o, "小黑龍")).toEqual({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 11, points: 21 }); // points: the whole gain the card shows (QA 2026-11-19)
   });
 
   it("does not throw on an unknown team and falls back to a neutral name", () => {

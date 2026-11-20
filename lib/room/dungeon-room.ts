@@ -692,6 +692,8 @@ export class DungeonRoom {
   private nextLineGen = 0;
   /** Scripted lines for narration `eventId` that has not landed yet (appendLine). Memory only. */
   private heldLines: { eventId: number; lines: string[] } | null = null;
+  /** A line that goes before the runner's lines of narration `eventId`: a dish die's 🍀 line, ahead of its judgment's. */
+  private leadLine: { eventId: number; line: string } | null = null;
   /** The handoff a narration dropped while the reveal held the stage, and whom it named: closeReveal says it if that
    * team still faces that monster, else a scripted one. Saved: a restart (which drops the reveal) adds it at once. */
   private heldHandoff: { eventId: number; line: string; next: NextTurn } | null = null;
@@ -873,6 +875,8 @@ export class DungeonRoom {
         this.hostLineGens.delete(eventId);
         const held = this.heldLines?.eventId === eventId ? this.heldLines.lines : [];
         if (held.length) this.heldLines = null;
+        const lead = this.leadLine?.eventId === eventId ? [this.leadLine.line] : [];
+        if (lead.length) this.leadLine = null;
         if (eventId > this.eventSeq || (this.lastNarration && eventId < this.lastNarration.eventId)) {
           this.dropUnsaidLine();
           return;
@@ -892,7 +896,7 @@ export class DungeonRoom {
           } else lines = [...lines.slice(0, -1), this.freshHandoff(handoff, event.next) ?? handoff];
         }
         // A held line goes out with its narration, unless the game ended meanwhile.
-        if (this.game?.phase === "playing") lines = [...lines, ...held];
+        if (this.game?.phase === "playing") lines = [...lead, ...lines, ...held];
         this.lastNarration = { eventId, lines, rev: 0, done: 0 };
         this.broadcast({ type: "NARRATION", eventId, lines, rev: 0 });
         if (said) this.sendNextLineState();
@@ -2208,6 +2212,7 @@ export class DungeonRoom {
     this.eventSeq = 0;
     this.lastNarration = null;
     this.heldLines = null;
+    this.leadLine = null;
     this.heldHandoff = null;
     this.cue = null;
     this.cueSeq = 0;
@@ -2939,6 +2944,7 @@ export class DungeonRoom {
     this.revealOnRead = false;
     this.lastNarration = null;
     this.heldLines = null;
+    this.leadLine = null;
     this.heldHandoff = null;
     this.cue = null;
     this.staleBeforeSeq = ++this.eventSeq;
@@ -3278,11 +3284,12 @@ export class DungeonRoom {
     void this.narrate(eventId, next ? { ...event, next } : event);
   }
 
-  /** The boss phase under way, for /screen and /play, once players know there are phases: from phase 2 on. */
-  private bossPhaseInfo(): { bossPhaseInfo?: { name: string; rule: string } } {
+  /** The boss phase under way, for /screen and /play, once players know there are phases: from phase 2 on. `bossFinal`:
+   * this is the boss's last phase, so the big screen may say 「最後的挑戰！」 (never on a phase 1 with more to come). */
+  private bossPhaseInfo(): { bossPhaseInfo?: { name: string; rule: string }; bossFinal?: true } {
     const i = this.game?.boss.phaseIndex ?? 0;
     const phase = i > 0 ? this.bank.boss.phases[i] : undefined;
-    return phase ? { bossPhaseInfo: { name: phase.name, rule: phase.rule } } : {};
+    return { ...(phase ? { bossPhaseInfo: { name: phase.name, rule: phase.rule } } : {}), ...(i >= this.bank.boss.phases.length - 1 ? { bossFinal: true as const } : {}) };
   }
 
   private clearAnswerTimers() {
@@ -4156,7 +4163,9 @@ export class DungeonRoom {
           return;
         }
         this.reveal = first;
-        this.writeScripted([`${prev.teams.find((t) => t.id === teamId)?.name ?? "這隊"}答對了！接下來擲料理骰，看看這道菜煮得怎樣。`]);
+        // A warrior's hit says its die here, before the dish die (the judgment after it then leaves the die out).
+        const said = roll ? `戰士擲出 ${roll.value} 點，命中！${roll.value === 20 ? "獎勵加倍！" : "拿八成獎勵。"}` : `${prev.teams.find((t) => t.id === teamId)?.name ?? "這隊"}答對了！`;
+        this.writeScripted([`${said}接下來擲料理骰，看看這道菜煮得怎樣。`]);
         this.broadcastState();
         this.sendNarration();
         return;
@@ -4262,7 +4271,8 @@ export class DungeonRoom {
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
     const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const, ...(second ? { buzzSecond: true as const } : {}) } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
-    const withWarrior = roll?.kind === "warrior" && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
+    // A hit's die was said before its dish die rolled (roll.dish set): not said twice.
+    const withWarrior = roll?.kind === "warrior" && roll.dish === undefined && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;
     // The waiting teams' loudest reaction this turn, for the middle line; never on the game's last line.
     const next = withWarrior.type === "epilogue" ? undefined : withWarrior.next;
     // Skipped when narrate() will give the middle line to the host's queued line (same test as there), and in a buzzer
@@ -4921,6 +4931,10 @@ export class DungeonRoom {
     this.unpace("lock");
     if (!roll || !game) return;
     this.markActivity();
+    // A dish die's 🍀 line is said before the dish it judges, not after it (QA 2026-11-19): it leads that judgment's narration.
+    const lead = roll.values && roll.kind === "dish" && !roll.rejudge ? this.potionLine(roll) : null;
+    const leadId = this.eventSeq + 1;
+    if (lead) this.leadLine = { eventId: leadId, line: lead };
     try {
       // A 改成答對's dish die is nobody's turn: it pays the ledger entry, like the 修正 it is.
       if (roll.rejudge) {
@@ -4962,7 +4976,10 @@ export class DungeonRoom {
       if (roll.kind === "dish" && this.reveal?.dishNext) this.pendingAnswer = answer;
       this.broadcastState();
     }
-    if (roll.values && roll.kind !== "kill") this.sayPotion(roll);
+    // The judgment's narration (async) takes the lead line once it lands; one that never started (it threw) did not.
+    const led = !!lead && this.eventSeq >= leadId;
+    if (lead && !led) this.leadLine = null;
+    if (roll.values && roll.kind !== "kill" && !led) this.sayPotion(roll);
     // A check or dish die that killed has started the kill's beat: its team stays on turn until that beat lands.
     // So does a check 20 or a warrior's hit that started its dish die.
     const next = this.pendingRoll as PendingRoll | null;
@@ -4987,10 +5004,15 @@ export class DungeonRoom {
   /** 🍀 A lucky die's two dice landed: one bad die the other saved, or both bad (POTION_VARIANTS); nothing when both were
    * good. Good: a dish die that burns nothing (2–6 pays ×1 too), a class die 7 or more (skillTier). */
   private sayPotion(roll: PendingRoll) {
+    const line = this.potionLine(roll);
+    if (line) this.appendLine(this.eventSeq, line);
+  }
+
+  private potionLine(roll: PendingRoll): string | null {
     const good = (v: number) => (roll.kind === "dish" ? v !== 1 : skillTier(v) >= 2);
     const [low, high] = [Math.min(...roll.values!), Math.max(...roll.values!)];
     const kind = !good(high) ? "bust" : good(low) ? null : "saved";
-    if (kind) this.appendLine(this.eventSeq, `🍀 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}`);
+    return kind ? `🍀 ${this.diceLines.potionLine(kind, this.lineNames(roll.teamId).team)}` : null;
   }
 
   /** The narrator's line once a class die lands: its value, then an owner-approved line for its tier (dieLine). */
@@ -5157,8 +5179,7 @@ export class DungeonRoom {
     // never show under that story), and ⚔️'s line is appended to this one. broadcastState sends it. Lines held for that
     // older narration (a 🍀 give, the sprint line) come along, before the opening line, which stays last.
     const eventId = ++this.eventSeq;
-    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
-    if (held.length) this.heldLines = null;
+    const held = this.olderHeld(eventId);
     this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - 1)), this.scripted.forkOpening(team.name)], rev: 0, done: 0 };
     return true;
   }
@@ -5290,11 +5311,19 @@ export class DungeonRoom {
     this.writeScripted(this.scripted.fortuneOpening(fortune.condition, name));
   }
 
+  /** Lines held for a narration older than `eventId` that never ran (a 🍀 lead line first), taken off the room. */
+  private olderHeld(eventId: number): string[] {
+    const lead = this.leadLine && this.leadLine.eventId < eventId ? [this.leadLine.line] : [];
+    if (lead.length) this.leadLine = null;
+    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
+    if (held.length) this.heldLines = null;
+    return [...lead, ...held];
+  }
+
   /** A scripted narration of its own (no AI wait), keyed by a new eventId; lines held for an older one come first. */
   private writeScripted(lines: string[]) {
     const eventId = ++this.eventSeq;
-    const held = this.heldLines && this.heldLines.eventId < eventId ? this.heldLines.lines : [];
-    if (held.length) this.heldLines = null;
+    const held = this.olderHeld(eventId);
     this.lastNarration = { eventId, lines: [...held.slice(-(NARRATION_MAX_LINES - lines.length)), ...lines], rev: 0, done: 0 };
   }
 

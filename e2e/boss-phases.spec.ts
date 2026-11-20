@@ -61,7 +61,7 @@ test("a two-phase boss: the answer at 0 HP, the surprise card, phase 2, then the
   // Phase 1 looks like any boss; only the host sees there is more. The boss room rolls no persuasion check (#364).
   await expect(team.getByTestId("check-waiting")).toHaveCount(0);
   await expect(screen.getByText("題目 phase1-a")).toBeVisible();
-  await expect(screen.getByText("最後的挑戰！")).toBeVisible();
+  await expect(screen.getByText("最後的挑戰！")).toHaveCount(0); // phase 2 is still to come (QA 2026-11-19)
   await expect(host.getByTestId("host-boss-hp")).toContainText("第 1/2 階段・下一階段：主題曲之謎");
   await expect(team.getByText("主題曲之謎")).toHaveCount(0);
 

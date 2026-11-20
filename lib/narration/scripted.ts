@@ -90,11 +90,11 @@ export const VARIANTS: Record<Exclude<NarrationEvent["type"], "epilogue">, strin
   ],
   "event-room": [], // never read: line() picks from EVENT_VARIANTS
   "boss-kill": [
-    "{team}擊倒了{monster}！額外 {bonus} 分！",
-    "{monster}轟然倒下，{team}拿下致命一擊，+{bonus}！",
+    "{team}擊倒了{monster}！拿下 {points} 分！",
+    "{monster}轟然倒下，{team}拿下致命一擊，+{points}！",
     "終結！{team}的最後一擊讓{monster}灰飛煙滅。",
     "{monster}的哀號迴盪在地城，{team}是英雄！",
-    "地城安靜。{team}擊敗{monster}，加碼 {bonus} 分。",
+    "地城安靜。{team}擊敗{monster}，拿下 {points} 分。",
   ],
 };
 
@@ -199,9 +199,9 @@ export const DISH_VARIANTS = [
 
 /** The boss kill when the boss will be cooked. */
 export const BOSS_DISH_VARIANTS = [
-  "{team}擊倒了{monster}！再加 {bonus} 飽足感！",
-  "{monster}轟然倒下，{team}拿下最後一擊，+{bonus}！",
-  "{monster}倒下了！{team}拿下 {bonus} 飽足感。",
+  "{team}擊倒了{monster}！拿下 {points} 飽足感！",
+  "{monster}轟然倒下，{team}拿下最後一擊，+{points}！",
+  "{monster}倒下了！{team}拿下 {points} 飽足感。",
   ...FOODIE.bossDish,
 ];
 

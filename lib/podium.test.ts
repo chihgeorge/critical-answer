@@ -57,6 +57,14 @@ describe("awardTitles", () => {
     expect(awards).toEqual([{ id: "flees", icon: "🏃", title: "逃跑大師", teamIds: ["乙", "丙"], reason: "逃跑 3 次" }]);
   });
 
+  // Value: protects=a title every team ties on is not handed to everyone (QA 2026-11-19: 「大胃王」 to all three teams);
+  // fails_when=awardTitles keeps a title whose holders are the whole field; no_claim=the screen.
+  it("gives no title that every team ties on, unless there is only one team", () => {
+    const all = [team("甲", { dishes: ["湯"], flees: 1 }), team("乙", { dishes: ["麵"] }), team("丙", { dishes: ["飯"] })];
+    expect(awardTitles(all).map((a) => a.id)).toEqual(["flees"]);
+    expect(awardTitles([team("甲", { dishes: ["湯"] })]).map((a) => a.id)).toEqual(["dishes"]);
+  });
+
   it("counts 凶 as a curse, a blessing only from an event room, and every event room for the explorer", () => {
     const awards = awardTitles([team("甲", { events: ["curse", "bad", "great"] }), team("乙", { events: ["blessing", "rotten"] })]);
     expect(awards.map((a) => [a.id, a.teamIds, a.reason])).toEqual([
@@ -74,6 +82,7 @@ describe("awardTitles", () => {
       team("甲", { events: ["fortune", "curse"], fortunes: [{ effect: "curse", matchIds: ["乙", "丙"] }, { effect: "potion", matchIds: ["甲"] }] }),
       team("乙", { events: ["fortune"], fortunes: [{ effect: "blessing", matchIds: ["丙"] }] }),
       team("丙", { events: ["blessing"] }),
+      team("丁"), // never cursed: a title every team ties on is not given
     ]);
     expect(awards.find((a) => a.id === "blessing")).toMatchObject({ teamIds: ["丙"], reason: "被祝福 2 次" });
     expect(awards.find((a) => a.id === "curse")).toMatchObject({ teamIds: ["甲", "乙", "丙"], reason: "被詛咒 1 次" });

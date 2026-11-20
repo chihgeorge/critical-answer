@@ -42,7 +42,7 @@ describe("targetSegmentCount", () => {
     expect(targetSegmentCount({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 7, next })).toBe(2);
     expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2, next, hostLine: "珍珠能吃嗎" })).toBe(3);
     expect(targetSegmentCount({ type: "correct", team: "紅隊", monster: "史萊姆", points: 2 })).toBe(2);
-    expect(targetSegmentCount({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 })).toBe(2);
+    expect(targetSegmentCount({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9, points: 9 })).toBe(2);
     expect(targetSegmentCount({ type: "epilogue", ranking: [], winners: [] })).toBe(1);
   });
 });
@@ -372,7 +372,7 @@ describe("narration runner", () => {
 
     it("sends no transition segment when the event has no next team, even if the provider wrote three lines", async () => {
       const { runner, emitted } = setup(provider(async () => "藍隊擊倒了首領！\n塵埃落定\n多餘的第三行"));
-      await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 });
+      await runner.run(1, { type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9, points: 9 });
       expect(emitted[0].lines).toEqual(["藍隊擊倒了首領！", "塵埃落定"]);
     });
   });
