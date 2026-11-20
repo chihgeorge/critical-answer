@@ -2274,6 +2274,8 @@ export class DungeonRoom {
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     // And a correct answer whose reveal waits for its dish die.
     if (this.reveal?.dishNext && this.game.phase === "playing" && currentTurnTeamId(this.game) === teamId) return;
+    // And a missed charge on show (charge-fail): a phone locked during it must not dodge the miss or a 1's penalty.
+    if (this.stageBeat === "charge-fail" && this.chargeBeat?.teamId === teamId) return;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -3220,7 +3222,7 @@ export class DungeonRoom {
     // A dish die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now. So
     // was the team whose answer's reveal waits for its dish die.
     const dishTeam = this.reveal?.dishNext && this.game?.phase === "playing" ? currentTurnTeamId(this.game) ?? undefined : undefined;
-    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : dishTeam);
+    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId));
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     this.stageBeat = null;
@@ -4940,7 +4942,9 @@ export class DungeonRoom {
         this.broadcastState();
         this.appendLine(this.eventSeq, line, line.length); // never cut: writeScripted did not cut it either
       } else {
-        this.writeScripted([line]);
+        // A full narration of this turn: its unread lines lead a new one, as before (rare; the screen may repeat them).
+        const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
+        this.writeScripted([...unread, line].slice(-NARRATION_MAX_LINES));
         this.broadcastState();
         this.sendNarration();
       }
@@ -4968,6 +4972,8 @@ export class DungeonRoom {
         console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
         this.broadcastState();
       }
+      // A phone that dropped during the beat (kept on turn by onClose) shows offline now.
+      this.syncLockTeamAndShow(teamId);
     });
     this.broadcastState();
   }

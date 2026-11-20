@@ -3934,6 +3934,24 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
+  // Value: protects=a phone locked during the charge-fail hold cannot dodge the miss or a 1's penalty (/review);
+  // fails_when=onClose lets the turn move under the beat, so its step judges nothing
+  it("a warrior phone that drops during the charge-fail beat still takes its miss", () => {
+    vi.useFakeTimers();
+    const { room, ids, conns, roll, hostConn } = warriorGame();
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, reward: 30 } : t)) };
+    send(room, hostConn, { type: "HOST_PACING", mode: "manual" });
+    roll(1);
+    vi.advanceTimersByTime(2000);
+    const beat = lastBroadcast(room);
+    room.onClose(conns[0] as never);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+    send(room, hostConn, { type: "HOST_STEP", eventId: beat.eventId, step: beat.hold.id });
+    expect(room.game!.teams[0].reward).toBe(30 - beat.chargeBeat.penalty);
+    expect(room.game!.teams[0].online).toBe(false);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
   // Value: protects=the narrator says the warrior's d20 and whether it hit (TODOS: 旁白念出戰士擲到幾點);
   // fails_when=the room drops the die from the narration event, so the line is a plain correct / retry one.
   it("the narration says the warrior's roll and whether it hit", async () => {
