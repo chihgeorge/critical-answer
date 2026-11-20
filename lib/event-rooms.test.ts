@@ -61,12 +61,12 @@ const seq = (...xs: number[]) => {
   return () => xs[Math.min(i++, xs.length - 1)];
 };
 
-// Value: protects=the 3-scene deck (fortune-teller.md G3, G2): chest, statue and fortune teller 1/3 each, each scene's two
+// Value: protects=the 3-scene deck (fortune-teller.md G3, G2): fortune teller 1/2, chest and statue 1/4 each, each scene's two
 // outcomes 1/2, the spring and fairy never drawn, and an empty condition pool redrawing chest or statue; fails_when=the old
 // six-event deck or the old lots come back, or an empty pool still shows the fortune teller; seam=none; no_claim=the pool's
 // own rules (below)
 describe("drawEvent (3-scene deck)", () => {
-  it("draws chest, statue and fortune teller evenly, each scene's outcomes half and half", () => {
+  it("draws the fortune teller half the time, chest and statue a quarter each, each scene's outcomes half and half", () => {
     let seed = 1;
     const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     // Two teams that have each fled once: the fortune teller always has a condition.
@@ -77,18 +77,21 @@ describe("drawEvent (3-scene deck)", () => {
       const e = drawEvent(g, "t0", rng);
       counts[e.outcome] = (counts[e.outcome] ?? 0) + 1;
     }
-    for (const o of ["feast", "rotten", "curse", "blessing"]) expect(counts[o] / N).toBeCloseTo(1 / 6, 1);
-    expect(counts.fortune / N).toBeCloseTo(1 / 3, 1);
+    for (const o of ["feast", "rotten", "curse", "blessing"]) expect(counts[o] / N).toBeCloseTo(1 / 8, 1);
+    expect(counts.fortune / N).toBeCloseTo(1 / 2, 1);
     for (const o of ["spring", "great", "good", "bad"]) expect(counts[o]).toBeUndefined();
   });
 
-  it("maps the start of the range to the chest, the middle to the statue, the end to the fortune teller", () => {
+  it("maps the first quarter to the chest, the second to the statue, the second half to the fortune teller", () => {
     const g = { ...game(), teams: game().teams.map((t) => ({ ...t, flees: 1 })) };
+    const fortune = { scene: "fortune", outcome: "fortune", fortune: { condition: "flees", value: 1, matchIds: ["t0", "t1"] } };
     expect(drawEvent(g, "t0", () => 0)).toEqual({ scene: "chest", outcome: "feast" });
-    expect(drawEvent(g, "t0", seq(0, 0.7))).toEqual({ scene: "chest", outcome: "rotten" });
-    expect(drawEvent(g, "t0", seq(0.5, 0.2))).toEqual({ scene: "idol", outcome: "blessing" });
-    expect(drawEvent(g, "t0", seq(0.5, 0.9))).toEqual({ scene: "idol", outcome: "curse" });
-    expect(drawEvent(g, "t0", () => 0.9999)).toEqual({ scene: "fortune", outcome: "fortune", fortune: { condition: "flees", value: 1, matchIds: ["t0", "t1"] } });
+    expect(drawEvent(g, "t0", seq(0.2, 0.7))).toEqual({ scene: "chest", outcome: "rotten" });
+    expect(drawEvent(g, "t0", seq(0.25, 0.2))).toEqual({ scene: "idol", outcome: "blessing" });
+    expect(drawEvent(g, "t0", seq(0.45, 0.9))).toEqual({ scene: "idol", outcome: "curse" });
+    expect(drawEvent(g, "t0", () => 0.5)).toEqual(fortune);
+    expect(drawEvent(g, "t0", () => 0.9999)).toEqual(fortune);
+    expect(drawEvent(g, "t0", () => 1)).toEqual(fortune);
   });
 
   it("G2: on the first round the pool is empty, so the fortune teller gives way to the chest or the statue", () => {

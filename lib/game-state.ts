@@ -2204,10 +2204,10 @@ function chestOrStatue(chest: boolean, rng: () => number): RoomEvent {
   return chest ? { scene: "chest", outcome: first ? "feast" : "rotten" } : { scene: "idol", outcome: first ? "blessing" : "curse" };
 }
 
-/** The ❓ door's event (fortune-teller.md G3): chest, statue or fortune teller, 1/3 each, then the outcome. The fortune
+/** The ❓ door's event (fortune-teller.md G3): fortune teller 1/2, chest or statue 1/4 each, then the outcome. The fortune
  * teller draws her condition from the pool now; an empty pool means no fortune this time (G2): chest or statue instead. */
 export function drawEvent(game: GameState, teamId: string, rng: () => number = Math.random): RoomEvent {
-  const scene = pickIndex(rng, 3);
+  const scene = pickIndex(rng, 4);
   if (scene < 2) return chestOrStatue(scene === 0, rng);
   const pool = fortunePool(game, teamId);
   if (!pool.length) return chestOrStatue(rng() < 0.5, rng);
