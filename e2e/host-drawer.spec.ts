@@ -62,7 +62,12 @@ test("the phone shows reward points and the host sends a team to the boss from t
   await host.getByRole("button", { name: "送王房" }).click(); // first tap only arms it
   await host.getByRole("button", { name: "確定送？" }).click();
   await expect(host.getByRole("button", { name: /送王房|確定送/ })).toHaveCount(0);
-  await expect(host.getByText(/首領血量/)).toBeVisible();
+  await expect(host.getByTestId("host-boss-hp")).toContainText("首領血量 8 / 8");
+  // 首領血量 −5 (docs/hosting.md) shows once a team is in the boss room, and the HP follows the room.
+  const adjust = host.getByTestId("boss-hp-adjust");
+  await adjust.getByRole("button", { name: "首領血量 −5" }).click();
+  await expect(adjust).toContainText("3/8");
+  await expect(host.getByTestId("host-boss-hp")).toContainText("首領血量 3 / 8");
 });
 
 test("the big-screen URL (in ⚙ 更多 once the game has started) opens the screen in a new tab, leaving the host page in place", async ({ browser, baseURL }) => {
