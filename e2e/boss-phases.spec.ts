@@ -117,6 +117,8 @@ test("a phase that runs out of questions moves on to the next one", async ({ bro
   await team.goto(`/room/${code}/play?name=${encodeURIComponent("甲隊")}`);
   await expect(team.getByTestId("roster")).toContainText("甲隊");
   await startGame(host);
+  // Rooms deal in bank order: the first room question is the shared bank's fill-in, so its check comes first.
+  await hostCheckSettled(host); // 送王房 waits for a fill-in's own check, like a judgment
   await openMore(host, "other");
   await host.getByRole("button", { name: "送王房" }).click();
   await host.getByRole("button", { name: "確定送？" }).click();

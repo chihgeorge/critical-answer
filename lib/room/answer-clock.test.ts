@@ -395,6 +395,21 @@ describe("HOST_START roomShuffle", () => {
     expect(started({ roomShuffle: true }).room.game!.config).not.toHaveProperty("roomInOrder");
   });
 
+  // e2e boss-phases relied on the random draw dodging the bank's first room question, a fill-in: in bank order the
+  // first team always gets it, and 送王房 waits for its persuasion check like a judgment (the e2e now waits too).
+  it("in bank order the first team gets the first fill-in; 送王房 waits for its check, then deals the boss question", () => {
+    const g = started({}, bank(), true);
+    expect(g.room.game!.teams[0].currentQuestionId).toBe("r1");
+    expect(g.state().pendingRoll).toMatchObject({ kind: "check", teamId: A });
+    send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
+    expect(msgs(g.host.send.mock.calls).findLast((m) => m.type === "ERROR")).toMatchObject({ detail: "lock_pending" });
+    expect(g.room.game!.teams[0].inBoss).toBe(false);
+    vi.advanceTimersByTime(2000);
+    send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
+    expect(g.room.game!.teams[0].inBoss).toBe(true);
+    expect(g.room.game!.boss.currentQuestionId).toBe("b1");
+  });
+
   it("survives a restart", async () => {
     const g = started();
     send(g.room, g.phones[1], { type: "TEAM_SELECT_OPTION", questionId: "x", optionIndex: 0 }); // any message saves
