@@ -117,6 +117,14 @@ export interface RoomSnapshot {
   /** A correct answer waiting for its dish die (QA P2-16): nothing is scored before the die lands, so a restart without
    * this replayed the question. `reveal`: its answer reveal was up; `value`: the die in its beat. Missing (or damaged) means none. */
   dish?: { teamId: string; questionId: string; reveal?: true; fields?: boolean[]; warrior?: number; value?: number; values?: number[] };
+  /** A warrior's missed charge on show (charge-fail beat, QA 2026-11-19 B1): restore() shows it again, then judges the miss. */
+  chargeBeat?: { teamId: string; questionId: string; value: number };
+  /** A multipleChoice/sort lock waiting for 公布答案, or in its reveal beat (`revealing`): restore() keeps it, so the
+   * team does not lock again and the beat lands once. Missing (or damaged) means none. */
+  lock?: { teamId: string; questionId: string; optionIndex: number; revealing?: true };
+  /** The kill's 4d20 in its beat with the judgment it holds back (kill-roll.md): restore() lands the same dice. `defeated`:
+   * the 擊倒 card before the dice was still on. Missing (or damaged) means none: the team answers the final blow again. */
+  kill?: { teamId: string; questionId: string; values: number[]; value: number; defeated?: true; correct: boolean; fleeChoice: "retry" | "flee" | "switch"; roll?: { kind: "warrior" | "dish"; value: number; dish?: number }; fields?: boolean[] };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -214,6 +222,17 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const dishOk =
       isObject(dish) && isString(dish.teamId) && isString(dish.questionId) && (dish.fields === undefined || (Array.isArray(dish.fields) && dish.fields.every((f) => typeof f === "boolean"))) &&
       (dish.warrior === undefined || d20(dish.warrior)) && (dish.value === undefined || d20(dish.value)) && (dish.values === undefined || (Array.isArray(dish.values) && dish.values.length > 0 && dish.values.every(d20))) && (dish.reveal === undefined || dish.reveal === true);
+    const bools = (v: unknown) => v === undefined || (Array.isArray(v) && v.every((f) => typeof f === "boolean"));
+    const cb = raw.chargeBeat;
+    const chargeOk = isObject(cb) && isString(cb.teamId) && isString(cb.questionId) && d20(cb.value);
+    const lk = raw.lock;
+    const lockOk = isObject(lk) && isString(lk.teamId) && isString(lk.questionId) && Number.isInteger(lk.optionIndex) && (lk.optionIndex as number) >= 0 && (lk.revealing === undefined || lk.revealing === true);
+    const kl = raw.kill;
+    const kr = isObject(kl) ? kl.roll : undefined;
+    const killOk =
+      isObject(kl) && isString(kl.teamId) && isString(kl.questionId) && Array.isArray(kl.values) && kl.values.length === 4 && kl.values.every(d20) && Number.isInteger(kl.value) && (kl.value as number) >= 0 &&
+      typeof kl.correct === "boolean" && (kl.fleeChoice === "retry" || kl.fleeChoice === "flee" || kl.fleeChoice === "switch") && (kl.defeated === undefined || kl.defeated === true) && bools(kl.fields) &&
+      (kr === undefined || (isObject(kr) && (kr.kind === "warrior" || kr.kind === "dish") && d20(kr.value) && (kr.dish === undefined || d20(kr.dish))));
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
@@ -238,6 +257,9 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       checkBeat: isObject(raw.checkBeat) && isString(raw.checkBeat.teamId) && isString(raw.checkBeat.questionId) ? { teamId: raw.checkBeat.teamId, questionId: raw.checkBeat.questionId } : undefined,
       bossEntry: isObject(raw.bossEntry) && Number.isInteger(raw.bossEntry.eventId) && isString(raw.bossEntry.teamId) ? { eventId: raw.bossEntry.eventId as number, teamId: raw.bossEntry.teamId, ...(raw.bossEntry.sprint === true ? { sprint: true as const } : {}) } : undefined,
       dish: dishOk ? (dish as RoomSnapshot["dish"]) : undefined,
+      chargeBeat: chargeOk ? { teamId: cb.teamId as string, questionId: cb.questionId as string, value: cb.value as number } : undefined,
+      lock: lockOk ? (lk as RoomSnapshot["lock"]) : undefined,
+      kill: killOk ? (kl as RoomSnapshot["kill"]) : undefined,
       game: withUses as GameState | null,
       lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.
