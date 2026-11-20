@@ -174,6 +174,24 @@ describe("createGame", () => {
     expect([...on.boss.phases[1].questionIds].sort()).toEqual(["p1", "p2", "p3", "p4"]);
   });
 
+  // Value: protects=出題順序：照題庫順序 (owner); fails_when=an in-order game draws at random, skips no held question,
+  // or a game without the flag (random, and old saves) stops drawing at random.
+  it("出題順序: in order deals bank order per difficulty, skipping held questions; without the flag it stays random", () => {
+    const teams = [{ id: "T0", name: "A" }, { id: "T1", name: "B" }];
+    const rooms: RoomTemplate[] = [...makeRooms(1, 1), ...makeRooms(1, 2)];
+    const pools = [["a1", "a2", "a3", "a4"], ["b1", "b2", "b3"], [], [], []];
+    const last = () => 0.99; // a random draw on this rng picks the last free question
+    const ordered = createGame(teams, rooms, pools, ["boss-q1"], { bossThreshold: 15, roomInOrder: true }, 2, last);
+    // Two teams never hold one question: T1 gets the next one in order, not a2's holder's a1.
+    expect(ordered.teams.map((t) => t.currentQuestionId)).toEqual(["a1", "a2"]);
+    const moved = answerQuestion(ordered, "T0", "a1", true, "retry", last).game;
+    expect(moved.teams[0].currentQuestionId).toBe("b1"); // the next room's difficulty, first in the bank
+    expect(addLateTeam(moved, { id: "T2", name: "C" }, last).teams[2].currentQuestionId).toBe("a3");
+    const random = createGame(teams, rooms, pools, ["boss-q1"], { bossThreshold: 15 }, 2, last);
+    expect(random.teams.map((t) => t.currentQuestionId)).toEqual(["a4", "a3"]);
+    expect(answerQuestion(random, "T0", "a4", true, "retry", last).game.teams[0].currentQuestionId).toBe("b3");
+  });
+
   it("repeats an earlier game's questions once nothing else is left", () => {
     const g = createGame([{ id: "T0", name: "A" }], ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first, undefined, {}, [], undefined, ["room0-q1", "room0-q2"]);
     expect(g.teams[0].currentQuestionId).toBe("room0-q1");

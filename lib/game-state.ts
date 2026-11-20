@@ -406,6 +406,9 @@ export interface GameConfig {
   bossThreshold: number;
   /** 首領題隨機順序 (lobby): each boss phase's questions shuffled within one difficulty. Absent keeps the bank order. */
   bossShuffle?: true;
+  /** 出題順序：照題庫順序 (lobby, the default): room questions dealt in bank order within their difficulty. Absent deals
+   * at random: the old behaviour, so a save from before the setting keeps drawing the way its game started. */
+  roomInOrder?: true;
 }
 
 export type GamePhase = "playing" | "finished";
@@ -565,6 +568,9 @@ export function rollBossKillDice(rng: () => number = Math.random): number[] {
   return [rollD20(rng), rollD20(rng), rollD20(rng), rollD20(rng)];
 }
 
+/** deal()'s rng: always the first eligible question (bank order) when the game deals in order. */
+const drawRng = (config: GameConfig, rng: () => number) => (config.roomInOrder ? () => 0 : rng);
+
 /** The pool difficulty `d` deals from: its own, else the nearest non-empty one below it, then above
  * (a custom bank may leave a pool empty; parseBank only insists on each room's own pool). */
 function poolIndexFor(pools: string[][], d: Difficulty): number {
@@ -632,7 +638,11 @@ function deal(
   // team's own unseen one, beats a repeat (the same order as the all-held branch above).
   else pool = borrowFrom((id) => !revealed.includes(id)) ?? (mine && !revealed.includes(mine) ? [mine] : pool);
   pool = pool.filter((id) => !revealed.includes(id));
-  if (!pool.length) pool = pools.flat().filter((id) => !revealed.includes(id));
+  if (!pool.length) {
+    // A free question before one another team holds: the in-order draw would otherwise always pick the first, held or not.
+    const left = pools.flat().filter((id) => !revealed.includes(id));
+    pool = left.some((id) => !held.has(id)) ? left.filter((id) => !held.has(id)) : left;
+  }
   const questionId = pool[Math.floor(rng() * pool.length)] ?? "";
   // Recorded in the pool that holds it (a borrowed or own question belongs to another pool), once:
   // the fled-question fallback above picks from questions already in `used`. This pool's reshuffle
@@ -673,7 +683,7 @@ function dealFor(game: GameState, team: Team, difficulty: Difficulty, revealed: 
     const from = game.pools.findIndex((ids) => ids.includes(q));
     return { questionId: q, used: game.usedQuestionIds.map((u, i) => (i === from && !u.includes(q) ? [...u, q] : u)), queuedQuestionId: undefined };
   }
-  return { ...deal(game.pools, game.usedQuestionIds, revealed, game.teams, difficulty, rng, own), queuedQuestionId: q };
+  return { ...deal(game.pools, game.usedQuestionIds, revealed, game.teams, difficulty, drawRng(game.config, rng), own), queuedQuestionId: q };
 }
 
 /**
@@ -702,7 +712,7 @@ function splitShared(game: GameState, rng: () => number): GameState {
     movable.sort((a, b) => rank(b) - rank(a));
     let move: { t: Team; dealt: ReturnType<typeof deal> } | undefined;
     for (const t of movable) {
-      const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, t.currentDifficulty, rng, t.currentQuestionId);
+      const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, t.currentDifficulty, drawRng(game.config, rng), t.currentQuestionId);
       if (dealt.questionId && !room.some((o) => o.currentQuestionId === dealt.questionId) && !game.revealedQuestionIds.includes(dealt.questionId)) {
         move = { t, dealt };
         break;
@@ -826,7 +836,7 @@ export function createGame(
   const teams: Team[] = [];
   for (const seed of teamSeeds) {
     // Teams not dealt yet hold no question; the ones already dealt count as held.
-    const dealt = deal(pools, used, revealed, teams, rooms[0].baseDifficulty, rng);
+    const dealt = deal(pools, used, revealed, teams, rooms[0].baseDifficulty, drawRng(config, rng));
     used = dealt.used;
     teams.push({
       id: seed.id,
@@ -889,7 +899,7 @@ export function addLateTeam(game: GameState, seed: { id: string; name: string; c
   if (!lateJoinOpen(game)) throw new InvalidActionError("late_closed");
   if (game.teams.some((t) => t.id === seed.id)) throw new InvalidActionError("already_in_game");
   const room = game.rooms[0];
-  const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, room.baseDifficulty, rng);
+  const dealt = deal(game.pools, game.usedQuestionIds, game.revealedQuestionIds, game.teams, room.baseDifficulty, drawRng(game.config, rng));
   // Every room question has been shown: nothing is left to deal a newcomer (#366).
   if (!dealt.questionId) throw new InvalidActionError("late_closed");
   const team: Team = {

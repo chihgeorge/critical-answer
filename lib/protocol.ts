@@ -252,8 +252,9 @@ export type ClientMessage =
   /** `initiative`: every team rolls 擲先攻 for the turn order (lib/initiative.ts). Missing keeps the lobby order, like `intro`. */
   /** `answerSeconds`: 每題作答倒數, one of ANSWER_SECONDS (lib/answer-clock.ts); missing or 0 is off.
    * `bossThreshold`: 進王門檻, one of BOSS_THRESHOLDS (lib/game-state.ts); missing is DEFAULT_GAME_CONFIG's.
-   * `bossShuffle`: 首領題隨機順序 (GameConfig.bossShuffle); missing keeps the bank order. */
-  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number; bossShuffle?: boolean }
+   * `bossShuffle`: 首領題隨機順序 (GameConfig.bossShuffle); missing keeps the bank order.
+   * `roomShuffle`: 出題順序：隨機 for the room questions; missing deals them in bank order (GameConfig.roomInOrder). */
+  | { type: "HOST_START"; aiNarration?: boolean; intro?: boolean; initiative?: boolean; answerSeconds?: number; bossThreshold?: number; bossShuffle?: boolean; roomShuffle?: boolean }
   /** How-to-play: go to `page` (1..4); 5 ends the intro and deals the first question. The room takes
    * only the current page ±1, so a double tap or a second host tab turns one page, not two (eng D4). */
   | { type: "HOST_INTRO"; page: number }
@@ -940,6 +941,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       if (m.answerSeconds !== undefined && !isAnswerSeconds(m.answerSeconds)) return null;
       if (m.bossThreshold !== undefined && !isBossThreshold(m.bossThreshold)) return null;
       if (m.bossShuffle !== undefined && typeof m.bossShuffle !== "boolean") return null;
+      if (m.roomShuffle !== undefined && typeof m.roomShuffle !== "boolean") return null;
       return {
         type: "HOST_START",
         aiNarration: m.aiNarration,
@@ -948,6 +950,7 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
         ...(m.answerSeconds ? { answerSeconds: m.answerSeconds } : {}),
         ...(m.bossThreshold !== undefined ? { bossThreshold: m.bossThreshold } : {}),
         ...(m.bossShuffle ? { bossShuffle: true } : {}),
+        ...(m.roomShuffle ? { roomShuffle: true } : {}),
       };
     case "HOST_INTRO":
       return Number.isInteger(m.page) && (m.page as number) >= 1 && (m.page as number) <= INTRO_PAGES + 1
