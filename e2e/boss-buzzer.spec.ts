@@ -49,6 +49,7 @@ async function restore(request: APIRequestContext) {
 // on turn, or a shut-out phone can still buzz; why_new=room tests cover messages, not the pages; seam=none;
 // no_claim=the ▶-gated video path and auto pause/resume (lib/room/boss-buzzer.test.ts)
 test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut out, the host can skip", async ({ browser }) => {
+  test.setTimeout(60_000); // 答錯 until the wanted boss question, each turn now with its own self-rolling check (#422)
   const host = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
   await host.goto("/");
   await host.getByRole("button", { name: /主持遊戲/ }).click();
