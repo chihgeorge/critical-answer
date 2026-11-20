@@ -16,8 +16,8 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn, giftText, hostAnswerShown, PAUSED_OFFLINE, pausedOffline, thrownOutText } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
-import { hostCheckLine } from "@/lib/class-dice";
+import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { hostCheckText } from "@/lib/class-dice";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
@@ -504,8 +504,7 @@ export default function HostPage() {
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
   // The landed persuasion pass or fail of the team on turn (a 1 and a 20 have their own lines below).
-  const landedCheck = game && turn?.team && game.question && !buzz && !turn.inBoss ? game.view.checks?.[checkKey(game.question.id, turn.team.id)] : undefined;
-  const shownCheck = landedCheck && landedCheck.value !== 1 && landedCheck.value !== 20 && !game?.pendingRoll && !revealUp ? landedCheck : undefined;
+  const shownCheck = game && turn?.team && !buzz && !turn.inBoss && !game.pendingRoll && !revealUp ? hostCheckText(game.view.checks, turn.team.id, game.question, turn.questionId, game.stageBeat === "check-success") : null;
   // A timing question (timing-tap.md 畫面): the big screen's clock missing for 3 s after ▶ turns the line into a warning.
   const timing = buzz ? game?.question?.timing : undefined;
   const clockKey = timing && buzz?.open && !game?.tapLive ? `${buzz.questionId}:${buzz.tapRound ?? 0}` : null;
@@ -1316,7 +1315,7 @@ export default function HostPage() {
                   )}
                   {shownCheck && !game.phaseCard && !game.forkBeat && (
                     <div data-testid="host-check-result" className="mt-1 text-[14px]" role="status">
-                      {hostCheckLine(shownCheck, game.stageBeat === "check-success" || !!game.question?.memorize)}
+                      {shownCheck}
                     </div>
                   )}
                   {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}

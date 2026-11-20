@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkChip, clericEffect, hostCheckLine, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
+import { checkChip, clericEffect, hostCheckLine, hostCheckText, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
 
 // Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰, class-dice-rework.md); fails_when=a tier
 // boundary (1, 2–6, 7–19, 20) shows another tier's effect, or a chef's dish die reads like everyone's; seam=none
@@ -57,5 +57,23 @@ describe("hostCheckLine", () => {
     expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, true)).toBe("🗣️ 說服成功：5+4=9≥8・稍後出題");
     expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, false)).toBe("🗣️ 說服成功：5+4=9≥8・提示第一個字「萬」");
     expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true }, false)).toBe("🗣️ 說服成功：5+4=9≥8");
+  });
+});
+
+describe("hostCheckText", () => {
+  // Value: protects=the host sees 「稍後出題」 while the 說服成功 card is up, when STATE has no question yet (#443 / qa-c4 #5);
+  // fails_when=the line only appears after the card, or a stale check shows when no card is up; seam=none
+  const pass = { value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" };
+  const checks = { "q1:T0": pass, "q2:T0": { value: 20, bonus: 0, dc: 8, passed: true } }; // pregate-literal: a natural 20, not the HP cap
+  it("finds the check by the turn's question during the card, and shows the hint after it", () => {
+    expect(hostCheckText(checks, "T0", null, "q1", true)).toBe("🗣️ 說服成功：5+4=9≥8・稍後出題");
+    expect(hostCheckText(checks, "T0", { id: "q1" }, "q1", false)).toBe("🗣️ 說服成功：5+4=9≥8・提示第一個字「萬」");
+    expect(hostCheckText(checks, "T0", { id: "q1", memorize: true }, "q1", false)).toBe("🗣️ 說服成功：5+4=9≥8・稍後出題");
+  });
+  it("shows nothing without a question outside the card, for a 1 or a 20, or with no check", () => {
+    expect(hostCheckText(checks, "T0", null, "q1", false)).toBeNull();
+    expect(hostCheckText(checks, "T0", { id: "q2" }, "q2", false)).toBeNull();
+    expect(hostCheckText(checks, "T1", { id: "q1" }, "q1", false)).toBeNull();
+    expect(hostCheckText(undefined, "T0", null, undefined, true)).toBeNull();
   });
 });

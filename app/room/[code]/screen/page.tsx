@@ -985,7 +985,8 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceL
         {team && <TurnRibbon color={look(team, idx).hat} maxWidth={360}>{`🔮 ${name}`}</TurnRibbon>}
         <MapStrip view={view} />
       </div>
-      <div className="absolute" style={{ right: 60, top: 108, zIndex: 6 }}>
+      {/* Inside the card's top-right corner (the card spans left/right 110): at right 60 「⏳ 時間到」 crossed its border. */}
+      <div className="absolute" style={{ right: 124, top: 108, zIndex: 6 }}>
         {fortune.timeout ? (
           <span className="px-chip" style={{ fontSize: 26, background: "var(--danger)", color: "var(--k)" }}>⏳ 時間到</span>
         ) : typeof left === "number" && fortune.step === "choose" ? (

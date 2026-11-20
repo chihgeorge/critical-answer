@@ -1,7 +1,7 @@
 // The words for the class dice and the dish die (docs/designs/class-dice-rework.md): what each tier of a die does, for
 // the big screen's roll, the phones and the narrator. Pure and bank-free, so a client may import it.
 
-import { SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, dishMultiplier, dishTier, skillTier } from "./game-state";
+import { type CheckRecord, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_HIT_SHARE, checkKey, dishMultiplier, dishTier, skillTier } from "./game-state";
 
 /** The question a mage casts on, as the screens know it. */
 export type CastOn = "multipleChoice" | "text" | "sort";
@@ -93,6 +93,16 @@ export function hostCheckLine(check: { value: number; bonus: number; dc: number;
   if (held) return `${chip}・稍後出題`;
   // No hint: the mage gave it already, or the answer is too short; the chip alone says nothing wrong.
   return check.hint ? `${chip}・提示第一個字「${check.hint}」` : chip;
+}
+
+/** The host page's result line for the team on turn, or null (a 1 and a 20 have their own lines). During the 說服成功
+ * card STATE sends no question (the screen and phones must not have it yet), so the turn's question id finds the check
+ * then (#443). */
+export function hostCheckText(checks: Record<string, CheckRecord> | undefined, teamId: string, question: { id: string; memorize?: boolean } | null, turnQuestionId: string | undefined, checkCard: boolean): string | null {
+  const questionId = question?.id ?? (checkCard ? turnQuestionId : undefined);
+  const check = questionId ? checks?.[checkKey(questionId, teamId)] : undefined;
+  if (!check || check.value === 1 || check.value === 20) return null;
+  return hostCheckLine(check, checkCard || !!question?.memorize);
 }
 
 export function checkChip(target: { bonus: number; dc: number }, check?: { value: number; bonus: number; dc: number; passed: boolean }): { text: string; tone: "warn" | "ok" | "danger" } {
