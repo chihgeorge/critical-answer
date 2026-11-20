@@ -153,7 +153,8 @@ export type AnswerReveal = {
   at?: { monster: PublicQuestion["monster"]; room: number | null };
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers.
    * `dishDie`: the dish die behind it, `dishBonus` what it changed (absent when nothing), `chef` read with the chef's multipliers. */
-  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; chef?: true };
+  /** `halvedFrom`: the gain before a halving (a persuasion 1, a curse, the oracle), so the phone shows that step too. */
+  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; halvedFrom?: number; chef?: true };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {
@@ -574,6 +575,8 @@ export type ServerMessage =
       initiative?: InitiativeView;
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
+      /** The boss is on its last phase (a one-phase boss always is): the big screen's 「最後的挑戰！」 chip. */
+      bossFinal?: true;
       /** Every catalog monster has a dish, so a server since the catalog always sends it: scores read 飽足感 instead of 獎勵分. Absent from older servers. */
       cuisine?: true;
       /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */

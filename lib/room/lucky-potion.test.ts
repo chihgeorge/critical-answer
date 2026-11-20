@@ -147,6 +147,22 @@ describe("🍀 lucky die in the room", () => {
     expect(n.team(A).item).toBeUndefined();
   });
 
+  // Value: protects=a dish die's 🍀 line is said before the dish it judged, not after it (QA 2026-11-19: 「兩顆骰子手牽手」 came
+  // after the burnt dish's line); fails_when=sayPotion appends it after the judgment's narration again.
+  it("a dish die's lucky line leads its judgment's narration", async () => {
+    const g = started();
+    g.give(A);
+    g.drink();
+    g.dice.push(1, 1);
+    g.lockRight();
+    expect(g.state().pendingRoll).toMatchObject({ kind: "dish", values: [1, 1] });
+    await vi.advanceTimersByTimeAsync(2000);
+    const n = g.all().filter((m) => m.type === "NARRATION").at(-1);
+    expect(n.lines[0]).toMatch(/^🍀 /);
+    expect(n.lines.filter((l: string) => l.startsWith("🍀"))).toHaveLength(1);
+    expect(n.lines.length).toBeGreaterThan(1);
+  });
+
   it("the persuasion check rolls itself before a drink, and an armed one stays off it", () => {
     const g = started(text("t1"));
     // The check rolled and landed as the turn opened (sendSettled): one die, nothing to double.

@@ -26,10 +26,10 @@ test("the host picks a team's next question and it comes up after the team's cor
   const choice = host.getByRole("button").filter({ hasText: "答案：" }).and(host.locator(":enabled")).last();
   const label = (await choice.locator("span > span").first().textContent())!;
   await choice.click();
-  await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
+  await expect(host.getByTestId("queued-pick")).toHaveText(`下一次換新題時出：${label}`);
   // Every team's pick is in ⚙ 更多's 隊伍 too; the page keeps only the team up next (甲隊, the only one).
   await openTeamTools(host, "甲隊");
-  await expect(host.getByTestId("more-drawer")).toContainText(`下一題：${label}`);
+  await expect(host.getByTestId("more-drawer")).toContainText(`下一次換新題時出：${label}`);
   await closeMore(host);
 
   // Regression: ISSUE-001 — with the picker open, the judge keys still judged the turn behind it
@@ -45,7 +45,7 @@ test("the host picks a team's next question and it comes up after the team's cor
   await host.getByRole("button", { name: "指定下一題" }).click();
   await host.getByRole("button").filter({ hasText: `${label}答案：` }).click();
   // The pick's reply comes after any judgment the keys would have sent, so the turn is checked once it is in.
-  await expect(host.getByTestId("queued-pick")).toHaveText(`下一題：${label}`);
+  await expect(host.getByTestId("queued-pick")).toHaveText(`下一次換新題時出：${label}`);
   await expect(host.getByTestId("host-reveal")).toHaveCount(0);
   await hostCheckSettled(host); // the fill-in's check rolls itself first
   await expect(host.getByRole("button", { name: "答對！" })).toBeEnabled();

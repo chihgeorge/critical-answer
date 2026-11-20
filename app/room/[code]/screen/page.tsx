@@ -41,6 +41,7 @@ import { McOption, optionLetter, type OptionLook } from "@/components/mc-option"
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from "@/components/d20";
+import { checkChip } from "@/lib/class-dice";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
@@ -307,11 +308,13 @@ type YoutubeContent = Extract<PublicMediaContent, { kind: "youtube" }>;
 type ShownVideo = Extract<ServerMessage, { type: "SCREEN_VIDEO" }>;
 /** A chip that stands in the side column beside a video (D14), at the same 20px as the hints. */
 const CHIP = { fontSize: 20, padding: "4px 10px", color: "var(--k)", border: "4px solid var(--k)", whiteSpace: "normal", borderRadius: 12 } as const;
+/** checkChip's tones: the DC in yellow, a pass in green, a miss in red with white text. */
+const CHIP_TONE = { warn: { background: "var(--warn)" }, ok: { background: "var(--ok)" }, danger: { background: "var(--danger)", color: "#fff" } } as const;
 
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, bossFinal, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; bossFinal?: true; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster, stageMonster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -399,7 +402,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
     ? `${nameOf(pendingLock.teamId)}鎖定了 ${question?.items ? "順序" : optionLetter(pendingLock.optionIndex)}……`
     : wrong
       ? view.awaitingPrayer === wrong.teamId
-        ? `${nameOf(wrong.teamId)}答錯了！牧師祈禱中……`
+        ? `${nameOf(wrong.teamId)}答錯了！等牧師決定要不要祈禱……`
         : wrong.prayed
           ? `${nameOf(wrong.teamId)}祈禱了！這回合再答一次……`
           : inBoss
@@ -410,6 +413,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // A memory question's options and items stay hidden while it plays: it is not known as a fill-in until it ends.
   const fillIn = !!question && !question.memorize && !question.options && !question.items && !reveal && !card;
   const check = fillIn && turn ? view.checks?.[checkKey(question!.id, turn.id)] : undefined;
+  // A persuasion 20's dish die: its question is never shown, so the panel has no question (QA 2026-11-19, L3).
+  const persuadedRoll = !question && !reveal && pendingRoll?.kind === "dish" && !pendingRoll.rejudge && view.checks?.[checkKey(pendingRoll.questionId, pendingRoll.teamId)]?.value === 20;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
@@ -432,7 +437,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   const sneakChip = turn?.sneakArmed && !reveal && !card;
   const sneakText = turn?.sneakCrit ? `🗡️ 完美偷襲！答對 ×${SNEAK_CRIT_MULTIPLIER}、首領 −3` : `🗡️ 偷襲就位！答對 ×${SNEAK_REWARD_MULTIPLIER}、首領 −2`;
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
-  const dcChip = fillIn && !buzz && !inBoss && !turn?.sneakArmed ? turn?.checkTarget : undefined;
+  const dcTarget = fillIn && !buzz && !inBoss && !turn?.sneakArmed ? turn?.checkTarget : undefined;
+  // Its result replaces the DC once the die's beat is over (the record shows then).
+  const dcChip = dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
@@ -443,8 +450,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         </div>
       )}
       {dcChip && (
-        <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, background: "var(--warn)" }}>
-          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
+        <div data-testid="screen-check-dc" className="px-chip" style={{ ...CHIP, ...CHIP_TONE[dcChip.tone] }}>
+          {dcChip.text}
         </div>
       )}
       {question && <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="block w-fit px-3 py-1 text-[20px]" />}
@@ -651,12 +658,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll ? "說服成功・免答" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
             {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
-          {/* From phase 2 on the chip names the phase under way (D5); phase 1 looks like any boss. */}
-          {!reveal && !card && inBoss && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
+          {/* From phase 2 on the chip names the phase under way (D5). 「最後的挑戰！」 only on the last phase: a phase 1 with
+              more to come has no chip (QA 2026-11-19). */}
+          {!reveal && !card && inBoss && (bossPhaseInfo || bossFinal) && <LabelChip>{bossPhaseInfo?.name ?? "最後的挑戰！"}</LabelChip>}
           {/* The winner's category, or the type the winner or the host picked (#321; boss-music-buzzer.md M5). Up here: under the reveal's
               video the boss nameplate and the narrator box cover it. */}
           {reveal && !card && (view.buzz?.category ?? view.buzz?.qtype) && (
@@ -740,7 +748,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           </div>
         ) : question ? (
           // Check first, question after: the room sends no text until the die's beat ends.
-          question.checkFirst ? <span data-testid="screen-check-first">{wrong || (pendingRoll && pendingRoll.kind !== "check") ? "……" : "🎲 說服檢定中……擲完才出題"}</span> :
+          // Under a die the roll's own chip says it: a line here would sit under that chip (QA 2026-11-19, L2).
+          question.checkFirst ? <span data-testid="screen-check-first">{pendingRoll ? "\u00a0" : wrong ? "……" : "🎲 說服檢定中……擲完才出題"}</span> :
           // 記憶題 (memory-questions.md): the room sends only the media while it plays; the question comes after.
           question.memorize ? (
             <span data-testid="screen-memorize" role="status" className="inline-flex flex-wrap items-center justify-center gap-2">
@@ -752,7 +761,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         ) : pickHold && !reveal && !card ? (
           // #370: the next question waits for the buzz winner's category, or the host's 下一步.
           <span data-testid="screen-pick-hold" role="status">{nameOf(view.buzz?.picker)} 正在選下一題的類別……</span>
-        ) : paused ? <span data-testid="screen-paused" role="status">{PAUSED_OFFLINE}</span> : "……"}
+        ) : paused ? <span data-testid="screen-paused" role="status">{PAUSED_OFFLINE}</span> : pendingRoll ? "\u00a0" : "……"}
         {tileVideo && <div className="mt-3 flex flex-col items-center gap-2 empty:hidden">{beside}</div>}
         {video && !tileVideo && (
           // A reveal with nothing beside its video centres it (D18); the player stays the first child, so it is kept.
@@ -831,8 +840,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         </div>
       )}
       {dcChip && !asking && (
-        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: "var(--warn)", color: "var(--k)", border: "4px solid var(--k)" }}>
-          🗣️ 說服擲骰檢定 {dcChip.dc}（+{dcChip.bonus}）
+        <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, whiteSpace: "nowrap", padding: "6px 14px", color: "var(--k)", border: "4px solid var(--k)", ...CHIP_TONE[dcChip.tone] }}>
+          {dcChip.text}
         </div>
       )}
       <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
@@ -1096,6 +1105,13 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
   // Only after 結束冒險 (no dish): after a boss kill the kill-shot line has had the cooking to be read (storyboard row 1).
   const holdNarration = unread && !dish;
   const waiting = cooked && !!podium && (podium.beats === null || podium.step === -1) && !holdNarration;
+  // The calls are in and the host's first ▶ is still to come: the narrator opens the ceremony instead of 「…」 (QA 2026-11-19).
+  const intro = waiting && !!podium?.beats?.length && podium.step === -1 ? (podium.beats.some((b) => b.kind === "award") ? "頒獎典禮開始！先來揭曉今晚的稱號……" : "頒獎典禮開始！名次揭曉……") : null;
+  useEffect(() => {
+    if (intro) say([intro]);
+    // Once per ceremony: say() is a new function on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intro]);
   // After 結束冒險 the box picks up at the line the game screen had reached, so the room's wait is not a second pass.
   const [from] = useState(() => (dish || !narration ? 0 : Math.min(typedTo, narration.lines.length - 1)));
   useEffect(() => {
@@ -1200,7 +1216,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
               <div className="flex flex-col items-center pt-2 text-white" style={{ width: 150, height: p.h, background: p.bg, boxShadow: "0 0 0 4px var(--k), inset 0 6px 0 #ffffff55, inset 0 -8px 0 #0003" }}>
                 <span className="px-num text-[22px]" style={{ textShadow: "3px 3px 0 var(--k)" }}>{p.place}</span>
                 {shown && <b className="mt-[6px] truncate text-[18px] font-normal" style={{ maxWidth: 140, textShadow: "2px 2px 0 var(--k)" }}>{t.name}</b>}
-                {result && <s className="mt-[2px] text-[14px] no-underline" style={{ color: "#fff6c0", textShadow: "2px 2px 0 var(--k)" }}>{t.reward} {cuisine ? "飽足感" : "分"}</s>}
+                {/* A dark pill: light text straight on the gold step was hard to read on a projector (QA 2026-11-19, L5). */}
+                {result && <s className="mt-[4px] px-[6px] text-[17px] no-underline" style={{ color: "#fff6c0", background: "var(--k)" }}>{t.reward} {cuisine ? "飽足感" : "分"}</s>}
               </div>
             </div>
           );
@@ -1215,8 +1232,8 @@ function Finished({ view, winners, reveal, podium, narration, unread, typedTo, e
         className="absolute"
         // The epilogue runs three lines or more; at 22px it stays under the podium (bottom 130) instead of covering the names.
         style={{ left: 18, right: 18, bottom: 12, zIndex: 7, ...(ended && epilogue ? { fontSize: 22, lineHeight: 1.35 } : {}) }}
-        loading={!(ended && epilogue) && !current && (!narration || waiting) && step !== 3}
-        lines={step === 3 ? [line] : ended && shownEpilogue ? [shownEpilogue] : current ? [current.line] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
+        loading={!(ended && epilogue) && !current && !intro && (!narration || waiting) && step !== 3}
+        lines={step === 3 ? [line] : ended && shownEpilogue ? [shownEpilogue] : current ? [current.line] : intro ? [intro] : waiting ? [] : (narration?.lines.slice(from) ?? [])}
         {...(step !== 3 && !(ended && epilogue) && !current && !waiting && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count + from), voiceLine: voiceLineOf(voiceAt, narration.eventId, from) } : {})}
       />
     </>
@@ -2189,7 +2206,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} bossFinal={game.bossFinal} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

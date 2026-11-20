@@ -3916,9 +3916,11 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(said()).toMatch(/^戰士擲出 5 點，沒打中。/);
     roll(17);
     await vi.advanceTimersByTimeAsync(2000); // the roll's beat; the answer's reveal comes first
+    // QA 2026-11-19: the hit is said before the dish die, not after its 「接下來擲料理骰」 line.
+    expect(said()).toBe("戰士擲出 17 點，命中！拿八成獎勵。接下來擲料理骰，看看這道菜煮得怎樣。");
     rollDish(room);
     await vi.advanceTimersByTimeAsync(2000); // its hit's dish die
-    expect(said()).toMatch(/^戰士擲出 17 點，命中！/);
+    expect(said()).not.toMatch(/戰士擲出/);
   });
 
   it("finishes a roll after the phone disconnects and keeps its use spent", () => {

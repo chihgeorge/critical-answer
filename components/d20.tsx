@@ -292,6 +292,15 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
   }, [ini.order, beat, ties.length]);
   const name = (id: string) => teams.find((t) => t.id === id)?.name ?? "";
   const tie = ini.order && beat < ties.length ? ties[beat] : null;
+  // The order (or a reroll's values) shows once its dice have landed, not while they still tumble (QA 2026-11-19, L9).
+  const rollKey = !ini.order ? null : tie ? `tie-${beat}` : "order";
+  const [landedKey, setLandedKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!rollKey) return;
+    const t = setTimeout(() => setLandedKey(rollKey), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : TUMBLE_MS);
+    return () => clearTimeout(t);
+  }, [rollKey]);
+  const landed = rollKey !== null && landedKey === rollKey;
   const ids = tie ? tie.teams : (ini.order ?? teams.map((t) => t.id));
   const value = (id: string, i: number) => (tie ? tie.values[i] : ini.order ? ini.rolls[id] : undefined);
   const size = ids.length <= 4 ? 150 : 90;
@@ -327,7 +336,7 @@ export function InitiativeOverlay({ ini, teams }: { ini: InitiativeView; teams: 
       <div
         data-testid="initiative-result"
         className="px-bar px-5 text-[26px]"
-        style={ini.order ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)", color: "var(--k)" }}
+        style={{ ...(ini.order ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -6px 0 var(--orange)" } : { background: "var(--cream)", color: "var(--k)" }), visibility: ini.order && !landed ? "hidden" : undefined }}
       >
         {result}
       </div>

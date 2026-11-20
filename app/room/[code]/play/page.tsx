@@ -1346,7 +1346,7 @@ export default function PlayPage() {
         {/* Our own dish die, once its answer is scored (and its dish served): what it did to the reward. */}
         {game && !finished && revealed?.scored?.teamId === teamId && revealed.scored.dishDie !== undefined && (!revealed.dish || revealed.served) && (
           <div data-testid="dish-roll-row" className="px-bar mt-1 !text-[19px]" role="status" style={revealed.scored.dishDie === 1 ? { background: "var(--danger)", color: "#fff" } : revealed.scored.dishDie === 20 ? { background: "var(--warn)", color: "var(--k)", boxShadow: "inset 0 -5px 0 var(--orange)" } : undefined}>
-            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine), game.view.teams.find((t) => t.id === teamId)?.classId === "chef")}
+            {dishPhoneLine(revealed.scored.dishDie, revealed.scored.dishBonus ?? 0, revealed.scored.points, scoreName(game.cuisine), game.view.teams.find((t) => t.id === teamId)?.classId === "chef", revealed.scored.halvedFrom)}
           </div>
         )}
 

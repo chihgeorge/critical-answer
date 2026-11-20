@@ -211,6 +211,8 @@ body {
   filter: drop-shadow(0 4px 0 #0008);
 }
 .px-ribbon i { font-style: normal; animation: px-blink 1s steps(1) infinite; }
+/* A how-to-play page's ribbon is a heading, not a turn: its ▶ stays put (QA 2026-11-19, L6: caught blinked off, it read as missing). */
+.px-intro .px-ribbon i { animation: none; }
 /* A phone-width host or player page: 22px (the font's 2x) and tighter sides, so 「首領戰　輪到：」 leaves room for
    the team's name. The rule reads the window's width, and a big screen is never opened that narrow. */
 @media (max-width: 400px) {

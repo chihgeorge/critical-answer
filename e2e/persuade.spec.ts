@@ -33,7 +33,8 @@ test("the check rolls itself, passes the DC, the team sees the first character, 
   const question = (await host.getByTestId("host-question").textContent())!;
   expect(question.length).toBeGreaterThan(0);
   await expect(host.getByTestId("host-check-first")).toBeVisible();
-  await expect(screen.getByTestId("screen-check-first")).toHaveText("🎲 說服檢定中……擲完才出題");
+  // The die's own chip names the check while it rolls, so the panel holds no line under it (QA 2026-11-19, L2).
+  await expect(screen.getByTestId("screen-check-first")).toBeVisible();
   await expect(screen.getByText(question)).toHaveCount(0);
   await expect(team.getByText(question)).toHaveCount(0);
   await expect(team.getByTestId("roll-check")).toHaveCount(0);
