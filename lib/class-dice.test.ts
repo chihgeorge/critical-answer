@@ -43,7 +43,7 @@ describe("checkChip", () => {
   // fails_when=the chip keeps the DC after the roll, or drops the word for the bonus.
   it("shows the DC with its bonus before the roll, then the result", () => {
     expect(checkChip({ bonus: 1, dc: 10 })).toEqual({ text: "🗣️ 說服擲骰檢定 10（加值 +1）", tone: "warn" });
-    expect(checkChip({ bonus: 1, dc: 10 }, { value: 1, bonus: 1, dc: 10, passed: false })).toEqual({ text: "🗣️ 擲出 1：答對只拿一半", tone: "danger" });
+    expect(checkChip({ bonus: 1, dc: 10 }, { value: 1, bonus: 1, dc: 10, passed: false })).toEqual({ text: "🗣️ 擲出 1：被轟出門", tone: "danger" });
     expect(checkChip({ bonus: 4, dc: 8 }, { value: 3, bonus: 4, dc: 8, passed: false }).text).toBe("🗣️ 說服失敗：3+4=7<8");
     expect(checkChip({ bonus: 4, dc: 8 }, { value: 5, bonus: 4, dc: 8, passed: true })).toEqual({ text: "🗣️ 說服成功：5+4=9≥8", tone: "ok" });
   });

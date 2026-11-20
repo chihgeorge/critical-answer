@@ -43,6 +43,7 @@ function makeRoom(storage: RoomStorage, b: ReturnType<typeof bank>) {
 function started(b: ReturnType<typeof bank>, fields: object = {}, holdCheck = false) {
   const g = makeRoom(memoryStorage(), b);
   (g.room as unknown as { holdCheck: boolean }).holdCheck = holdCheck;
+  if (holdCheck) (g.room as unknown as { fixedDie: number }).fixedDie = 2; // the `() => 0` rng rolls 1s: a natural 1 would throw the team out (throwOut)
   const host = makeConn("host");
   g.room.onConnect(host);
   send(g.room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -193,7 +194,7 @@ describe("記憶題 with an image", () => {
   it("a fill-in is check first, then the image, then the question", () => {
     const g = started(bank(memText("t1")), {}, true);
     expect(g.state().question).toMatchObject({ checkFirst: true, content: { kind: "text", value: "" } });
-    vi.advanceTimersByTime(2000); // the check's beat; no image seconds run before it lands
+    vi.advanceTimersByTime(4000); // the check's beat and its 說服成功 card (the mage's +6 passes a 2); no image seconds run before
     expect(g.state().question).toMatchObject({ memorize: true, memoryLeft: 5000, content: { kind: "image" } });
     send(g.room, g.phones[0], { type: "TEAM_SUBMIT_TEXT", questionId: "t1", text: "咪咪" });
     expect(g.lastError(g.phones[0])).toMatchObject({ detail: "memorizing" });

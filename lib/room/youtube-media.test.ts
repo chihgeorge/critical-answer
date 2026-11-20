@@ -33,7 +33,7 @@ function game(questions: object[], roll = true) {
     boss: { monster: "dragon", maxHp: 3, questions: [text("b1")] },
   });
   const io = { broadcast: vi.fn() } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
-  const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0 });
+  const room = new DungeonRoom(io, () => 0, { bank, epilogueDelayMs: 0, fixedDie: 2 }); // the `() => 0` rng rolls 1s: a natural 1 would throw the team out (throwOut)
   // The check rolls itself as each fill-in comes up; check() lands it.
   (room as unknown as { holdCheck: boolean }).holdCheck = true;
   const host = makeConn("host");

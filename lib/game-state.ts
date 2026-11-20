@@ -520,16 +520,17 @@ export interface WrongAnswer {
 export type MageHintKind = "count" | "whole";
 
 /** A natural 20 or 1 behind a correct answer: the dish die (`dish`), a class die's 20 (a warrior's roll or the thief's
- * sneak die, `crit`), or the question's persuasion check (a 20 won it outright, a 1 halved it). Narration and the cue use it. */
-export type RollMark = { kind: "dish" | "crit" | "check"; value: 20 | 1 };
+ * sneak die, `crit`), or the question's persuasion check's 20, which won it outright (a 1 throws the team out: throwOut).
+ * Narration and the cue use it. */
+export type RollMark = { kind: "dish" | "crit"; value: 20 | 1 } | { kind: "check"; value: 20 };
 
 export type AnswerOutcome =
   /** `reward` is the whole gain; `dishBonus` the dish die's share of it (negative on a 1), absent when it changed nothing;
    * `dishDie` the dish die that landed, absent when none rolled. */
   | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; dishBonus?: number; dishDie?: number; killBonus?: number; roll?: RollMark }
-  /** `switchedTo`: 逃跑's new monster (catalog id). */
-  | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
+  /** `switchedTo`: 逃跑's new monster (catalog id). `thrownOut`: the persuasion check's natural 1 made the team flee (throwOut). */
+  | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string; thrownOut?: true }
   /** `newBossQuestion`: a wrong boss answer rotated the shared question (boss redesign D2=B). */
   | { type: "incorrect-retry"; teamId: string; newBossQuestion?: true; penalty?: number };
 
@@ -1376,21 +1377,21 @@ export function answerQuestion(
   const sneakCrit = correct && !!me?.sneakArmed && !!me.sneakCrit;
   // A class die's 20 behind a correct answer (the sneak die or a warrior's roll) takes one more boss heart.
   const crit = correct && (sneakCrit || warriorDie === 20);
-  // This team's persuasion check on this question: a natural 1 halves any success on it, a warrior's too (R3-7).
+  // This team's persuasion check on this question (a natural 1 never gets here: throwOut).
   const check = game.checks?.[checkKey(questionId, teamId)];
   // A natural 20 talked the monster aside (persuasion-gift): it lives, so the team eats what it shared, not the monster.
   const persuaded = correct && check?.value === 20 && !check.dropped;
-  // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves like a natural-1
-  // check (never twice), the blessing adds half the base.
+  // An event's curse or blessing waits for the next correct answer (event-rooms.md D12): the curse halves (never twice
+  // with the oracle), the blessing adds half the base.
   const boon = correct ? game.teams.find((t) => t.id === teamId)?.boon : undefined;
   // A question the team asked the oracle about halves the same way (anti-ai-cheating.md); never in the boss room.
-  const halved = correct && (check?.value === 1 || boon === "curse" || oracleActive(game, teamId));
+  const halved = correct && (boon === "curse" || oracleActive(game, teamId));
   const dishMark = correct && !isBuzzPhase(game) && (dishDie === 20 || dishDie === 1) ? dishDie : undefined;
-  // A check's 20 or 1 names the answer first (persuaded, or halved), then a class die's 20; the dish die rides along in
+  // A check's 20 names the answer first (persuaded), then a class die's 20; the dish die rides along in
   // the outcome's dishDie, so its look and line still show.
   const rollMark: { roll?: RollMark } =
-    correct && (check?.value === 20 || check?.value === 1)
-      ? { roll: { kind: "check", value: check.value } }
+    correct && check?.value === 20
+      ? { roll: { kind: "check", value: 20 } }
       : crit
         ? { roll: { kind: "crit", value: 20 } }
         : dishMark
@@ -1803,6 +1804,19 @@ export function recordCheck(game: GameState, teamId: string, questionId: string,
   const record: CheckRecord = { value, bonus, dc, passed, ...(hint !== null ? { hint } : {}) };
   const teams = patchTeam(game.teams, teamId, (t) => withNaturals(t, [value]));
   return { ...game, teams, checks: { ...game.checks, [checkKey(questionId, teamId)]: record } };
+}
+
+/** 被轟出門: the team's persuasion check on its current fill-in question landed a natural 1, so the monster throws it out
+ * before the question is ever shown (owner, 2026-11-19; the mirror of a 20's free win). It scores nothing and flees to a
+ * new monster in the same room, one difficulty easier, exactly as 逃跑 after a wrong answer (counted in `flees`), and the
+ * turn passes. No wrong lock comes first, so a cleric has nothing to pray on, and no dish die (or 🍀) rolls. */
+export function throwOut(game: GameState, teamId: string, questionId: string, rng: () => number = Math.random): { game: GameState; outcome: AnswerOutcome } {
+  if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) throw new InvalidActionError("no_natural_1");
+  const { game: fled, outcome } = answerQuestion(game, teamId, questionId, false, "switch", rng);
+  // The 1 goes with the throw-out, even when a short bank deals the same question back (it rolls afresh then).
+  const checks = { ...fled.checks };
+  delete checks[checkKey(questionId, teamId)];
+  return { game: { ...fled, checks }, outcome: outcome.type === "incorrect-flee" ? { ...outcome, thrownOut: true } : outcome };
 }
 
 /** The thief presses 偷襲 on its current question (class-dice-rework.md): the use is spent at once and the room rolls the

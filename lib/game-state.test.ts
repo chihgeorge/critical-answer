@@ -54,6 +54,7 @@ import {
   recordCheck,
   checkTarget,
   checkKey,
+  throwOut,
   CHECK_BONUS,
   CHECK_DC,
   InvalidActionError,
@@ -2321,9 +2322,9 @@ describe("fortune counters: natural1s, correctAnswers, wrongAnswers", () => {
 });
 
 // Value: protects=the persuasion check's rules (dnd design R6, R8, R3-7, E1-1, E1-2): bonus by class against the pool's
-// DC or a boss question's own difficulty's DC (16 when unmarked), a natural 20 passes with no hint, a 1 fails and halves any success on the question, one roll per
+// DC or a boss question's own difficulty's DC (16 when unmarked), a natural 20 passes with no hint, a 1 fails and throws the team out (throwOut), one roll per
 // team and question, and the record leaves with the question; fails_when=the DC or bonus is wrong, a boss question's difficulty is ignored, a 1 passes, the hint
-// leaks on a 20, the warrior's hit skips the half, a mage casts a second hint, or a record outlives its question;
+// leaks on a 20, a thrown-out team scores or keeps the turn, a mage casts a second hint, or a record outlives its question;
 // seam=none; no_claim=the room's beat and broadcast (dungeon-room.test.ts)
 describe("the persuasion check (dnd design R6, R8)", () => {
   function checkGame(classes: (ClassId | undefined)[], bossThreshold = 15, bossMaxHp = 3): GameState { // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
@@ -2379,20 +2380,32 @@ describe("the persuasion check (dnd design R6, R8)", () => {
     expect(() => recordCheck(checkGame([undefined]), "T0", "not-mine", 9, "萬家福")).toThrow();
   });
 
-  it("a natural 1 halves the success on that question, before the sneak, and marks the outcome", () => {
-    const g = check(checkGame([undefined]), 1);
-    expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 5, roll: { kind: "check", value: 1 } });
-    // 10 halved is 5, then the sneak's ×1.5 = 7.5 rounds to 8.
-    const sneaky = check(armSneak(checkGame(["thief"]), "T0"), 1);
-    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 8 });
-    const boss = check(checkGame([undefined], 0), 1);
-    expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 8 }); // 15 halved
+  it("a natural 1 throws the team out: no points, a new monster one easier, a flee (not a wrong answer), the turn passes", () => {
+    const g = check(checkGame(["cleric", undefined]), 1);
+    const { game, outcome } = throwOut(g, "T0", q0(g), first);
+    expect(outcome).toMatchObject({ type: "incorrect-flee", teamId: "T0", thrownOut: true, switchedTo: expect.any(String), newDifficulty: Math.max(1, g.teams[0].currentDifficulty - 1) });
+    expect(game.teams[0]).toMatchObject({ reward: 0, score: 0, flees: 1, natural1s: 1, turns: 1 });
+    expect(game.teams[0].wrongAnswers).toBeUndefined();
+    expect(game.teams[0].currentQuestionId).not.toBe(q0(g));
+    expect(game.checks?.[checkKey(q0(g), "T0")]).toBeUndefined();
+    expect(currentTurnTeamId(game)).toBe("T1");
+    // No wrong lock came first: the cleric has nothing to pray on, and keeps its uses.
+    expect(game.pendingWrong).toBeNull();
+    expect(game.teams[0].abilityUses).toBe(g.teams[0].abilityUses);
+    // Not a judgment: the 改判 ledger is the room's, and it records none (dungeon-room.test.ts).
+    expect(game.judgments ?? []).toEqual(g.judgments ?? []);
   });
 
-  it("a warrior's hit after a natural-1 check is halved too (R3-7)", () => {
-    const g = spendAbility(check(checkGame(["warrior"]), 1), "T0", "warrior");
-    // 10 halved is 5, and the warrior's 80% of it is 4.
-    expect(warriorRoll(g, "T0", q0(g), 15).outcome).toMatchObject({ reward: 4 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+  it("throws out only on a natural 1 recorded for this team and question", () => {
+    expect(() => throwOut(check(checkGame([undefined]), 2), "T0", q0(checkGame([undefined])))).toThrow(/no_natural_1/);
+    expect(() => throwOut(checkGame([undefined]), "T0", q0(checkGame([undefined])))).toThrow(/no_natural_1/);
+  });
+
+  it("an armed sneak is used up by the throw-out, and pays nothing", () => {
+    const g = check(armSneak(checkGame(["thief", undefined]), "T0"), 1);
+    const { game } = throwOut(g, "T0", q0(g), first);
+    expect(game.teams[0]).toMatchObject({ reward: 0 });
+    expect(game.teams[0].sneakArmed).toBeUndefined();
   });
 
   it("a natural 20's correct outcome is marked as a check, not a crit, and pays the plain reward", () => {

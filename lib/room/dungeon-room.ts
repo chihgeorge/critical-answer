@@ -60,6 +60,7 @@ import {
   recordTextWrong,
   warriorRoll,
   recordCheck,
+  throwOut,
   checkKey,
   checkTarget,
   atFork,
@@ -239,8 +240,23 @@ export const HOST_AWAY_GRACE_MS = 8000;
 /** The drum roll after the host reveals a lock, and the warrior's die on screen (phone-answering.md D10,
  * host-reveal.md). Every answer reveal then waits for the host's 下一題. */
 const BEAT_MS = 2000;
+/** A natural 1's or 20's beat (owner, 2026-11-20): the narrator says what the monster does, then the monster does it
+ * (angry then gone, or happy and handing over an ingredient), then the 1 flees or the 20's dish die rolls. The act waits
+ * until a big screen has read the beat's line (#425: the box waits for the voice), up to NATURAL_TELL_CAP_MS, then runs
+ * NATURAL_ACT_MS. */
+const READ_POLL_MS = 250;
+const NATURAL_TELL_CAP_MS = 6000;
+const NATURAL_ACT_MS = 2400;
+/** The beat with no big screen, or one that has read its line already: the first poll, then the act. */
+export const NATURAL_BEAT_MS = READ_POLL_MS + NATURAL_ACT_MS;
+/** The longest beat: a big screen that never reports its reading. */
+export const NATURAL_BEAT_CAP_MS = NATURAL_TELL_CAP_MS + NATURAL_ACT_MS;
 /** How long the next team's auto check waits after a 答錯 that 改判答對 can still undo: the host's window before a 20 ends it. */
 export const CHECK_GRACE_MS = 5000;
+/** The persuasion die waits for a big screen to read the turn's narration first (owner, 2026-11-20), never longer than
+ * this per character it had left to read, plus CHECK_READ_BASE_MS: a stuck screen never holds the game. */
+export const CHECK_READ_MS_PER_CHAR = 400;
+export const CHECK_READ_BASE_MS = 3000;
 /** A lost natural 20 waits this long after the last cue, so its own cue and story do not cut that one off. */
 export const LOST_CRIT_GAP_MS = 4000;
 /** A fork's door opening on show (docs/designs/branch-fork.md): the question, or the ❓ outcome, waits for it. */
@@ -297,6 +313,8 @@ export interface RoomOptions {
   e2eMonsterSide?: ForkSide;
   /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
   initiativeHoldMs?: number;
+  /** false (e2e, worker E2E_CHECK_NO_READ): the persuasion die rolls without waiting for the big screen's reading. */
+  checkReadsScreen?: boolean;
 }
 
 /** E2E_DIE as a die face: an integer 1-20, anything else is no fixed die. */
@@ -537,11 +555,15 @@ export class DungeonRoom {
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
   /** Short narrated cards before the next die or question. The step owns their duration. */
-  private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | null = null;
+  private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | "thrown-out" | "check-twenty" | null = null;
   /** A warrior's missed charge on show before it is judged (charge-fail beat): its die and what a 1 takes. Saved (snapshot `chargeBeat`). */
   private chargeBeat: { teamId: string; questionId: string; value: number; penalty: number } | null = null;
-  /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller. */
+  /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller.
+   * The thrown-out beat names its team here too (not saved: autoThrowOut starts it again after a restart). */
   private checkBeatAt: { teamId: string; questionId: string } | null = null;
+  /** The check's narrator line (sayCheck), and whether a natural 1's or 20's monster acts on screen yet (paceNatural). */
+  private beatLine: { eventId: number; index: number } | null = null;
+  private beatAct = false;
   /** Keep the map at the answered room until its dish has been eaten. */
   private bossEntryBefore: GameState | null = null;
   /** The judgment transcript keeps the entry fact even while its spoken announcement waits for the meal. */
@@ -660,6 +682,12 @@ export class DungeonRoom {
   private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
   /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
   private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The check waiting for the big screen's reading: which turn, since when, and the most characters it had left. Memory
+   * only: after a restart the wait starts over, under the same cap. */
+  private checkRead: { key: string; since: number; chars: number } | null = null;
+  private checkReadTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Narrations asked for and not landed yet (scripted ones land a tick later, AI ones seconds later). Memory only. */
+  private narrating = 0;
   /** Fires the STATE at the boss room's answer deadline (armBossDeadline). Memory only. */
   private bossDeadline: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
@@ -781,6 +809,7 @@ export class DungeonRoom {
   private e2eEventTeam: string | undefined;
   private e2eMonsterSide: ForkSide | undefined;
   private initiativeHoldMs: number;
+  private checkReadsScreen: boolean;
 
   constructor(
     readonly room: RoomIO,
@@ -797,6 +826,7 @@ export class DungeonRoom {
     this.e2eEventTeam = opts.e2eEventTeam;
     this.e2eMonsterSide = opts.e2eMonsterSide;
     this.initiativeHoldMs = opts.initiativeHoldMs ?? INITIATIVE_ORDER_MS;
+    this.checkReadsScreen = opts.checkReadsScreen ?? true;
     this.bankAnswers = allAnswers(this.bank);
     this.scripted = createScriptedProvider(rng);
     // Its own shuffle bags and Math.random: the dice lines draw nothing from the room's rng, so they never shift a die.
@@ -1533,7 +1563,7 @@ export class DungeonRoom {
     const teamId = currentTurnTeamId(game);
     const team = game.teams.find((t) => t.id === teamId);
     if (!teamId || !team || atFork(team) || team.inBoss) return false;
-    if (this.stageBeat === "check-success") return true;
+    if (this.stageBeat === "check-success" || this.stageBeat === "check-twenty") return true;
     const id = currentQuestionIdOf(game, teamId);
     if (this.question(id)?.kind !== "text") return false;
     const roll = this.pendingRoll;
@@ -1542,7 +1572,8 @@ export class DungeonRoom {
     const won = roll?.kind === "kill" && check?.value === 20 && !check.dropped;
     // So does the dish die that a natural 20's free answer rolls (class-dice-rework.md): no video, memory timer or hints.
     if (this.persuadedDish() && roll!.teamId === teamId && roll!.questionId === id) return true;
-    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check;
+    // A natural 1 throws the team out before its question is ever shown (throwOut).
+    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check || check.value === 1;
   }
 
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
@@ -1805,6 +1836,9 @@ export class DungeonRoom {
       // A beat sends no question, so it names the monster the stage keeps (#401); nobody on turn in the buzz phase is the boss.
       ...(beat ? { stageBeat: beat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
       ...(this.stageBeat === "charge-fail" && this.chargeBeat ? { chargeBeat: { teamId: this.chargeBeat.teamId, value: this.chargeBeat.value, penalty: this.chargeBeat.penalty } } : {}),
+      ...(this.stageBeat === "thrown-out" && this.checkBeatAt ? { thrownOut: { teamId: this.checkBeatAt.teamId } } : {}),
+      ...(this.stageBeat === "check-twenty" && this.checkBeatAt ? { checkTwenty: { teamId: this.checkBeatAt.teamId, gift: this.giftPart() } } : {}),
+      ...(this.naturalBeatTeam() && this.beatAct ? { beatAct: true as const } : {}),
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
@@ -2000,10 +2034,13 @@ export class DungeonRoom {
     }
     // The game-ending judgment narrates after its broadcastState(), so the line is dropped here, once that narration has it.
     this.dropUnsaidLine();
+    this.narrating++;
     return this.runner.run(eventId, event, this.scores()).catch((err) => {
       console.error("narration failed", err);
       this.hostLineGens.delete(eventId);
       this.dropUnsaidLine();
+    }).finally(() => {
+      this.narrating--;
     });
   }
 
@@ -2071,7 +2108,7 @@ export class DungeonRoom {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
     // After the STATE that opened the turn (its start or handoff cue plays first); a judgment rolls it once it is done.
-    if (!this.judging && this.autoCheck()) this.broadcastState();
+    if (!this.judging && (this.autoCheck() || this.autoThrowOut())) this.broadcastState();
   }
 
   private markActivity() {
@@ -2357,6 +2394,8 @@ export class DungeonRoom {
     if (this.reveal?.dishNext && this.game.phase === "playing" && currentTurnTeamId(this.game) === teamId) return;
     // And a missed charge on show (charge-fail): a phone locked during it must not dodge the miss or a 1's penalty.
     if (this.stageBeat === "charge-fail" && this.chargeBeat?.teamId === teamId) return;
+    // And a natural 1's or 20's beat: a phone locked during it must not dodge the throw-out or lose the win.
+    if (this.naturalBeatTeam() === teamId) return;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -2781,7 +2820,8 @@ export class DungeonRoom {
     this.sendPicks(conn);
     // After a restart a check owed in the 答錯 grace window rolls at the next STATE: send it now, or the host's judge
     // buttons stay dark (checkDue) until a phone comes back (review).
-    if (this.autoCheck()) this.broadcastState();
+    // A natural 1 whose card a restart lost starts again here too, before the host can judge it.
+    if (this.autoCheck() || this.autoThrowOut()) this.broadcastState();
     const closing = this.closingMessage();
     if (closing.minutesLeft !== null) this.sendTo(conn, closing);
   }
@@ -3311,7 +3351,7 @@ export class DungeonRoom {
     // A dish die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now. So
     // was the team whose answer's reveal waits for its dish die.
     const dishTeam = this.reveal?.dishNext && this.game?.phase === "playing" ? currentTurnTeamId(this.game) ?? undefined : undefined;
-    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId));
+    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId ?? this.naturalBeatTeam()));
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     this.stageBeat = null;
@@ -3323,6 +3363,9 @@ export class DungeonRoom {
     this.lostCritTimer = null;
     if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
     this.checkGraceTimer = null;
+    if (this.checkReadTimer) clearTimeout(this.checkReadTimer);
+    this.checkReadTimer = null;
+    this.checkRead = null;
     if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
     this.bossDeadline = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
@@ -3857,6 +3900,8 @@ export class DungeonRoom {
     }
     // The team's question is not out until its check has rolled (QA P2-11).
     if (this.checkDue()?.teamId === teamId) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_pending" });
+    // A natural 1 is thrown out, never judged (throwOut); one saved with a typed answer under the old rule still is.
+    if (this.game.checks?.[checkKey(questionId, teamId)]?.value === 1 && this.game.teams.find((t) => t.id === teamId)?.typedAnswer === undefined) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_pending" });
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
     // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
@@ -4138,12 +4183,13 @@ export class DungeonRoom {
       this.judging = false;
     }
     if (this.lostCrit) this.applyLostCrit();
-    if (this.autoCheck()) this.broadcastState();
+    if (this.autoCheck() || this.autoThrowOut()) this.broadcastState();
   }
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
-   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
+   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line.
+   * `thrown`: a natural 1's 被轟出門 (throwOut): no answer to reveal, and nothing for the 改判 ledger (nothing was answered). */
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }, thrown = false) {
     const prev = this.game;
     if (!prev) return;
     // A correct turn-based answer rolls the dish die first (class-dice-rework.md), once the host has seen its answer and
@@ -4204,6 +4250,8 @@ export class DungeonRoom {
     const run = (rng: () => number, dice?: number[]) =>
       caught
         ? upholdCatch(prev, rng)
+        : thrown
+        ? throwOut(prev, teamId, questionId, rng)
         : roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, roll.dish, dice)
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.kind === "dish" ? roll.value : undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length, marks });
@@ -4235,7 +4283,7 @@ export class DungeonRoom {
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
     // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
-    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
+    const ledgered = caught || thrown ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
@@ -4300,7 +4348,7 @@ export class DungeonRoom {
     // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
     const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
-    if ((caught || outcome.type === "incorrect-flee" || (outcome.type === "incorrect-retry" && game.revealedQuestionIds.includes(questionId) && !prev.revealedQuestionIds.includes(questionId))) && justAnswered) {
+    if ((caught || (outcome.type === "incorrect-flee" && !thrown) || (outcome.type === "incorrect-retry" && game.revealedQuestionIds.includes(questionId) && !prev.revealedQuestionIds.includes(questionId))) && justAnswered) {
       // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
       // its own error. A wrong buzz keeps the host's live-play fallback up (review).
       this.clipError = null;
@@ -4990,7 +5038,8 @@ export class DungeonRoom {
     // A check or dish die that killed has started the kill's beat: its team stays on turn until that beat lands.
     // So does a check 20 or a warrior's hit that started its dish die.
     const next = this.pendingRoll as PendingRoll | null;
-    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId)) this.syncLockTeamAndShow(roll.teamId);
+    // So does a natural 1's thrown-out card (it syncs the team when it ends).
+    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId) && this.naturalBeatTeam() !== roll.teamId) this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The thief's sneak die landed (class-dice-rework.md): a 1 loses a tenth of the question's reward now, 7–19 or 20
@@ -5028,6 +5077,60 @@ export class DungeonRoom {
   }
 
   /** {team} and {monster} for a dice line: the team's name and the monster of the question in play. */
+  /** A check's line, with the STATE. The check rolls as the turn opens, so the owl may still be reading the last turn's
+   * result and 「輪到…」 lines: the check's line goes after them in the same narration. Written again under a new eventId,
+   * the screen read them all twice (QA 2026-11-19 P1-4: `done` lags the voice, and the line being read always restarted). */
+  private sayCheck(line: string) {
+    const n = this.lastNarration;
+    if (n && n.eventId === this.eventSeq && n.lines.length < NARRATION_MAX_LINES) {
+      this.broadcastState();
+      this.appendLine(this.eventSeq, line, line.length); // never cut: writeScripted did not cut it either
+    } else {
+      // A full narration of this turn: its unread lines lead a new one, as before (rare; the screen may repeat them).
+      const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
+      this.writeScripted([...unread, line].slice(-NARRATION_MAX_LINES));
+      this.broadcastState();
+      this.sendNarration();
+    }
+    // The line just added is the narration's last (appendLine and writeScripted both put it there).
+    const m = this.lastNarration;
+    this.beatLine = m ? { eventId: m.eventId, index: m.lines.length - 1 } : null;
+  }
+
+  /** What the monster on stage shares on a natural 20 (its catalog `gift`), e.g. 「一塊果凍」. */
+  private giftPart(): string {
+    const id = this.currentQuestion()?.pub.monster.id;
+    return (id ? monsterById(id)?.gift.part : undefined) ?? "一點食材";
+  }
+
+  /** The team a natural 1's or 20's beat is for: it keeps the turn while the beat plays. */
+  private naturalBeatTeam(): string | undefined {
+    return this.stageBeat === "thrown-out" || this.stageBeat === "check-twenty" ? this.checkBeatAt?.teamId : undefined;
+  }
+
+  /** A natural 1's or 20's beat (see NATURAL_BEAT_MS): the first poll comes after sayCheck wrote the line. Timed: it never
+   * holds in manual (#429). */
+  private paceNatural(kind: "thrown-out" | "check-twenty", label: () => string | null, run: () => void) {
+    this.beatAct = false;
+    const start = this.now();
+    // Whether a big screen has not read the beat's line yet (typed, and spoken when its voice is on).
+    const unread = () => {
+      const n = this.lastNarration;
+      const at = this.beatLine;
+      return !!n && !!at && n.eventId === at.eventId && n.done <= at.index && this.screenSound() !== "none";
+    };
+    const tell = () => {
+      if (unread() && this.now() - start < NATURAL_TELL_CAP_MS) return this.pace("lock", kind, READ_POLL_MS, label, tell, true);
+      this.beatAct = true;
+      this.broadcastState();
+      this.pace("lock", kind, NATURAL_ACT_MS, label, () => {
+        this.beatAct = false;
+        run();
+      }, true);
+    };
+    this.pace("lock", kind, READ_POLL_MS, label, tell, true);
+  }
+
   private lineNames(teamId: string): { team: string; monster: string } {
     return { team: this.game?.teams.find((t) => t.id === teamId)?.name ?? "這隊", monster: this.currentQuestion()?.pub.monster.name ?? "怪物" };
   }
@@ -5036,30 +5139,21 @@ export class DungeonRoom {
    * natural 20 wins outright, along the host's 答對 path (R7). */
   private resolveCheck(teamId: string, questionId: string, value: number) {
     if (!this.game!.checks?.[checkKey(questionId, teamId)]) return this.broadcastState();
-    // A natural 20 goes straight to the win: one STATE, with the correct answer's cue (dnd design E2).
-    if (value === 20) return this.judge(teamId, questionId, true, "retry");
+    // A natural 1 or 20 (owner, 2026-11-20): the narrator says what the monster does, the monster does it, then the 1 flees
+    // (throwOut) or the 20 wins along the host's 答對 path and its dish die rolls (R7).
+    if (value === 1 || value === 20) {
+      if (value === 1) this.thrownOutBeat(teamId, questionId);
+      else this.twentyBeat(teamId, questionId);
+      return this.sayCheck(this.diceLines.checkLine(value === 1 ? "thrown" : "gift", { ...this.lineNames(teamId), gift: this.giftPart() }));
+    }
     const passed = this.game!.checks![checkKey(questionId, teamId)].passed;
     this.setCue(passed ? "check-pass" : "check-fail");
-    const said = this.diceLines.checkLine(passed ? "pass" : value === 1 ? "fumble" : "fail", this.lineNames(teamId));
+    const said = this.diceLines.checkLine(passed ? "pass" : "fail", this.lineNames(teamId));
     if (passed) {
-      // The check rolls as the turn opens, so the owl may still be reading the last turn's result and 「輪到…」 lines: the
-      // check's line goes after them in the same narration. Written again under a new eventId, the screen read them all
-      // twice (QA 2026-11-19 P1-4: `done` lags the voice, and the line being read always restarted).
-      const n = this.lastNarration;
-      const line = `說服成功！${said}接下來看題目。`;
       this.checkSuccessBeat(teamId, questionId);
-      if (n && n.eventId === this.eventSeq && n.lines.length < NARRATION_MAX_LINES) {
-        this.broadcastState();
-        this.appendLine(this.eventSeq, line, line.length); // never cut: writeScripted did not cut it either
-      } else {
-        // A full narration of this turn: its unread lines lead a new one, as before (rare; the screen may repeat them).
-        const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
-        this.writeScripted([...unread, line].slice(-NARRATION_MAX_LINES));
-        this.broadcastState();
-        this.sendNarration();
-      }
+      this.sayCheck(`說服成功！${said}接下來看題目。`);
     } else {
-      this.appendLine(this.eventSeq, `說服${value === 1 ? "擲出 1" : "失敗"}！${said}`);
+      this.appendLine(this.eventSeq, `說服失敗！${said}`);
       this.broadcastState();
     }
   }
@@ -5098,6 +5192,68 @@ export class DungeonRoom {
       this.paceRoll(roll);
       this.broadcastState();
     });
+  }
+
+  /** 被轟出門 (owner, 2026-11-19): a natural 1's card, then throwOut judges it (no answer shown, a new monster, the next
+   * team). Like every check result it runs on its timer in manual too (#429). The caller sends the STATE. */
+  private thrownOutBeat(teamId: string, questionId: string) {
+    this.stageBeat = "thrown-out";
+    this.checkBeatAt = { teamId, questionId };
+    this.setCue("check-fail");
+    this.paceNatural("thrown-out", () => (this.stageBeat === "thrown-out" ? "接下來換下一隊" : null), () => {
+      this.stageBeat = null;
+      this.checkBeatAt = null;
+      const game = this.game;
+      if (game?.phase !== "playing" || currentTurnTeamId(game) !== teamId || currentQuestionIdOf(game, teamId) !== questionId) return this.broadcastState();
+      try {
+        this.judge(teamId, questionId, false, "switch", undefined, undefined, undefined, undefined, true);
+      } catch (err) {
+        console.error(JSON.stringify({ event: "throw_out_failed", error: String(err) }));
+        this.broadcastState();
+      }
+      // A phone that dropped during the card (kept on turn by onClose) shows offline now.
+      this.syncLockTeamAndShow(teamId);
+    });
+  }
+
+  /** A natural 20 (owner, 2026-11-20): the monster happily steps aside and hands over an ingredient, then the win is judged
+   * like a 答對 and its dish die rolls. Not saved: a restart during it loses the beat, and lostCrit applies the win. */
+  private twentyBeat(teamId: string, questionId: string) {
+    this.stageBeat = "check-twenty";
+    this.checkBeatAt = { teamId, questionId };
+    this.setCue("crit");
+    this.paceNatural("check-twenty", () => (this.stageBeat === "check-twenty" ? "接下來擲料理骰" : null), () => {
+      this.stageBeat = null;
+      this.checkBeatAt = null;
+      const game = this.game;
+      if (game?.phase !== "playing" || currentTurnTeamId(game) !== teamId || currentQuestionIdOf(game, teamId) !== questionId) {
+        this.dropCrit(teamId, questionId);
+        return this.broadcastState();
+      }
+      try {
+        this.judge(teamId, questionId, true, "retry");
+      } catch (err) {
+        console.error(JSON.stringify({ event: "persuaded_failed", error: String(err) }));
+        this.dropCrit(teamId, questionId);
+        this.broadcastState();
+      }
+      this.syncLockTeamAndShow(teamId);
+    });
+  }
+
+  /** A natural 1 whose card a restart cut (it lives in memory): once its team is on turn again with nothing else on, it
+   * is thrown out after all. Returns whether the card started: the caller sends the STATE. */
+  private autoThrowOut(): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
+    const teamId = currentTurnTeamId(game);
+    const team = game.teams.find((t) => t.id === teamId);
+    // A typed answer saved under the old rule (deployed mid-game) waits for the host instead.
+    if (!teamId || !team || team.inBoss || atFork(team) || team.typedAnswer !== undefined) return false;
+    const questionId = currentQuestionIdOf(game, teamId);
+    if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) return false;
+    this.thrownOutBeat(teamId, questionId);
+    return true;
   }
 
   /** The passed check's card before the question; restore() starts it again for a save made during it. */
@@ -5498,11 +5654,34 @@ export class DungeonRoom {
       }
       return false;
     }
+    if (this.awaitReading(`${teamId}:${questionId}`)) return false;
     this.startRoll("check", teamId, questionId, checkTarget(game, teamId, questionId));
     // Written now and persisted with the STATE, but hidden until the beat ends (snapshot): a restart cannot reroll it.
     // Not a move: an open 改判答對 stays open (undoneGame keeps this check).
     this.keepUndoOpen(recordCheck(this.game!, teamId, questionId, this.pendingRoll!.value, q.answer));
     return true;
+  }
+
+  /** Whether the check for `key` still waits for a big screen to read the narration up (the turn's 「輪到」 line and the
+   * lines before it), so the die never rolls under them (owner, 2026-11-20). The first look always waits one poll: the
+   * turn's lines are often appended right after the STATE that frees the turn, and a narration still on its way (a flee's
+   * landing line, the next turn's) waits too. No keyed screen: no wait. */
+  private awaitReading(key: string): boolean {
+    if (!this.checkReadsScreen || this.screenSound() === "none") return false;
+    const n = this.lastNarration;
+    const left = n ? n.lines.slice(n.done).join("").length : 0;
+    const fresh = this.checkRead?.key !== key;
+    if (fresh) this.checkRead = { key, since: this.now(), chars: left };
+    const read = this.checkRead!;
+    read.chars = Math.max(read.chars, left);    if (fresh || ((left > 0 || this.narrating > 0) && this.now() - read.since < read.chars * CHECK_READ_MS_PER_CHAR + CHECK_READ_BASE_MS)) {
+      this.checkReadTimer ??= setTimeout(() => {
+        this.checkReadTimer = null;
+        if (!this.judging && this.autoCheck()) this.broadcastState();
+      }, READ_POLL_MS);
+      return true;
+    }
+    this.checkRead = null;
+    return false;
   }
 
   /** 🚨 開啟抓包與神諭 (anti-ai-cheating.md): on, the TV's banner (onCount) and the owl's rules line; off, an open catch is
@@ -5981,7 +6160,7 @@ export class DungeonRoom {
     // The persuasion check comes before the answer (dnd design R6): the phone locks the box, the room enforces it.
     // No check in a buzzer phase (boss-buzzer.md D6): the team that buzzed may type at once (boss-music-buzzer.md M2).
     // No check in the boss room either (#364).
-    if (!isBuzzPhase(this.game) && !this.game.teams.find((t) => t.id === teamId)?.inBoss && !this.game.checks?.[checkKey(questionId, teamId)]) return reject("check_needed");
+    if (!isBuzzPhase(this.game) && !this.game.teams.find((t) => t.id === teamId)?.inBoss && (!this.game.checks?.[checkKey(questionId, teamId)] || this.game.checks[checkKey(questionId, teamId)].value === 1)) return reject("check_needed");
     // A music question with fields: one box per field, blanks allowed, at least one filled (multi-field.md F4).
     if (q.fields && rawFields?.length !== q.fields.length) return reject("fields_mismatch");
     const fields = q.fields ? rawFields!.map(cleanTypedAnswer) : undefined;

@@ -54,8 +54,9 @@ export type NarrationEvent =
   // `penalty`: the points a warrior's 1 took away (the question's whole reward, never below 0; #305).
   | WithNext<ByClass<{ type: "retry"; team: string; monster: string; boss?: true; exhausted?: true; buzzOut?: true; buzzAgain?: true; buzzSecond?: true; prayed?: true; warriorRoll?: number; penalty?: number }>>
   /** `to`: 逃跑 put this new monster in the team's room.
-   * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md). */
-  | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string }>
+   * `caught`: 🚨 成立, the reporting team's name: the host ruled this team asked an AI, so it was made to flee (anti-ai-cheating.md).
+   * `thrownOut`: the persuasion check's natural 1, so the monster threw the team out before the question showed (throwOut). */
+  | WithNext<{ type: "flee"; team: string; monster: string; to?: string; caught?: string; thrownOut?: true }>
   /** `bossHp` 0 without a kill: an earlier phase's bar emptied, and the next phase is still a secret.
    * `exhausted`: the hit used up the phase's questions with HP left, and the phase card comes next. */
   | WithNext<WithRoll<ByClass<{ type: "boss-hit"; team: string; bossHp: number; bossMaxHp: number; exhausted?: true }>>>
@@ -158,7 +159,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
     case "incorrect-retry":
       return { type: "retry", team, monster, ...cls, ...(outcome.newBossQuestion ? { boss: true as const } : {}), ...(prev.pendingWrong?.prayed && prev.pendingWrong.teamId === outcome.teamId ? { prayed: true as const } : {}), ...(outcome.penalty ? { penalty: outcome.penalty } : {}) };
     case "incorrect-flee":
-      return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}) };
+      return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}), ...(outcome.thrownOut ? { thrownOut: true as const } : {}) };
     case "correct-boss-hit":
       return outcome.bossKilled
         ? { type: "boss-kill", team, ...cls, ...roll, monster, bonus: outcome.killBonus ?? 0, points: outcome.reward }

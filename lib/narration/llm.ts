@@ -146,9 +146,7 @@ function warriorFacts(e: NarrationEvent): string {
 function describeDie(e: NarrationEvent): string {
   if (!("roll" in e) || !e.roll) return "";
   if (e.roll.kind === "check")
-    return e.roll.value === 20
-      ? "\n這隊說服檢定擲出 20，不用答題就說服了怪物，算答對。第一行要提到說服成功。"
-      : "\n這隊說服檢定擲出 1，講錯話了，雖然答對，獎勵只拿一半。第一行用好笑的方式說他們講錯話。";
+    return "\n這隊說服檢定擲出 20，不用答題，怪物開心讓路，還分了身上的食材給他們做菜，算答對（旁白已經說過送食材）。第一行講這道菜做得怎樣，不要再說一次說服或送食材。";
   if (e.roll.kind === "dish")
     return e.roll.value === 20
       ? "\n這隊答對後擲料理骰擲出 20，端出傳說級料理，獎勵多拿不少。第一行要提到傳說級料理。"
@@ -202,6 +200,7 @@ function describeEvent(e: NarrationEvent): string {
         : `事件：隊伍${q(e.team)}答錯了，${q(e.monster)}還擋在原地，先換下一隊，他們下一輪再答同一題。`;
     case "flee":
       if (e.caught) return `事件：隊伍${q(e.team)}被隊伍${q(e.caught)}抓包偷問 AI，主持人裁定成立：這題不算分、扣分，換一題較簡單的，檢舉的隊伍拿到賞金。不要說他們答錯或逃跑。`;
+      if (e.thrownOut) return `事件：隊伍${q(e.team)}說服檢定擲出 1，被${q(e.monster)}轟出門，題目都沒看到，這題不算分（旁白已經說過被轟出門）。他們在同一間房遇上新的怪物${q(e.to ?? "新的怪物")}，換一題較簡單的。第一行用好笑的方式說他們摔在${q(e.to ?? "新的怪物")}面前，不要再說一次被轟出門的經過。不要說他們答錯、逃跑或前進到下一間房。`;
       return e.to
         ? `事件：隊伍${q(e.team)}答錯後甩開${q(e.monster)}，在同一間房遇上新的怪物${q(e.to)}，換一題較簡單的。不要說他們前進到下一間房。`
         : `事件：隊伍${q(e.team)}答錯後逃跑，換一題較簡單的。`;

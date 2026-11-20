@@ -34,6 +34,7 @@ function started({ qs = MCS, off = false, start = {}, storage = memoryStorage(),
   const io = { broadcast: vi.fn(), storage } as unknown as RoomIO & { broadcast: ReturnType<typeof vi.fn> };
   const room = new DungeonRoom(io, rng, { bank: bank(qs), epilogueDelayMs: 0 });
   (room as unknown as { holdCheck: boolean }).holdCheck = holdCheck;
+  if (holdCheck) (room as unknown as { fixedDie: number }).fixedDie = 2; // the `() => 0` rng rolls 1s: a natural 1 would throw the team out (throwOut)
   const host = makeConn("host");
   room.onConnect(host);
   send(room, host, { type: "HOST_CLAIM", token: TOKEN });

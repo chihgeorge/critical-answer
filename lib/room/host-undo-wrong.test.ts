@@ -2,7 +2,7 @@
 // game before it, while nothing has moved since.
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { sendSettled, settleDish } from "./test-send";
-import { DungeonRoom, LOST_CRIT_GAP_MS } from "./dungeon-room";
+import { DungeonRoom, LOST_CRIT_GAP_MS, NATURAL_BEAT_MS } from "./dungeon-room";
 import type { Conn, RoomIO } from "./io";
 import { parseBank } from "../question-bank";
 import { checkKey, currentTurnTeamId } from "../game-state";
@@ -233,6 +233,7 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
   // Value: protects=a natural 20 whose win fails at the end of its beat (roll_failed) is not applied by a later restart
   // (TODOS 說服檢定 2); fails_when=resolveRoll's catch stops marking it dropped; seam=room; no_claim=a real restart
   it("a check's natural 20 that fails to judge is marked dropped", () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+    vi.useFakeTimers();
     const g = game();
     const r = g.room as unknown as { pendingRoll: unknown; judge: () => void; resolveRoll: () => void };
     g.room.game = { ...g.room.game!, checks: { ...g.room.game!.checks, [checkKey(g.q, T1)]: { value: 20, bonus: 0, dc: 8, passed: true } } }; // pregate-literal: MAX_BOSS_HP=20 not the HP cap
@@ -242,7 +243,9 @@ describe("改判答對: the host's 答錯 on a fill-in becomes 答對", () => {
     };
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     r.resolveRoll();
-    expect(log).toHaveBeenCalledWith(expect.stringContaining("roll_failed"));
+    // The win is judged when the 20's beat ends (owner, 2026-11-20).
+    vi.advanceTimersByTime(NATURAL_BEAT_MS);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining("persuaded_failed"));
     log.mockRestore();
     expect(g.room.game!.checks![checkKey(g.q, T1)]).toMatchObject({ value: 20, dropped: true }); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
   });

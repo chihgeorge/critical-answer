@@ -46,6 +46,8 @@ export interface Env {
   E2E_MONSTER_SIDE?: string;
   /** How long the 擲先攻 order holds before the first question, in ms (e2e shortens it). */
   INITIATIVE_HOLD_MS?: string;
+  /** e2e only (playwright.config.ts): any value, and the persuasion die does not wait for the big screen's reading. Never set in production. */
+  E2E_CHECK_NO_READ?: string;
 }
 
 /** Cloudflare adapter for the question bank: one singleton Durable Object holding it, exposed over
@@ -217,6 +219,7 @@ export class Room extends Server<Env> {
         e2eEventTeam: this.env.E2E_EVENT_TEAM || undefined,
         e2eMonsterSide: this.env.E2E_MONSTER_SIDE === "left" || this.env.E2E_MONSTER_SIDE === "right" ? this.env.E2E_MONSTER_SIDE : undefined,
         initiativeHoldMs: positiveMs(this.env.INITIATIVE_HOLD_MS),
+        checkReadsScreen: this.env.E2E_CHECK_NO_READ ? false : undefined,
         // Undefined (bankOrFallback swallowed a fetch failure) falls through to DungeonRoom's own
         // bundled-bank default: an existing room's restore() overrides this with its own saved bank
         // regardless. See docs/designs/question-bank-editor.md, decision 7.
