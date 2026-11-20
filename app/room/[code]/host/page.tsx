@@ -16,7 +16,8 @@ import { forgetStored, writeStored } from "@/lib/stored";
 import { BOSS_THRESHOLD, describeTurn, giftText, hostAnswerShown, PAUSED_OFFLINE, pausedOffline, thrownOutText } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
-import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
+import { hostCheckLine } from "@/lib/class-dice";
 import { Panel, PixelButton, QuestionMedia, SceneBackground, ScoreMeter, Sprite, TurnRibbon } from "@/components/pixel";
 import { lookOf } from "@/lib/team-look";
 import { ScreenSoundBanner } from "@/components/screen-sound-banner";
@@ -500,6 +501,9 @@ export default function HostPage() {
   const retryLabel = prayedWrong ? "現在再答" : turn?.inBoss ? "下輪換題" : "下輪再答";
   /** A buzzer boss phase (docs/designs/boss-buzzer.md): teams buzz in, the host judges the one that buzzed first. */
   const buzz = game?.phase === "playing" && !revealUp ? game.view.buzz : undefined;
+  // The landed persuasion pass or fail of the team on turn (a 1 and a 20 have their own lines below).
+  const landedCheck = game && turn?.team && game.question && !buzz && !turn.inBoss ? game.view.checks?.[checkKey(game.question.id, turn.team.id)] : undefined;
+  const shownCheck = landedCheck && landedCheck.value !== 1 && landedCheck.value !== 20 && !game?.pendingRoll && !revealUp ? landedCheck : undefined;
   // A timing question (timing-tap.md 畫面): the big screen's clock missing for 3 s after ▶ turns the line into a warning.
   const timing = buzz ? game?.question?.timing : undefined;
   const clockKey = timing && buzz?.open && !game?.tapLive ? `${buzz.questionId}:${buzz.tapRound ?? 0}` : null;
@@ -1293,6 +1297,11 @@ export default function HostPage() {
                   {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
                     <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
                       {game.pendingRoll?.kind === "dish" ? "🗣️ 說服骰擲出 20：這題免答，大螢幕不會出題" : game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 說服骰等一下會自動擲，結算後大螢幕才出題"}
+                    </div>
+                  )}
+                  {shownCheck && !game.phaseCard && !game.forkBeat && (
+                    <div data-testid="host-check-result" className="mt-1 text-[14px]" role="status">
+                      {hostCheckLine(shownCheck, game.stageBeat === "check-success")}
                     </div>
                   )}
                   {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}

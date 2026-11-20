@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkChip, clericEffect, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
+import { checkChip, clericEffect, hostCheckLine, dishEffect, dishPhoneLine, mageEffect, rollStatus, sneakEffect, warriorEffect } from "./class-dice";
 
 // Value: protects=each tier's words match the rules (docs/rules.md 職業技能擲骰, class-dice-rework.md); fails_when=a tier
 // boundary (1, 2–6, 7–19, 20) shows another tier's effect, or a chef's dish die reads like everyone's; seam=none
@@ -46,5 +46,16 @@ describe("checkChip", () => {
     expect(checkChip({ bonus: 1, dc: 10 }, { value: 1, bonus: 1, dc: 10, passed: false })).toEqual({ text: "🗣️ 擲出 1：被轟出門", tone: "danger" });
     expect(checkChip({ bonus: 4, dc: 8 }, { value: 3, bonus: 4, dc: 8, passed: false }).text).toBe("🗣️ 說服失敗：3+4=7<8");
     expect(checkChip({ bonus: 4, dc: 8 }, { value: 5, bonus: 4, dc: 8, passed: true })).toEqual({ text: "🗣️ 說服成功：5+4=9≥8", tone: "ok" });
+  });
+});
+
+describe("hostCheckLine", () => {
+  // Value: protects=the host page tells a pass or fail and the hint it earned, for a host who cannot hear the narrator
+  // (#438 audit); fails_when=the host sees no result, or the hint shows while the 說服成功 card still holds it; seam=none
+  it("says the result, then the hint once the card is over", () => {
+    expect(hostCheckLine({ value: 3, bonus: 4, dc: 8, passed: false }, false)).toBe("🗣️ 說服失敗：3+4=7<8・直接作答");
+    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, true)).toBe("🗣️ 說服成功：5+4=9≥8・成功畫面結束後出題");
+    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, false)).toBe("🗣️ 說服成功：5+4=9≥8・提示第一個字「萬」");
+    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true }, false)).toBe("🗣️ 說服成功：5+4=9≥8・沒有第一個字提示");
   });
 });

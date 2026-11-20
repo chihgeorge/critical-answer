@@ -17,6 +17,7 @@ import { sortCode } from "../sort-order";
 import { EPILOGUE_MODEL } from "../narration/llm";
 import { SERVE_HOLD_MS } from "../protocol";
 import { MAX_LINE } from "../narration/runner";
+import { NARRATION_MAX_LINES } from "./snapshot";
 
 const T1 = "00000000-0000-0000-0000-000000000001";
 const T2 = "00000000-0000-0000-0000-000000000002";
@@ -1368,6 +1369,49 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(told[0]).toMatchObject({ eventId, rev: 1 });
     });
 
+    // Value: protects=a failed check's line is said even when the turn's narration is full (#438 audit: appendLine
+    // dropped it); fails_when=the 說服失敗 line goes missing; seam=none
+    it("says a failed check's line, even into a full narration", () => {
+      vi.useFakeTimers();
+      const { room } = checkGame(1, 3);
+      const r = room as any;
+      r.lastNarration = { eventId: r.eventSeq, lines: Array.from({ length: NARRATION_MAX_LINES }, (_, i) => `第 ${i} 行`), rev: 0, done: 0 };
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).cue).toBe("check-fail");
+      expect(r.lastNarration.lines.at(-1)).toMatch(/^說服失敗！/);
+    });
+
+    // Value: protects=the rules' order (旁白說明成功，再顯示題目): the 說服成功 card holds until the big screen has read its
+    // line, up to the cap; fails_when=the question cuts in while the narrator still reads the pass, or a silent screen
+    // holds the card forever; seam=none
+    it("holds the 說服成功 card until the big screen reads its line, up to the cap", () => {
+      vi.useFakeTimers();
+      const watch = (die: number) => {
+        const g = checkGame(1, die);
+        const screen = makeConn("screen-conn");
+        g.room.onConnect(screen);
+        send(g.room, screen, { type: "SCREEN_HELLO", key: (g.room as any).screenKey });
+        return { ...g, screen };
+      };
+      const { room, screen } = watch(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("check-success");
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "check-success", question: null });
+      const n = (room as any).lastNarration;
+      const at = (room as any).beatLine;
+      expect(n.lines[at.index]).toMatch(/^說服成功！/);
+      send(room, screen, { type: "SCREEN_NARRATION_PROGRESS", eventId: n.eventId, rev: n.rev, done: at.index + 1 });
+      vi.advanceTimersByTime(250);
+      expect(lastBroadcast(room).question).toMatchObject({ id: "r0-t1" });
+      // A screen that never reports: the question comes once the cap is over.
+      const quiet = watch(15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+      vi.advanceTimersByTime(2000 + 2000 + 6000 - 250);
+      expect(lastBroadcast(quiet.room).stageBeat).toBe("check-success");
+      vi.advanceTimersByTime(500);
+      expect(lastBroadcast(quiet.room).question).toMatchObject({ id: "r0-t1" });
+    });
+
     // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
     // turn under it; fails_when=an offline team loses the turn, or 跳過 is let through during the card; seam=none;
     // no_claim=the screen's card art (e2e)
@@ -1735,6 +1779,7 @@ describe("TEAM_SELECT_OPTION", () => {
       (room as any).unpace("lock");
       (room as any).stageBeat = null;
       (room as any).checkBeatAt = null;
+      (room as any).lastNarration = { eventId: (room as any).eventSeq, lines: ["輪到烤肉小隊。"], rev: 0, done: 1 };
       expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1 });
       // Until the card is back, the host cannot judge it: a natural 1 is never judged (review).
       room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: true, fleeChoice: "retry" }), hostConn);
@@ -1742,6 +1787,10 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(room.game!.teams[0].reward).toBe(0);
       (room as any).broadcastState();
       expect(lastBroadcast(room)).toMatchObject({ stageBeat: "thrown-out", question: null });
+      // The card plays again, and so does the narrator's kick line (#438 audit: the flee's line follows on from it).
+      const n = (room as any).lastNarration;
+      expect(n.lines.at(-1)).toMatch(/擲出 1|丟出去|轟走/);
+      expect((room as any).beatLine).toMatchObject({ eventId: n.eventId, index: n.lines.length - 1 });
       vi.advanceTimersByTime(NATURAL_BEAT_MS);
       expect(room.game!.teams[0]).toMatchObject({ flees: 1, reward: 0 });
       expect(currentTurnTeamId(room.game!)).toBe(ids[1]);

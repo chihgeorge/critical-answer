@@ -44,6 +44,9 @@ test("the check rolls itself, passes the DC, the team sees the first character, 
   await expect(screen.getByText(question)).toBeVisible();
   await expect(team.getByRole("heading", { name: question })).toBeVisible();
   await expect(host.getByTestId("host-check-first")).toHaveCount(0);
+  // The host may not hear the narrator: its page says the result and the hint too (#438 audit).
+  await expect(host.getByTestId("host-check-result")).toContainText("說服成功");
+  await expect(host.getByTestId("host-check-result")).toContainText("「萬」");
   for (const page of [screen, team, host]) await expect(page.getByTestId("answer-clock")).toBeVisible();
   await expect(team.getByTestId("check-result")).toHaveText("🗣️ 過了！看提示");
   await expect(team.getByTestId("check-hint")).toHaveText("🔮 第一個字：萬");

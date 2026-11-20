@@ -313,7 +313,8 @@ export interface RoomOptions {
   e2eMonsterSide?: ForkSide;
   /** How long the 擲先攻 order holds before the first question (e2e, worker INITIATIVE_HOLD_MS). Default INITIATIVE_ORDER_MS. */
   initiativeHoldMs?: number;
-  /** false (e2e, worker E2E_CHECK_NO_READ): the persuasion die rolls without waiting for the big screen's reading. */
+  /** false (e2e, worker E2E_CHECK_NO_READ): the persuasion die rolls, and its 說服成功 card ends, without waiting for the
+   * big screen's reading. */
   checkReadsScreen?: boolean;
 }
 
@@ -5115,14 +5116,8 @@ export class DungeonRoom {
   private paceNatural(kind: "thrown-out" | "check-twenty", label: () => string | null, run: () => void) {
     this.beatAct = false;
     const start = this.now();
-    // Whether a big screen has not read the beat's line yet (typed, and spoken when its voice is on).
-    const unread = () => {
-      const n = this.lastNarration;
-      const at = this.beatLine;
-      return !!n && !!at && n.eventId === at.eventId && n.done <= at.index && this.screenSound() !== "none";
-    };
     const tell = () => {
-      if (unread() && this.now() - start < NATURAL_TELL_CAP_MS) return this.pace("lock", kind, READ_POLL_MS, label, tell, true);
+      if (this.beatLineUnread() && this.now() - start < NATURAL_TELL_CAP_MS) return this.pace("lock", kind, READ_POLL_MS, label, tell, true);
       this.beatAct = true;
       this.broadcastState();
       this.pace("lock", kind, NATURAL_ACT_MS, label, () => {
@@ -5131,6 +5126,13 @@ export class DungeonRoom {
       }, true);
     };
     this.pace("lock", kind, READ_POLL_MS, label, tell, true);
+  }
+
+  /** Whether a big screen has not read the beat's line yet (typed, and spoken when its voice is on). */
+  private beatLineUnread(): boolean {
+    const n = this.lastNarration;
+    const at = this.beatLine;
+    return !!n && !!at && n.eventId === at.eventId && n.done <= at.index && this.screenSound() !== "none";
   }
 
   private lineNames(teamId: string): { team: string; monster: string } {
@@ -5155,8 +5157,8 @@ export class DungeonRoom {
       this.checkSuccessBeat(teamId, questionId);
       this.sayCheck(`說服成功！${said}接下來看題目。`);
     } else {
-      this.appendLine(this.eventSeq, `說服失敗！${said}`);
-      this.broadcastState();
+      // sayCheck, not appendLine: a full narration would drop the line (#438 audit).
+      this.sayCheck(`說服失敗！${said}`);
     }
   }
 
@@ -5255,17 +5257,25 @@ export class DungeonRoom {
     const questionId = currentQuestionIdOf(game, teamId);
     if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) return false;
     this.thrownOutBeat(teamId, questionId);
+    // The card plays again, so its line does too: the flee's line follows on from the kick (#438 audit).
+    this.sayCheck(this.diceLines.checkLine("thrown", { ...this.lineNames(teamId), gift: this.giftPart() }));
     return true;
   }
 
-  /** The passed check's card before the question; restore() starts it again for a save made during it. */
+  /** The passed check's card before the question; restore() starts it again for a save made during it. It shows BEAT_MS,
+   * then waits for a big screen to read the 說服成功 line (rules: the narrator says it, then the question), up to
+   * NATURAL_TELL_CAP_MS more. Timed: it never holds in manual (#429). */
   private checkSuccessBeat(teamId: string, questionId: string) {
     this.stageBeat = "check-success";
     this.checkBeatAt = { teamId, questionId };
-    this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
+    const start = this.now();
+    const label = () => (this.stageBeat === "check-success" ? "接下來顯示題目" : null);
+    const done = () => {
+      if (this.checkReadsScreen && this.beatLineUnread() && this.now() - start < BEAT_MS + NATURAL_TELL_CAP_MS) return this.pace("lock", "check-success", READ_POLL_MS, label, done, true);
       this.stageBeat = null;
       this.broadcastState();
-    }, true);
+    };
+    this.pace("lock", "check-success", BEAT_MS, label, done, true);
   }
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
@@ -5310,7 +5320,16 @@ export class DungeonRoom {
       this.dropCrit(lost.teamId, lost.questionId);
       return false;
     }
+    // The restart cut the beat's gift line: said now, under the dish die, so the dish line follows on from it (#438 audit).
+    if (this.rollingDish(lost.teamId)) {
+      this.sayCheck(this.diceLines.checkLine("gift", { ...this.lineNames(lost.teamId), gift: this.giftPart() }));
+    }
     return true;
+  }
+
+  /** Whether the team's dish die is rolling (a method, so a caller's earlier pendingRoll check does not narrow it). */
+  private rollingDish(teamId: string): boolean {
+    return this.pendingRoll?.kind === "dish" && this.pendingRoll.teamId === teamId;
   }
 
   /** A natural 20 whose win failed: marked in the saved check, so a later restart does not apply it long after. */
