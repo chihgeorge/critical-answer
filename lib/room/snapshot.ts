@@ -213,7 +213,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const dish = raw.dish;
     const dishOk =
       isObject(dish) && isString(dish.teamId) && isString(dish.questionId) && (dish.fields === undefined || (Array.isArray(dish.fields) && dish.fields.every((f) => typeof f === "boolean"))) &&
-      (dish.warrior === undefined || d20(dish.warrior)) && (dish.value === undefined || d20(dish.value)) && (dish.values === undefined || (Array.isArray(dish.values) && dish.values.every(d20)));
+      (dish.warrior === undefined || d20(dish.warrior)) && (dish.value === undefined || d20(dish.value)) && (dish.values === undefined || (Array.isArray(dish.values) && dish.values.length > 0 && dish.values.every(d20))) && (dish.reveal === undefined || dish.reveal === true);
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),

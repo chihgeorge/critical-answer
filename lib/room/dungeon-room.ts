@@ -1566,7 +1566,7 @@ export class DungeonRoom {
     const game = this.game;
     if (game?.phase !== "playing" || !game.teams.find((t) => t.id === teamId)?.inBoss) return false;
     const want = this.answering();
-    if (!want || want === "hold" || want.key.split(":")[0] !== teamId) return false;
+    if (!want || want === "hold" || want.key !== `${teamId}:${want.questionId}`) return false;
     this.syncAnswerClock();
     return this.answerClock?.key === want.key && this.now() >= this.answerClock.endsAt;
   }
@@ -2735,6 +2735,9 @@ export class DungeonRoom {
     if (this.screenTest && !this.game) this.sendScreenTest();
     this.sendAnswer(conn);
     this.sendPicks(conn);
+    // After a restart a check owed in the 答錯 grace window rolls at the next STATE: send it now, or the host's judge
+    // buttons stay dark (checkDue) until a phone comes back (review).
+    if (this.autoCheck()) this.broadcastState();
     const closing = this.closingMessage();
     if (closing.minutesLeft !== null) this.sendTo(conn, closing);
   }
@@ -4778,6 +4781,8 @@ export class DungeonRoom {
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
     // No ability while a memory question's media plays: a mage's hint or a removed option would tell the question.
     if (this.memorizing()) return reject("memorizing");
+    // A die after the boss room's 時間到 would start a fresh clock when it lands (review).
+    if (this.bossTimeUp(teamId)) return reject("time_up");
     const classId = game.teams.find((t) => t.id === teamId)?.classId;
     const q = this.question(questionId);
     // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2), and so does the

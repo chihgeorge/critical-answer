@@ -1471,14 +1471,15 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toBeNull();
       const second = new DungeonRoom({ ...makeRoom(), storage } as any, () => 0.1, { bank: checkBank });
       expect(await second.restore()).toBe("restored");
+      (second as unknown as { holdCheck: boolean }).holdCheck = true;
       const host2 = makeConn("host-conn-2");
       second.onConnect(host2);
-      claim(second, host2);
       expect(second.game!.teams.find((t) => t.id === ids[1])).toBeDefined();
       const b = second.game!.teams.find((t) => t.id === ids[1])!;
-      // The next STATE the restored room sends (a phone or the host reconnecting) runs autoCheck: no window to wait out.
-      (second as unknown as { broadcastState(): void }).broadcastState();
+      // The host reconnecting rolls it (no window to wait out), so its judge buttons are not left dark (checkDue).
+      claim(second, host2);
       expect(lastBroadcast(second).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
+      expect(lastBroadcast(second).checkDue).toBeUndefined();
       expect(second.game!.checks?.[checkKey(b.currentQuestionId, ids[1])]).toBeDefined();
     });
 
