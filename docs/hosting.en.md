@@ -37,11 +37,14 @@ When the initiative roll starts, the big screen first plays about 2 seconds of s
 
 The 「節奏」 (pacing) group in 「⚙ 更多」 has the 「自動｜⏸ 手動」 (auto | manual) switch. It works at any time, in the lobby too. In manual, 「⏸ 手動」 shows next to the room code in the header. The default is auto: when a pause runs out, the game moves on by itself.
 
-In manual, none of the pauses below ends by itself. The host page shows a dashed panel, 「⏸ 停在這裡：接下來是……」 (held here: next is ...), and the game goes on only when the host presses 「▶ 下一步」 (next step; keyboard `1` or Enter):
+In manual, no pause the room would end by itself ends. The host page shows a dashed panel, 「⏸ 停在這裡：接下來是……」 (held here: next is ...), and the game goes on only when the host presses 「▶ 下一步」 (next step; keyboard `1` or Enter):
 
 - Initiative roll: no countdown while the teams roll, and 「下一步」 rolls for the teams that have not; once the order is up, one more press brings the first question.
-- The reveal after 「公布答案」, the dish die, the persuasion check, the persuasion-success card, the warrior's die, the defeated-boss card and the kill dice after it, a boss miss, and the boss's phase card.
-- A fork: no countdown, the team picks in its own time. 「下一步」 is the same as time running out and opens the monster room's door. Once the door is open, one more press enters the room.
+- A warrior's missed charge (2–6, or a 1 that takes points) on its result card, the mage's, cleric's and thief's skill dice, the defeated-boss card and the kill dice after it, a boss miss, and the boss's phase card.
+- A fork: no countdown, the team picks in its own time. To pick for the team, press the separate 「⏰ 時間到（替隊伍選）」 (time's up, pick for the team) button (it has no key, so `1` does not pick), which opens the monster room's door. Once the door is open, 「▶ 下一步」 enters the room.
+- The fortune teller: no countdown on the pizza, the team picks in its own time; to pick for it, press the same 「⏰ 時間到（替隊伍選）」.
+
+A step the host's own press starts plays out on its usual time and does not stop again: the reveal after 「公布答案」 (reveal the answer), the die of 「🎲 擲料理骰」 (roll the dish die), the persuasion die the room rolls after 「下一題」 (next question) and its success card, and the warrior's charge die (a hit stops on the answer for the dish die; a miss stops on its result card). So a correct answer in manual takes 4 presses: reveal the answer → roll the dish die → serve → next question. A host's 「答錯」 (wrong) adds no extra stop either.
 - The podium after the game (in auto too): each title, tie-break roll and place takes one press of 「下一步」, and one more press shows the full result and the epilogue; the host turns the epilogue's pages as before. Before the first press, the big screen's narrator opens with 「頒獎典禮開始！……」 (the award ceremony begins…); the host page names the winner only once the big screen has revealed first place. After a reconnect or a room restart it goes on from the last step shown.
 
 The answer countdown is not affected: it still counts in manual. On a switch back to auto, the held step runs its usual time again from the start (a fork counts a fresh 15 seconds). The mode is saved with the room and survives a server restart. Design in [docs/designs/manual-pacing.md](designs/manual-pacing.md).

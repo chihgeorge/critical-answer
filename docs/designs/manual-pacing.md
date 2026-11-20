@@ -12,7 +12,9 @@ animation starts early. The host needs a way to say "wait for me".
 
 - The host page header has a two-part switch, 「自動｜⏸ 手動」, between the room code and 「⚙ 更多」. One tap, any
   time, lobby included. The default is 自動, which behaves exactly as before.
-- In 手動, every pause in the table below stops and waits. The host page shows a dashed panel
+- In 手動, every pause in the table below stops and waits. Since 2026-11-19 (owner, option 甲) that is only a pause the
+  room starts on its own: a step that is the direct result of the host's own press plays on its auto timer (second
+  table). A correct answer then takes 4 host presses: 公布答案 → 🎲 擲料理骰 → 🍲 上菜 → 下一題. The host page shows a dashed panel
   「⏸ 停在這裡：<what comes next>」 with 「手動模式，按「下一步」才會繼續」, and the big button becomes 「▶ 下一步」
   (keyboard `1` or Enter, `HOST_KEYS.next`).
 - The answer clock (`ANSWER_SECONDS`) is never held: it is a nudge for the players, not a step of the game.
@@ -27,16 +29,30 @@ Held in 手動 (the room would otherwise move the game on by itself):
 | 擲先攻, waiting for rolls | `armInitiative(INITIATIVE_MS)` | rolls for the teams left (as 全部代擲) |
 | 擲先攻, the order on show | `armInitiative(n × INITIATIVE_TIE_MS + INITIATIVE_ORDER_MS)` | start cue, narration, first question |
 | Boss phase card after a miss | the read-out time of the retry line, `BEAT_MS` .. `ADVANCE_CAP_MS` | opens the card (下一題 did this already) |
-| 公布答案's beat | `BEAT_MS` → `resolveLock` | shows right (crit die) or wrong |
-| Dice: warrior, crit, check | `BEAT_MS` → `resolveRoll` | judges with the dice shown |
+| Class dice: mage, cleric, thief | `BEAT_MS` → `resolveRoll` | applies the die shown |
+| A warrior's missed charge (`charge-fail` beat, 2026-11-19) | `BEAT_MS` → `chargeFailBeat` | judges the miss (a 1 takes the reward), next team |
+| Defeated-boss card | `BEAT_MS` (`kill-defeated`) | rolls the 4d20 |
 | Kill 4d20 | `KILL_BEAT_MS` → `resolveRoll` | scores the kill, ends the game |
 | Boss miss's red tile | `BEAT_MS` → `armBossMiss` | the retry: the boss's next question |
-| 叉路 door clock | `FORK_MS` → `applyForkChoice(id, "timeout")` | the same timeout: the ⚔️ door opens |
+| 叉路 door clock | `FORK_MS` → `applyForkChoice(id, "timeout")` | the same timeout: the ⚔️ door opens (its own 「⏰ 時間到（替隊伍選）」 button, no key) |
+| Oracle pick | `FORK_MS` → time-out pick | the same timeout (its own 「⏰ 時間到（替隊伍選）」 button, no key) |
 | 叉路 door opening | `FORK_BEAT_MS` → `endForkBeat` | the room behind the door |
 | Podium start | `revealFrom`: `FINISH_PODIUM_MS`, `EPILOGUE_DELAY_MS`, `END_READ_CAP_MS` (and `READ_GAP_MS`, which only shortens the cap) | the reveal's first beat starts now |
 
 At a fork in 手動 there is no countdown on any screen (`forkLeft` is not sent) and a late press is not a timeout: the
 team may pick whenever it likes. 擲先攻 shows no countdown either (`initiative.untimed`).
+
+Run on their auto timer in 手動 too (`pace(..., timed)`, owner 2026-11-19): the direct result of a host's press.
+
+| Pause | Timer / length | Started by |
+| --- | --- | --- |
+| 公布答案's beat | `BEAT_MS` → `resolveLock` | 公布答案 |
+| Dish die (and 改成答對's) | `BEAT_MS` → `resolveRoll` | 🎲 擲料理骰 / 改成答對 |
+| Persuasion check die | `BEAT_MS` → `resolveRoll` | 下一題 or a ruling (the room rolls as the turn opens) |
+| Persuasion success card | `BEAT_MS` (`check-success`) | the check above |
+| Warrior's charge die | `BEAT_MS` → `resolveRoll` | ⚔️ 衝鋒; its result holds (a hit's answer reveal, a miss's `charge-fail` beat) |
+
+A wrong answer (下輪再答, 換隊) never held: the host's 答錯 is the press, so it already matches this split.
 
 Not held:
 

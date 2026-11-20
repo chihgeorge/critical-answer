@@ -130,7 +130,7 @@ test("phone answering: a wrong lock is marked without the answer, 下輪再答 g
   // The answer after the reveal beat (2 s), then 🎲 擲料理骰 rolls the dish die (2 s) and it is judged.
   await expect(wall(green)).toHaveAttribute("data-look", "ok", { timeout: 10_000 });
   await rollDish(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible();
+  await expect(team.getByText(/^答對了！/).first()).toBeVisible();
   // D4/D6: the reveal keeps the answered question, though the room has already dealt the next one.
   await expect(question).toBeVisible();
   await expect(host.getByTestId("host-reveal")).toContainText("綠色");
@@ -328,11 +328,11 @@ test("phone answering: a phone that reloads during the reveal shows no question 
   await team.getByRole("button", { name: "綠色" }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat: the answer first
+  await expect(team.getByText(/^答對了！/).first()).toBeVisible({ timeout: 10_000 }); // the reveal beat: the answer first
   await rollDish(host); // then the dish die, and the turn moves on under the reveal
   await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toBeVisible();
   await team.reload();
-  await expect(team.getByText(/^答對了！/)).toBeVisible();
+  await expect(team.getByText(/^答對了！/).first()).toBeVisible();
   await expect(team.getByRole("heading", { name: "地城之門是什麼顏色？" })).toHaveCount(0);
 });
 
@@ -374,7 +374,7 @@ test("phone answering: when the game ends, our own 答對了 panel gives way to 
   await team.getByRole("button", { name: /綠色/ }).click();
   await team.getByRole("button", { name: "鎖定答案" }).click();
   await revealLock(host);
-  await expect(team.getByText(/^答對了！/)).toBeVisible({ timeout: 10_000 }); // the reveal beat: the answer first
+  await expect(team.getByText(/^答對了！/).first()).toBeVisible({ timeout: 10_000 }); // the reveal beat: the answer first
   await rollDish(host);
 
   toPage!.send(JSON.stringify({ type: "GAME_OVER", winners: [] }));
