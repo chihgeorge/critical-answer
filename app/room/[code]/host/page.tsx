@@ -547,7 +547,8 @@ export default function HostPage() {
   const roll = game?.pendingRoll ?? null;
   // A lock waiting for 公布答案 holds every judgment too (the room refuses with lock_pending).
   // The 說服成功 card (stageBeat) holds the room too: a judgment then is refused (reveal_pending).
-  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll && !game?.pendingLock && !game?.stageBeat;
+  // So does the check still to roll after a 答錯's grace window (checkDue, QA P2-11): its question is not out yet.
+  const canJudge = ready && swapArmed && !!turn?.team && pendingTeamId !== turn.team.id && !roll && !game?.pendingLock && !game?.stageBeat && !game?.checkDue;
 
   // Phone answering (docs/designs/phone-answering.md D3, D11, D13): a multipleChoice turn is judged by
   // the team's lock, which waits for the host's 公布答案 (host-reveal.md); the host gets 替選・下輪再答 / 逃跑 when the countdown runs out (15 s with it off).
