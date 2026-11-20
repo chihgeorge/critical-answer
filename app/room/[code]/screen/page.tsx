@@ -862,13 +862,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             </div>
           </div>
         </div>
+        {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage, then simply fades away (px-poof, no smoke). Its 💢
+            rides the sprite's top right corner, beside its face: higher up it covered the card and its pill (QA c2 5a). */}
+        {act && stageBeat === "thrown-out" && <span data-testid="screen-monster-angry" aria-hidden className="px-anger pointer-events-none absolute" style={{ right: -48, top: 32, fontSize: 56, lineHeight: 1 }}>💢</span>}
       </div>
-      )}
-      {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage (💢), then simply fades away (px-poof on the sprite, no smoke). */}
-      {act && stageBeat === "thrown-out" && (
-        <div data-testid="screen-monster-angry" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 150, width: 0, zIndex: 6, fontSize: 56, lineHeight: 1 }}>
-          <span className="px-anger absolute" style={{ left: 60, bottom: 170 }}>💢</span>
-        </div>
       )}
       {/* A natural 20: the monster hops for joy (💗), then its gift flies to the team on turn, up by its ribbon. */}
       {act && stageBeat === "check-twenty" && (

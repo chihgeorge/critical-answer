@@ -637,8 +637,8 @@ export type ServerMessage =
       beatAct?: true;
       /** The missed charge on show (stageBeat `charge-fail`): its die, and what a 1 takes (0 for 2–6). */
       chargeBeat?: { teamId: string; value: number; penalty: number };
-      /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.
-       * Absent from older servers. */
+      /** The monster on stage during `stageBeat`, or a persuasion 20's dish die, neither of which sends a `question`
+       * (#401): the room's monster, or the boss. Absent from older servers. */
       stageMonster?: PublicQuestion["monster"];
       /** Teams that joined after the start and wait for the host (docs/designs/late-join.md). `closed`: the boss fight
        * has begun or the game is over, so they wait for the next game. Absent while nobody waits. */

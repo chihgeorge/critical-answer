@@ -1550,6 +1550,27 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).cue).toBe("correct");
     });
 
+    // Value: protects=the persuaded monster stays on stage through its dish die, as a normal answer's does under its reveal
+    // (QA c2 5b), also after a restart; fails_when=the dish die's STATE names no stageMonster, so the screen draws the
+    // fallback monster ("…") instead.
+    it("a natural 20's dish die keeps the persuaded monster on stage, after a restart too", async () => { // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      vi.useFakeTimers();
+      const data = new Map<string, unknown>();
+      const storage = { get: async (k: string) => structuredClone(data.get(k)), put: (k: string, v: unknown) => void data.set(k, structuredClone(v)) };
+      const { room } = checkGame(1, 20, { ...makeRoom(), storage } as unknown as RoomIO); // pregate-literal: MAX_BOSS_HP=20 not the HP cap
+      const monster = (room as any).currentQuestion().pub.monster;
+      vi.advanceTimersByTime(2000 + NATURAL_BEAT_MS);
+      expect(lastBroadcast(room)).toMatchObject({ question: null, pendingRoll: { kind: "dish" }, stageMonster: monster });
+      expect(lastBroadcast(room).stageBeat).toBeUndefined();
+      // A restart during the die, from the save as it stands now (the first room's timers must not write to it any more).
+      const saved = new Map(data);
+      const restarted = { get: async (k: string) => structuredClone(saved.get(k)), put: (k: string, v: unknown) => void saved.set(k, structuredClone(v)) };
+      const second = new DungeonRoom({ ...makeRoom(), storage: restarted } as any, () => 0.5, { bank: checkBank });
+      expect(await second.restore()).toBe("restored");
+      // The saved die rolls on (restoreBeats), and the screen that reconnects gets the same monster with it.
+      expect((second as any).snapshot()).toMatchObject({ question: null, pendingRoll: { kind: "dish" }, stageMonster: monster });
+    });
+
     // Value: protects=a team cannot throw a bad check away by closing its phone during the beat (state matrix
     // check × drop-turn-moved); fails_when=onClose lets the turn move, the roll is dropped, the team rolls again.
     it("a phone that closes during the beat keeps the turn: the check is written", () => {

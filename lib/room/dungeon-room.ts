@@ -1834,7 +1834,9 @@ export class DungeonRoom {
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
       // A beat sends no question, so it names the monster the stage keeps (#401); nobody on turn in the buzz phase is the boss.
-      ...(beat ? { stageBeat: beat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
+      // So does a persuasion 20's dish die (QA c2 5b): the persuaded monster stays on stage until its gift is served.
+      ...(beat ? { stageBeat: beat } : {}),
+      ...(beat || this.persuadedDish() ? { stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
       ...(this.stageBeat === "charge-fail" && this.chargeBeat ? { chargeBeat: { teamId: this.chargeBeat.teamId, value: this.chargeBeat.value, penalty: this.chargeBeat.penalty } } : {}),
       ...(this.stageBeat === "thrown-out" && this.checkBeatAt ? { thrownOut: { teamId: this.checkBeatAt.teamId } } : {}),
       ...(this.stageBeat === "check-twenty" && this.checkBeatAt ? { checkTwenty: { teamId: this.checkBeatAt.teamId, gift: this.giftPart() } } : {}),
