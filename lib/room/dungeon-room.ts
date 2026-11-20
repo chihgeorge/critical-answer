@@ -4317,7 +4317,7 @@ export class DungeonRoom {
         ...(timing ? { timing } : {}),
         ...(!persuaded && (unseen || recalled) ? { asked: { content: justAnswered.full.content, ...(justAnswered.full.prompt ? { prompt: justAnswered.full.prompt } : {}) } } : {}),
         ...(at ? { at } : {}),
-        scored: { teamId, points: outcome.reward, ...dishOf, ...("halvedFrom" in outcome && outcome.halvedFrom !== undefined ? { halvedFrom: outcome.halvedFrom } : {}), ...(dishDie !== undefined && before?.classId === "chef" ? { chef: true as const } : {}) },
+        scored: { teamId, points: outcome.reward, ...dishOf, ...(dishDie !== undefined && before?.classId === "chef" ? { chef: true as const } : {}) },
         ...(dish ? { dish: { ...dish, points: outcome.reward, ...dishOf, monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" ? null : before!.roomIndex, teamId } } : {}),
       };
       this.dishReward = game.teams.find((t) => t.id === teamId)?.reward ?? 0;

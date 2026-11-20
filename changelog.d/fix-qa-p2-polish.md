@@ -11,6 +11,6 @@ bump: patch
 - The podium opens with an intro line instead of an empty 「…」 step, a title every team ties on is not awarded, and the scores under the podium are readable.
 - Only the last phase of a two-phase boss says 「最後的挑戰！」.
 - The host's 「指定下一題」 says 「下一次換新題時出：」, since a team already holding a question keeps it.
-- A burnt dish after a persuasion 1 shows the halving step on the phone (「焦黑！10 → 5 → 1」).
+- The phone shows a burnt dish by its result only (「🍳 焦黑！+1 飽足感」), not a chain of steps that missed a persuasion 1's halving.
 - Tutorial page 6 keeps the ▶ on its header and its small line is larger.
 - The host page keeps the winner hidden until the big screen's reveal reaches it.

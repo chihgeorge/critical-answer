@@ -523,8 +523,7 @@ export type RollMark = { kind: "dish" | "crit" | "check"; value: 20 | 1 };
 export type AnswerOutcome =
   /** `reward` is the whole gain; `dishBonus` the dish die's share of it (negative on a 1), absent when it changed nothing;
    * `dishDie` the dish die that landed, absent when none rolled. */
-  /** `halvedFrom`: a halved answer's gain before the half (a persuasion 1, a curse, the oracle), for the phone's 「20 → 10 → 1」. */
-  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; halvedFrom?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
+  | { type: "correct-room-advance"; teamId: string; pointsAwarded: number; reward: number; dishBonus?: number; dishDie?: number; nextRoomIndex: number; entersBoss: boolean; roll?: RollMark }
   | { type: "correct-boss-hit"; teamId: string; bossHpRemaining: number; bossKilled: boolean; reward: number; dishBonus?: number; dishDie?: number; killBonus?: number; roll?: RollMark }
   /** `switchedTo`: 逃跑's new monster (catalog id). */
   | { type: "incorrect-flee"; teamId: string; newDifficulty: Difficulty; switchedTo?: string }
@@ -1396,8 +1395,10 @@ export function answerQuestion(
           : {};
   const blessing = (base: number) => (boon === "blessing" ? Math.round(base * 0.5) : 0);
   // R5: the half is taken from the base reward, then the sneak raises it; a warrior's hit pays its die's share of it.
-  const shareOf = (reward: number) => (warriorDie === undefined ? reward : Math.round(reward * warriorShare(warriorDie)));
-  const baseOf = (reward: number) => shareOf(halved ? Math.round(reward * 0.5) : reward);
+  const baseOf = (reward: number) => {
+    const half = halved ? Math.round(reward * 0.5) : reward;
+    return warriorDie === undefined ? half : Math.round(half * warriorShare(warriorDie));
+  };
 
   const answeringTeam = getTeam(game, teamId);
   const revealedAtStart = game.revealedQuestionIds;
@@ -1590,7 +1591,7 @@ export function answerQuestion(
         })),
       };
       nextGame = applySprint(game, nextGame);
-      outcome = { type: "correct-room-advance", teamId, pointsAwarded, ...gain, ...(halved ? { halvedFrom: sneakPay(shareOf(base)) + blessing(base) } : {}), nextRoomIndex, entersBoss, ...rollMark };
+      outcome = { type: "correct-room-advance", teamId, pointsAwarded, ...gain, nextRoomIndex, entersBoss, ...rollMark };
     } else if (fleeChoice !== "retry") {
       const newDifficulty = Math.max(MIN_DIFFICULTY, team.currentDifficulty - 1) as Difficulty;
       const switchedTo = fleeChoice === "switch" ? switchMonster(game, team, rng) : undefined;

@@ -153,8 +153,7 @@ export type AnswerReveal = {
   at?: { monster: PublicQuestion["monster"]; room: number | null };
   /** Who answered and what it scored in all (dish included), for the big screen's 「✅ {隊名} 答對 +N」 line. Absent from older servers.
    * `dishDie`: the dish die behind it, `dishBonus` what it changed (absent when nothing), `chef` read with the chef's multipliers. */
-  /** `halvedFrom`: the gain before a halving (a persuasion 1, a curse, the oracle), so the phone shows that step too. */
-  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; halvedFrom?: number; chef?: true };
+  scored?: { teamId: string; points: number; dishDie?: number; dishBonus?: number; chef?: true };
   /** The dish the defeated monster was cooked into and the 飽足感 it gave (docs/designs/monster-cuisine.md).
    * Only when the answer defeated a room monster or killed the boss, and that monster has a dish. */
   dish?: {

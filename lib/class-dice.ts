@@ -48,12 +48,13 @@ export function dishChangeLabel(value: number | undefined): string {
 }
 
 /** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1), `points`
- * the answer's whole score after it, `unit` the score's name, `halvedFrom` the gain before a halving. A change reads 「原本 → 現在」 (owner, 2026-11-18). A 2–6
+ * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18), except a burnt
+ * dish, which shows only what is left: 「焦黑！+1」 (owner review, 2026-11-20: a halved answer's chain was hard to read). A 2–6
  * reads as served: only a chef's says it got no bonus. */
-export function dishPhoneLine(value: number, bonus: number, points: number, unit: string, chef = false, halvedFrom?: number): string {
-  // A change leaves out 「料理骰 N：」, so the line fits one row of a phone. A halved answer shows its half first (QA 2026-11-19).
-  const from = halvedFrom !== undefined && halvedFrom !== points - bonus ? `${halvedFrom} → ` : "";
-  if (bonus) return `🍳 ${dishChangeLabel(value)} ${from}${points - bonus} → ${points} ${unit}`;
+export function dishPhoneLine(value: number, bonus: number, points: number, unit: string, chef = false): string {
+  // A change leaves out 「料理骰 N：」, so the line fits one row of a phone.
+  if (bonus && value === 1) return `🍳 ${dishChangeLabel(value)}+${points} ${unit}`;
+  if (bonus) return `🍳 ${dishChangeLabel(value)} ${points - bonus} → ${points} ${unit}`;
   const t = dishTier(value, chef);
   return t === 0 ? "🍳 料理骰 1：燒焦了" : t === 1 ? `🍳 料理骰 ${value}：上菜（沒加成）` : t === 2 ? `🍳 料理骰 ${value}：上菜` : "🍳 料理骰 20：傳說級料理";
 }

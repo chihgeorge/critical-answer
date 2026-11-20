@@ -7,10 +7,7 @@ describe("class dice words", () => {
   it("names every dish die tier with its multiplier, a chef's own on 7–19 and 20", () => {
     expect([1, 2, 7, 20].map((v) => dishEffect(v, false))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜，獎勵不變", "傳說級料理！獎勵 ×1.5"]);
     expect([1, 6, 19, 20].map((v) => dishEffect(v, true))).toEqual(["燒焦了！獎勵 ×0.1", "上菜，獎勵不變", "上菜！提鮮 ×1.2", "傳說級料理！獎勵 ×2"]);
-    expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！ 20 → 2 飽足感");
-    // QA 2026-11-19: a persuasion 1 halved it first, so the phone shows that step too.
-    expect(dishPhoneLine(1, -9, 1, "飽足感", false, 20)).toBe("🍳 焦黑！ 20 → 10 → 1 飽足感");
-    expect(dishPhoneLine(20, 10, 20, "飽足感", false, 20)).toBe("🍳 傳說級！ 20 → 10 → 20 飽足感");
+    expect(dishPhoneLine(1, -18, 2, "飽足感")).toBe("🍳 焦黑！+2 飽足感"); // only the result (owner review, 2026-11-20)
     expect(dishPhoneLine(12, 4, 24, "飽足感")).toBe("🍳 提鮮加成 20 → 24 飽足感");
     expect(dishPhoneLine(12, 0, 20, "飽足感")).toBe("🍳 料理骰 12：上菜");
     // A 2–6 pays as usual: served for anyone, only a chef hears it got no bonus (owner 2026-11-18).

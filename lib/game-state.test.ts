@@ -2381,13 +2381,10 @@ describe("the persuasion check (dnd design R6, R8)", () => {
 
   it("a natural 1 halves the success on that question, before the sneak, and marks the outcome", () => {
     const g = check(checkGame([undefined]), 1);
-    // halvedFrom: the gain before the half, so the phone can show 「10 → 5」 (QA 2026-11-19).
-    expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 5, halvedFrom: 10, roll: { kind: "check", value: 1 } });
+    expect(answerQuestion(g, "T0", q0(g), true).outcome).toMatchObject({ reward: 5, roll: { kind: "check", value: 1 } });
     // 10 halved is 5, then the sneak's ×1.5 = 7.5 rounds to 8.
     const sneaky = check(armSneak(checkGame(["thief"]), "T0"), 1);
-    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 8, halvedFrom: 15 });
-    const plain = check(checkGame([undefined]), 9);
-    expect(answerQuestion(plain, "T0", q0(plain), true).outcome).not.toHaveProperty("halvedFrom");
+    expect(answerQuestion(sneaky, "T0", q0(sneaky), true).outcome).toMatchObject({ reward: 8 });
     const boss = check(checkGame([undefined], 0), 1);
     expect(answerQuestion(boss, "T0", q0(boss), true).outcome).toMatchObject({ type: "correct-boss-hit", reward: 8 }); // 15 halved
   });
