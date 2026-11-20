@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.111.0.3] - 2026-11-21
+
+### Fixed
+- The fortune teller's effect card no longer runs under the narration box on the big screen: the matching teams' heroes stay on one row and shrink when 「選的人自己也中了！」 shows or 7 or more teams match.
+
 ## [0.111.0.2] - 2026-11-21
 
 ### Changed
