@@ -101,8 +101,8 @@ describe("drawEvent (3-scene deck)", () => {
     expect(drawEvent(g, "t0", seq(0.9, 0.7, 0.7))).toEqual({ scene: "idol", outcome: "curse" });
   });
 
-  it("the room's chance is one in four", () => {
-    expect(EVENT_CHANCE).toBe(0.25);
+  it("the room's chance is one in two", () => {
+    expect(EVENT_CHANCE).toBe(0.5);
   });
 });
 

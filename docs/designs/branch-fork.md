@@ -13,7 +13,7 @@ between two doors and lives with the result.
 
 ## Decisions
 
-- **Trigger unchanged.** Where an event room used to be drawn (a correct answer into a new room, `EVENT_CHANCE` 25%,
+- **Trigger unchanged.** Where an event room used to be drawn (a correct answer into a new room, `EVENT_CHANCE` 25%, 50% since 2026-11-20,
   never into the boss room or the last room, never out of a mystery room), the team now comes to a fork. A room the team
   took ⚔️ into draws nothing when it walks out (`Team.fork = { phase: "monster" }`), so two forks are always a room apart.
 - **When the team chooses.** The draw only marks the team (`{ phase: "waiting" }`, 🚪 on the map, 「🚪 在叉路口」 on the

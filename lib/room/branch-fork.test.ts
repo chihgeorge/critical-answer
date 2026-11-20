@@ -538,13 +538,13 @@ describe("叉路 in the room", () => {
     expect(st.eventId).toBe(narrations(s.room).at(-1).eventId);
   });
 
-  it("the room picks ⚔️ led to and a room the host picked rolls no fork; with no e2e team the top quarter of the rng is a fork", () => {
+  it("the room picks ⚔️ led to and a room the host picked rolls no fork; with no e2e team the top half of the rng is a fork", () => {
     vi.useFakeTimers();
     const s = setup();
     send(s.room, s.host, { type: "HOST_QUEUE_QUESTION", target: T1, questionId: "r1-3" });
     answerRight(s, 0, false);
     expect(s.room.game!.teams[0].fork).toBeUndefined();
-    for (const [r, expected] of [[0, false], [0.74, false], [0.75, true], [0.99, true]] as const) {
+    for (const [r, expected] of [[0, false], [0.49, false], [0.5, true], [0.99, true]] as const) {
       const one = setup({ eventTeam: null, rng: () => r, teams: 1 });
       answerRight(one, 0, false);
       expect(!!one.room.game!.teams[0].fork).toBe(expected);
