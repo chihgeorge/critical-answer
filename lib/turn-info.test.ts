@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeTurn, FALLBACK_MONSTER, floorLabel, hostAnswerShown, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { chargeFailText, describeTurn, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -230,5 +230,30 @@ describe("revealStage (the reveal keeps the room it was answered in)", () => {
     expect(revealStage({ dish, at: { monster: boss, room: null } }, 1)?.room).toBeNull();
     expect(revealStage({}, 1)).toBeNull();
     expect(revealStage(null, 1)).toBeNull();
+  });
+});
+
+describe("ownReveal (QA 2026-11-19 P1-1)", () => {
+  // Value: protects=the answering team's phone says 「答對了！」, not 「下一個是我們！」, while the turn stays on it through
+  // the dish die and 上菜 (#426); fails_when=a reveal of this team's answer is read as the next team's hold
+  const base = { questionId: "q", answer: "梅花" };
+  it("is the team on turn's own correct answer: dish die first, then scored, a choice, a dish", () => {
+    expect(ownReveal({ ...base, dishNext: true }, "a")).toBe(true);
+    expect(ownReveal({ ...base, scored: { teamId: "a", points: 10 } }, "a")).toBe(true);
+    expect(ownReveal({ ...base, choice: { options: ["甲"], correctIndex: 0, teamId: "a", points: 0 }, dishNext: true }, "a")).toBe(true);
+    expect(ownReveal({ ...base, scored: { teamId: "b", points: 10 } }, "a")).toBe(false);
+  });
+  it("is not a caught answer, a fled question's bare answer, or no reveal", () => {
+    expect(ownReveal({ ...base, caught: { teamId: "a", by: "b" } }, "a")).toBe(false);
+    expect(ownReveal(base, "a")).toBe(false);
+    expect(ownReveal(null, "a")).toBe(false);
+  });
+});
+
+describe("chargeFailText (QA 2026-11-19 P1-2)", () => {
+  it("names a 1's penalty, and a plain miss with no penalty", () => {
+    expect(chargeFailText("戰士隊", 1, 20)).toBe("⚔️ 戰士隊衝鋒大失敗 −20（擲出 1）");
+    expect(chargeFailText("戰士隊", 1, 0)).toBe("⚔️ 戰士隊衝鋒大失敗（擲出 1）");
+    expect(chargeFailText("", 4, 0)).toBe("⚔️ 衝鋒失敗（擲出 4）");
   });
 });

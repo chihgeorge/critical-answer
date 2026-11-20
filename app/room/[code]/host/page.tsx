@@ -679,8 +679,11 @@ export default function HostPage() {
 
   // ▶ 下一步 (manual-pacing.md): key 1 or Enter, like 下一題, in every phase a hold can be up (擲先攻 and the podium too).
   const stepNow = () => game && hold && send({ type: "HOST_STEP", eventId: game.eventId, step: hold.id });
+  // A door or an oracle pick: the step picks for the team (time out), so it is its own button with no key, not ▶ 下一步
+  // (QA 2026-11-19 P1-5: a host pressing 1 out of habit picked for the team).
+  const pickTimeout = hold?.kind === "fork" || hold?.kind === "fortune";
   useEffect(() => {
-    if (!holdUp || !ready) return;
+    if (!holdUp || !ready || pickTimeout) return;
     function onKey(e: KeyboardEvent) {
       if (picking || drawer || !swapArmed) return;
       if (hostKeyAction({ key: e.key, repeat: e.repeat, ctrlKey: e.ctrlKey, metaKey: e.metaKey, altKey: e.altKey, target: e.target as HTMLElement | null }, true) !== "next") return;
@@ -691,18 +694,24 @@ export default function HostPage() {
     return () => window.removeEventListener("keydown", onKey);
     // stepNow is a plain function over state this effect already depends on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [holdUp, hold?.id, game?.eventId, ready, picking, drawer, swapArmed]);
+  }, [holdUp, hold?.id, game?.eventId, ready, picking, drawer, swapArmed, pickTimeout]);
   const holdPanel = hold && (
     <div className="mt-3 flex flex-col gap-3">
       <div data-testid="host-hold" role="status" className="border-4 border-dashed border-[var(--k)] bg-[var(--turn)] px-3 py-2 text-left text-[var(--k)]">
         {/* The label is one block: it drops to its own line whole on a phone, never leaving one character behind. */}
         <div className="text-[18px]"><span className="whitespace-nowrap">⏸ 停在這裡：</span><span className="inline-block text-balance">{hold.label}</span></div>
-        <div className="text-[13px]">按「下一步」才會繼續</div>
+        <div className="text-[13px]">{pickTimeout ? "隊伍選好就會繼續" : "按「下一步」才會繼續"}</div>
       </div>
-      <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
-        {connected ? "▶ 下一步" : "重新連線中"}
-        <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
-      </PixelButton>
+      {pickTimeout ? (
+        <PixelButton variant="flee" data-testid="host-pick-timeout" disabled={!ready || !swapArmed} onClick={stepNow}>
+          {connected ? "⏰ 時間到（替隊伍選）" : "重新連線中"}
+        </PixelButton>
+      ) : (
+        <PixelButton variant="ok" data-testid="host-step" disabled={!ready || !swapArmed} onClick={stepNow}>
+          {connected ? "▶ 下一步" : "重新連線中"}
+          <span className="px-key" aria-hidden="true">{HOST_KEYS.next}</span>
+        </PixelButton>
+      )}
     </div>
   );
 

@@ -13,7 +13,7 @@ import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAns
 import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, hasSkillUses, skillRolledOn, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { describeTurn, nextUp, turnLive, turnOpened } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, nextUp, ownReveal, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
@@ -1260,8 +1260,17 @@ export default function PlayPage() {
             color={isMyTurn ? undefined : "#6ab4ff"}
             end={isMyTurn && typeof game.answerClock?.left === "number" ? <AnswerClock key={`${game.eventId}:${game.answerClock.left}`} ms={game.answerClock.left} variant="chip" paused={disconnected} /> : undefined}
           >
-            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
+            {buzz ? (turn.team ? `${turn.team.name}搶到了！` : "搶答時間！") : isMyTurn ? (ownReveal(game.reveal, teamId) ? "答對了！" : nextUp(game) ? "下一個是我們！" : "輪到我們了！") : `輪到：${turn.team?.name ?? "…"}`}
           </TurnRibbon>
+        )}
+
+        {/* A missed charge, as the big screen shows it, before the turn moves on (QA 2026-11-19 P1-2). */}
+        {game && !finished && game.stageBeat === "charge-fail" && game.chargeBeat && (
+          <div data-testid="phone-charge-fail">
+            <Panel tone="lav" role="status" className="px-3 py-[14px] text-center text-[20px]">
+              {chargeFailText(game.chargeBeat.teamId === teamId ? "" : (game.view.teams.find((t) => t.id === game.chargeBeat!.teamId)?.name ?? ""), game.chargeBeat.value, game.chargeBeat.penalty)}
+            </Panel>
+          </div>
         )}
 
         {/* The boss's phase card, as the big screen shows it (docs/designs/boss-phases.md D4): the new rule

@@ -162,7 +162,7 @@ export function MoreDrawer({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[15px]">節奏</span>
                 {pacing}
-                <span className="text-[13px]">手動：每一步都停下來，等你按「▶ 下一步」</span>
+                <span className="text-[13px]">手動：房間自己要往下走時停下來，等你按「▶ 下一步」</span>
               </div>
             )}
           </section>

@@ -127,6 +127,19 @@ export function nextUp(s: HoldFields): boolean {
   return !!s.reveal || !!s.eventReveal || s.fortune?.step === "card" || !!s.phaseCard || !!s.phaseCardDue;
 }
 
+/** The reveal up is the team on turn's own correct answer: the turn stays on it through the answer, the dish die and 上菜
+ * (#426), so its phone says so instead of 「下一個是我們！」 (QA 2026-11-19 P1-1). For the team on turn only: a dish die's
+ * reveal (`dishNext`, a typed answer names no team) is always the turn's. A 🚨 catch is no correct answer. */
+export function ownReveal(reveal: StateMessage["reveal"] | undefined, teamId: string | undefined): boolean {
+  if (!reveal || !teamId || reveal.caught) return false;
+  return !!reveal.dishNext || [reveal.scored, reveal.choice, reveal.sorted, reveal.fields, reveal.dish].some((x) => x?.teamId === teamId);
+}
+
+/** A warrior's missed charge (stageBeat `charge-fail`), as the big screen and the warrior's phone say it: a 1 takes points. */
+export function chargeFailText(team: string, value: number, penalty: number): string {
+  return `⚔️ ${team}衝鋒${value === 1 ? "大失敗" : "失敗"}${penalty > 0 ? ` −${penalty}` : ""}（擲出 ${value}）`;
+}
+
 /** The host's answer box (HOST_ANSWER) shows only for the question on turn while nothing holds it: under a reveal the
  * turn has already moved on, and the next answer beside the revealed one gets read out (#339). A door opening holds it
  * too: ⚔️'s question is not up until the door has opened (branch-fork.md). A boss phase card still due (phaseCardDue)

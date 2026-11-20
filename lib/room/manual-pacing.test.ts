@@ -126,60 +126,77 @@ describe("手動停頓: the switch", () => {
     expect(state(s.room).pacing).toBe("manual");
     send(s.room, s.phones[0], { type: "HOST_PACING", mode: "auto" });
     expect(sent(s.phones[0]).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
-    lockAndReveal(s, true);
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(s, false);
+    vi.advanceTimersByTime(BEAT_MS);
     send(s.room, s.phones[0], { type: "HOST_STEP", eventId: state(s.room).eventId, step: state(s.room).hold.id });
     expect(sent(s.phones[0]).at(-1)).toMatchObject({ type: "ERROR", error: "not_host" });
-    expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
+    expect(state(s.room).hold).toMatchObject({ kind: "boss-miss" });
     pacing(s, "auto");
     expect(state(s.room).pacing).toBeUndefined();
   });
 });
 
 describe("手動停頓: each pause waits for ▶ 下一步", () => {
-  it("公布答案's beat, then the dish die: neither moves on by itself, each takes one step", () => {
+  // Value: protects=option 甲 (owner 2026-11-19): a step the host's own press starts plays on its timer in manual, so a
+  // correct answer is 公布答案 → 🎲 擲料理骰 → 上菜 → 下一題; fails_when=the lock's beat or the dish die waits for 下一步 again
+  it("公布答案's beat and the dish die play on their own timers: a correct answer takes 4 presses", () => {
     const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
-    lockAndReveal(s, true);
-    expect(state(s.room).hold).toMatchObject({ kind: "lock" });
-    vi.advanceTimersByTime(LONG);
+    lockAndReveal(s, true); // press 1: 公布答案
     expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
-    step(s);
-    // The answer's reveal is not a step: it waits for 🎲 擲料理骰, then the die's beat is one.
+    expect(state(s.room).hold).toBeUndefined();
+    vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room)).toMatchObject({ pendingLock: null, pendingRoll: null, reveal: { dishNext: true } });
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(LONG);
-    expect(state(s.room).pendingRoll).toBeNull();
-    roll(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "dish" }, hold: { kind: "roll" }, reveal: { dishNext: true } });
-    vi.advanceTimersByTime(LONG);
-    expect(state(s.room).reveal.scored).toBeUndefined();
-    step(s);
+    expect(state(s.room).pendingRoll).toBeNull(); // the reveal still waits for the host
+    roll(s); // press 2: 🎲 擲料理骰
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "dish" }, reveal: { dishNext: true } });
+    expect(state(s.room).hold).toBeUndefined();
+    vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).reveal).toMatchObject({ scored: { teamId: T1 } });
     expect(state(s.room).hold).toBeUndefined();
+    const eventId = state(s.room).eventId;
+    send(s.room, s.host, { type: "HOST_SERVE", eventId }); // press 3: 上菜
+    (s.room as any).servedAt = -Infinity;
+    send(s.room, s.host, { type: "HOST_NEXT", eventId }); // press 4: 下一題
+    expect(state(s.room).reveal).toBeNull();
+  });
+
+  // Value: protects=the split the owner chose: a pause the room starts on its own still holds; fails_when=a held kind gets timed
+  it("a step the room starts on its own still holds: a class die waits for 下一步", () => {
+    const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
+    s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
+    send(s.room, s.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(s.room).question.id });
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "mage" }, hold: { kind: "roll" } });
+    vi.advanceTimersByTime(LONG);
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "mage" });
+    step(s);
+    expect(state(s.room).pendingRoll).toBeNull();
   });
 
   it("a second press with the same ids, or an old eventId, runs nothing more", () => {
-    const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
-    lockAndReveal(s, true);
+    const s = setup({ bank: mcBank, teams: 1 });
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(s, false);
+    vi.advanceTimersByTime(BEAT_MS); // the lock's beat, on its timer
     const { eventId, hold } = state(s.room);
+    expect(hold).toMatchObject({ kind: "boss-miss" });
     const press = (e: number, id: number) => s.room.onMessage(JSON.stringify({ type: "HOST_STEP", eventId: e, step: id }), s.host);
     press(eventId - 1, hold.id);
-    expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
+    expect(s.room.game!.pendingWrong).not.toBeNull();
     press(eventId, hold.id);
-    press(eventId, hold.id); // the double press: no step is up under the answer's reveal
-    expect(state(s.room)).toMatchObject({ pendingRoll: null, reveal: { dishNext: true } });
-    expect(state(s.room).hold).toBeUndefined();
-    roll(s);
-    roll(s); // 🎲 擲料理骰 pressed twice rolls one die
-    expect(state(s.room).hold.id).not.toBe(hold.id);
-    step(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: null, reveal: { scored: { teamId: T1 } } });
+    const after = s.room.game;
+    press(eventId, hold.id); // the double press
+    expect(s.room.game).toBe(after);
+    expect(after!.pendingWrong).toBeNull();
   });
 
   it("a boss miss's red tile, and the phase card two misses bring", async () => {
     const s = setup({ bank: mcBank, teams: 1 });
     send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
     lockAndReveal(s, false);
-    step(s); // the lock's beat
+    vi.advanceTimersByTime(BEAT_MS); // the lock's beat, on its timer
     expect(state(s.room).hold).toMatchObject({ kind: "boss-miss" });
     const seq = state(s.room).eventId;
     await vi.advanceTimersByTimeAsync(LONG);
@@ -191,7 +208,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     send(s.room, s.host, { type: "HOST_NEXT", eventId: state(s.room).eventId });
     // The second miss uses the phase up: its card is due once the retry line is in, and then waits.
     lockAndReveal(s, false);
-    step(s);
+    vi.advanceTimersByTime(BEAT_MS);
     step(s);
     expect(state(s.room).reveal).toMatchObject({ questionId: "p1-b" });
     await vi.advanceTimersByTimeAsync(LONG);
@@ -222,6 +239,8 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     toChoosing(s);
     expect(state(s.room).forkLeft).toBeUndefined();
     expect(state(s.room).hold).toMatchObject({ kind: "fork" });
+    // Its own 「⏰ 時間到」 button on the host page, not ▶ 下一步 on key 1 (QA 2026-11-19 P1-5).
+    expect(state(s.room).hold.label).toContain("⏰ 時間到");
     vi.advanceTimersByTime(FORK_MS * 4);
     expect(s.room.game!.teams[0].fork?.phase).toBe("choosing");
     step(s);
@@ -248,7 +267,7 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     toLastHit(s);
     expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", pendingRoll: { kind: "kill" }, hold: { kind: "kill-defeated" } });
     step(s);
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 } });
+    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "kill" }, hold: { kind: "roll" }, phase: "playing", view: { bossHp: 0 }, stageBeat: "kill-roll", question: null });
     await vi.advanceTimersByTimeAsync(LONG);
     expect(state(s.room).phase).toBe("playing");
     step(s);
@@ -275,23 +294,22 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
 describe("手動停頓: switching with a pause up", () => {
   it("manual to auto: the waiting beat runs its whole length again from the switch", () => {
     const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
-    lockAndReveal(s, true);
+    s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
+    send(s.room, s.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(s.room).question.id });
     vi.advanceTimersByTime(LONG);
     pacing(s, "auto");
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(BEAT_MS - 1);
-    expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
+    expect(state(s.room).pendingRoll).toMatchObject({ kind: "mage" });
     vi.advanceTimersByTime(1);
-    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
-    roll(s);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
+    expect(state(s.room).pendingRoll).toBeNull();
   });
 
   it("manual to auto on a boss miss, and on an open door: each runs its beat again", () => {
     const s = setup({ bank: mcBank, teams: 1 });
     send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
     lockAndReveal(s, false);
-    step(s);
+    vi.advanceTimersByTime(BEAT_MS);
     pacing(s, "auto");
     vi.advanceTimersByTime(BEAT_MS - 1);
     expect(s.room.game!.pendingWrong).not.toBeNull();
@@ -329,17 +347,25 @@ describe("手動停頓: switching with a pause up", () => {
     expect(state(s.room).podium.step).toBe(-1);
   });
 
-  it("auto to manual: a running beat and a running door clock stop and wait", () => {
+  it("auto to manual: a running beat and a running door clock stop and wait; a timed one runs on", () => {
+    const m = setup({ bank: mcBank, manual: false, teams: 1, fixedDie: 10 });
+    m.room.game = { ...m.room.game!, teams: m.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
+    send(m.room, m.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(m.room).question.id });
+    vi.advanceTimersByTime(BEAT_MS / 2);
+    pacing(m, "manual");
+    expect(state(m.room).hold).toMatchObject({ kind: "roll" });
+    vi.advanceTimersByTime(LONG);
+    expect(state(m.room).pendingRoll).toMatchObject({ kind: "mage" });
+    step(m);
+    expect(state(m.room).pendingRoll).toBeNull();
+
     const s = setup({ bank: mcBank, manual: false, teams: 1, fixedDie: 10 });
     lockAndReveal(s, true);
     vi.advanceTimersByTime(BEAT_MS / 2);
     pacing(s, "manual");
-    expect(state(s.room).hold).toMatchObject({ kind: "lock" });
-    vi.advanceTimersByTime(LONG);
-    expect(state(s.room).pendingLock).toMatchObject({ revealing: true });
-    step(s);
-    roll(s);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "dish" });
+    expect(state(s.room).hold).toBeUndefined();
+    vi.advanceTimersByTime(BEAT_MS / 2);
+    expect(state(s.room).reveal).toMatchObject({ dishNext: true });
 
     const f = setup({ manual: false });
     toChoosing(f);
@@ -448,7 +474,7 @@ describe("手動停頓: a restart, and what never leaves the room", () => {
     const s = setup({ bank: mcBank, teams: 1, storage });
     send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
     lockAndReveal(s, false);
-    step(s);
+    vi.advanceTimersByTime(BEAT_MS);
     const before = state(s.room);
     await vi.advanceTimersByTimeAsync(0);
     const r = await restored(storage, mcBank);
@@ -540,7 +566,7 @@ describe("#364: beats that hold the turn", () => {
     send(s.room, phone, { type: "TEAM_LOCK_OPTION", questionId: id });
     send(s.room, s.host, { type: "HOST_REVEAL", teamId: turn, questionId: id });
     s.room.onClose(phone);
-    step(s); // the lock's beat: judged at once, no dish die
+    vi.advanceTimersByTime(BEAT_MS); // the lock's beat, on its timer: judged at once, no dish die
     expect(state(s.room)).toMatchObject({ stageBeat: "kill-defeated", hold: { kind: "kill-defeated" } });
     step(s); // the defeat beat, then the 4d20
     step(s);
@@ -548,11 +574,12 @@ describe("#364: beats that hold the turn", () => {
     expect(s.room.game!.boss.hp).toBe(0);
   });
 
-  it("a passed check holds its beat in manual until 下一步, then the question shows", () => {
+  it("a passed check's card plays on its timer in manual too (option 甲), then the question shows", () => {
     const s = setup({ teams: 1, fixedDie: 18 });
     // The check rolled itself at the start, and its die landed (sendSettled).
-    expect(state(s.room)).toMatchObject({ stageBeat: "check-success", hold: { kind: "check-success" }, question: null });
-    step(s);
+    expect(state(s.room)).toMatchObject({ stageBeat: "check-success", question: null });
+    expect(state(s.room).hold).toBeUndefined();
+    vi.advanceTimersByTime(BEAT_MS);
     expect(state(s.room).stageBeat).toBeUndefined();
     expect(state(s.room).hold).toBeUndefined();
     expect(state(s.room).question.id).toBe(s.room.game!.teams[0].currentQuestionId);
@@ -587,14 +614,14 @@ describe("host-controlled turns and awards (#366)", () => {
     skip();
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     expect(state(s.room).pendingLock).toBeTruthy();
-    step(s);
+    vi.advanceTimersByTime(BEAT_MS);
     skip(); // the answer's reveal before its dish die holds the turn too
     expect(state(s.room).reveal).toMatchObject({ dishNext: true });
     expect(state(s.room).view.currentTurnTeamId).toBe(T1);
     roll(s);
     skip();
     expect(state(s.room).pendingRoll).toBeTruthy();
-    step(s);
+    vi.advanceTimersByTime(BEAT_MS);
     const game = s.room.game;
     skip();
     expect(s.room.game).toBe(game);

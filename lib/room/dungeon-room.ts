@@ -204,6 +204,8 @@ interface Step {
   label: () => string | null;
   run: () => void;
   timer: ReturnType<typeof setTimeout> | null;
+  /** Runs on its timer in manual too: the direct result of a host's own press (manual-pacing.md, owner 2026-11-19). */
+  timed?: true;
 }
 /** Long enough for a pizza break, short enough that a TV left on overnight is not billed all night. */
 const IDLE_MS = 2 * 60 * 60 * 1000;
@@ -534,7 +536,9 @@ export class DungeonRoom {
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
   /** Short narrated cards before the next die or question. The step owns their duration. */
-  private stageBeat: "check-success" | "kill-defeated" | null = null;
+  private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | null = null;
+  /** A warrior's missed charge on show before it is judged (charge-fail beat): its die and what a 1 takes. Memory only. */
+  private chargeBeat: { teamId: string; questionId: string; value: number; penalty: number } | null = null;
   /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller. */
   private checkBeatAt: { teamId: string; questionId: string } | null = null;
   /** Keep the map at the answered room until its dish has been eaten. */
@@ -1745,6 +1749,8 @@ export class DungeonRoom {
     // And while a memory question's media plays: no hint shows over it (memory-questions.md).
     // And a buzzer question waiting for the winner's category (#370).
     const hold = this.pickHold();
+    // The kill's 4d20 keep the defeated boss on show, a buzzed one too (QA 2026-11-19 P1-3): not the question or the buzz.
+    const beat = this.stageBeat ?? (this.pendingRoll?.kind === "kill" ? ("kill-roll" as const) : null);
     const held = this.awaitingCheck() || this.memorizing() || hold ? this.currentQuestion()?.pub.id : undefined;
     if (held !== undefined && view.mageHints?.[held] !== undefined) view.mageHints = Object.fromEntries(Object.entries(view.mageHints).filter(([k]) => k !== held));
     // So does the first character an earlier team's own check earned on it.
@@ -1761,13 +1767,14 @@ export class DungeonRoom {
       // The card holds the new phase's first question back until the host's 下一題.
       // A boss-entry dish keeps the boss question back until 下一題 opens the room (#364).
       // A persuasion 20's dish die keeps the unseen question hidden too: the gift shows none of it (persuasion-gift).
-      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold || this.stageBeat || this.bossEntryBefore || this.persuadedDish() ? null : this.shownQuestion(),
+      question: this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides() || hold || beat || this.bossEntryBefore || this.persuadedDish() ? null : this.shownQuestion(),
       ...(hold ? { pickHold: true as const } : {}),
       reveal: this.reveal,
       ...(this.eventReveal ? { eventReveal: this.eventReveal } : {}),
       ...this.pacingView(),
       // A beat sends no question, so it names the monster the stage keeps (#401); nobody on turn in the buzz phase is the boss.
-      ...(this.stageBeat ? { stageBeat: this.stageBeat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
+      ...(beat ? { stageBeat: beat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
+      ...(this.stageBeat === "charge-fail" && this.chargeBeat ? { chargeBeat: { teamId: this.chargeBeat.teamId, value: this.chargeBeat.value, penalty: this.chargeBeat.penalty } } : {}),
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
@@ -1840,7 +1847,7 @@ export class DungeonRoom {
   private currentHold(): (Hold & { slot: StepSlot | null }) | null {
     for (const slot of STEP_SLOTS) {
       const step = this.steps.get(slot);
-      const label = step?.label();
+      const label = step && !step.timed ? step.label() : null;
       if (step && label) return { id: step.id, kind: step.kind, label, slot };
     }
     return this.revealHold !== null && this.game?.phase === "finished" ? { id: this.revealHold, kind: "podium", label: "揭曉下一個稱號或名次", slot: null } : null;
@@ -1848,11 +1855,11 @@ export class DungeonRoom {
 
   /** Every pause the room times itself goes through here (manual-pacing.md): after `ms` in auto, at HOST_STEP in
    * manual. `label` says what comes next, or null once the step is stale (what it waited on is gone). */
-  private pace(slot: StepSlot, kind: Hold["kind"], ms: number, label: () => string | null, run: () => void) {
+  private pace(slot: StepSlot, kind: Hold["kind"], ms: number, label: () => string | null, run: () => void, timed = false) {
     this.unpace(slot);
-    const step: Step = { id: ++this.stepSeq, kind, ms, label, run, timer: null };
+    const step: Step = { id: ++this.stepSeq, kind, ms, label, run, timer: null, ...(timed ? { timed: true as const } : {}) };
     this.steps.set(slot, step);
-    if (this.pacing === "auto") this.startStep(slot, step);
+    if (this.pacing === "auto" || timed) this.startStep(slot, step);
   }
 
   private startStep(slot: StepSlot, step: Step) {
@@ -1878,6 +1885,7 @@ export class DungeonRoom {
     const now = this.now();
     if (mode === "manual") {
       for (const step of this.steps.values()) {
+        if (step.timed) continue;
         if (step.timer) clearTimeout(step.timer);
         step.timer = null;
       }
@@ -2316,6 +2324,8 @@ export class DungeonRoom {
     if (holdsTurn(this.pendingRoll) && this.pendingRoll.teamId === teamId) return;
     // And a correct answer whose reveal waits for its dish die.
     if (this.reveal?.dishNext && this.game.phase === "playing" && currentTurnTeamId(this.game) === teamId) return;
+    // And a missed charge on show (charge-fail): a phone locked during it must not dodge the miss or a 1's penalty.
+    if (this.stageBeat === "charge-fail" && this.chargeBeat?.teamId === teamId) return;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -3265,10 +3275,11 @@ export class DungeonRoom {
     // A dish die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now. So
     // was the team whose answer's reveal waits for its dish die.
     const dishTeam = this.reveal?.dishNext && this.game?.phase === "playing" ? currentTurnTeamId(this.game) ?? undefined : undefined;
-    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : dishTeam);
+    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId));
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     this.stageBeat = null;
+    this.chargeBeat = null;
     this.bossEntryBefore = null;
     this.deferredBossTranscript.clear();
     if (lockTeam) this.syncLockTeam(lockTeam);
@@ -4678,7 +4689,8 @@ export class DungeonRoom {
     // Nothing else may hold the timer now (a lock is refused during a roll or a miss): what is left is stale,
     // e.g. a boss miss the host settled inside its beat (/review, 2026-11-05).
     this.pendingLock = { ...lock, revealing: true };
-    this.pace("lock", "lock", BEAT_MS, () => (this.pendingLock?.revealing ? "接下來揭曉答對或答錯" : null), () => this.resolveLock());
+    // 公布答案's own beat: the host just pressed, so it plays on its timer in manual too.
+    this.pace("lock", "lock", BEAT_MS, () => (this.pendingLock?.revealing ? "接下來揭曉答對或答錯" : null), () => this.resolveLock(), true);
     this.broadcastState();
   }
 
@@ -4865,11 +4877,14 @@ export class DungeonRoom {
     this.paceRoll(roll);
   }
 
-  /** Puts `roll` in its beat: resolveRoll lands it after the beat in auto, at ▶ 下一步 in manual. */
+  /** Puts `roll` in its beat: resolveRoll lands it after the beat in auto, and in manual too for a die a host press rolled. */
   private paceRoll(roll: PendingRoll) {
     this.pendingRoll = roll;
-    const kill = roll.kind === "kill";
-    this.pace("lock", "roll", kill ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kill ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll());
+    const kind = roll.kind;
+    // A dish die (擲料理骰, 改成答對) and a check (rolled on the host's 下一題) follow a host press, so they land on their timer
+    // in manual too. So does a warrior's die: its result holds instead (a hit's answer, a miss's charge-fail beat).
+    const timed = kind === "dish" || kind === "check" || kind === "warrior";
+    this.pace("lock", "roll", kind === "kill" ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kind === "kill" ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll(), timed);
   }
 
   /** The one place a cue is set: a new one bumps cueSeq, so the big screen plays it once. */
@@ -4919,6 +4934,8 @@ export class DungeonRoom {
         // pendingKill is always set with a kill roll; without it there is nothing to judge.
         if (kill) this.judge(roll.teamId, roll.questionId, kill.correct, kill.fleeChoice, kill.roll, roll.values, kill.fields);
         else this.broadcastState();
+      } else if (roll.value < WARRIOR_TARGET) {
+        this.chargeFailBeat(roll.teamId, roll.questionId, roll.value);
       } else {
         // The warrior's roll (kind is optional in the protocol, an older server's STATE; this room always sets it).
         this.judge(roll.teamId, roll.questionId, false, "retry", { kind: "warrior", value: roll.value });
@@ -4981,18 +4998,50 @@ export class DungeonRoom {
     this.setCue(passed ? "check-pass" : "check-fail");
     const said = this.diceLines.checkLine(passed ? "pass" : value === 1 ? "fumble" : "fail", this.lineNames(teamId));
     if (passed) {
-      // The check rolls as the turn opens, so the owl may still be reading the last turn's result and 「輪到…」 lines:
-      // the ones not read yet stay ahead of the check's, instead of being cut off by its new narration.
+      // The check rolls as the turn opens, so the owl may still be reading the last turn's result and 「輪到…」 lines: the
+      // check's line goes after them in the same narration. Written again under a new eventId, the screen read them all
+      // twice (QA 2026-11-19 P1-4: `done` lags the voice, and the line being read always restarted).
       const n = this.lastNarration;
-      const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
-      this.writeScripted([...unread, `說服成功！${said}接下來看題目。`].slice(-NARRATION_MAX_LINES));
+      const line = `說服成功！${said}接下來看題目。`;
       this.checkSuccessBeat(teamId, questionId);
-      this.broadcastState();
-      this.sendNarration();
+      if (n && n.eventId === this.eventSeq && n.lines.length < NARRATION_MAX_LINES) {
+        this.broadcastState();
+        this.appendLine(this.eventSeq, line, line.length); // never cut: writeScripted did not cut it either
+      } else {
+        // A full narration of this turn: its unread lines lead a new one, as before (rare; the screen may repeat them).
+        const unread = n && n.eventId === this.eventSeq ? n.lines.slice(n.done) : [];
+        this.writeScripted([...unread, line].slice(-NARRATION_MAX_LINES));
+        this.broadcastState();
+        this.sendNarration();
+      }
     } else {
       this.appendLine(this.eventSeq, `說服${value === 1 ? "擲出 1" : "失敗"}！${said}`);
       this.broadcastState();
     }
+  }
+
+  /** A missed charge stays on show before it is judged (QA 2026-11-19 P1-2): the big screen and the warrior's phone say it
+   * missed and what a 1 takes, then the miss is judged and the turn moves on. Held in manual. A restart drops it, like a die. */
+  private chargeFailBeat(teamId: string, questionId: string, value: number) {
+    const tried = warriorRoll(this.game!, teamId, questionId, value, () => 0).outcome;
+    const penalty = tried.type === "incorrect-retry" ? (tried.penalty ?? 0) : 0;
+    this.stageBeat = "charge-fail";
+    this.chargeBeat = { teamId, questionId, value, penalty };
+    this.pace("lock", "charge-fail", BEAT_MS, () => (this.stageBeat === "charge-fail" ? "接下來換下一隊" : null), () => {
+      this.stageBeat = null;
+      this.chargeBeat = null;
+      const game = this.game;
+      if (game?.phase !== "playing" || currentTurnTeamId(game) !== teamId || currentQuestionIdOf(game, teamId) !== questionId) return this.broadcastState();
+      try {
+        this.judge(teamId, questionId, false, "retry", { kind: "warrior", value });
+      } catch (err) {
+        console.error(JSON.stringify({ event: "roll_failed", error: String(err) }));
+        this.broadcastState();
+      }
+      // A phone that dropped during the beat (kept on turn by onClose) shows offline now.
+      this.syncLockTeamAndShow(teamId);
+    });
+    this.broadcastState();
   }
 
   /** The passed check's card before the question; restore() starts it again for a save made during it. */
@@ -5002,7 +5051,7 @@ export class DungeonRoom {
     this.pace("lock", "check-success", BEAT_MS, () => this.stageBeat === "check-success" ? "接下來顯示題目" : null, () => {
       this.stageBeat = null;
       this.broadcastState();
-    });
+    }, true);
   }
 
   /** A restart during a natural 20's beat lost the win the beat applies (R7). restore() marks it, and the next STATE
@@ -5100,7 +5149,7 @@ export class DungeonRoom {
       return this.game?.phase === "playing" && fork?.phase === "choosing" && fork.deadline === deadline;
     };
     // In manual the doors wait for the team; ▶ 下一步 is the clock running out (the same ⚔️ by timeout).
-    this.pace("fork", "fork", Math.max(0, deadline - this.now()), () => (live() ? `等${name}選門；按「下一步」算時間到` : null), () => {
+    this.pace("fork", "fork", Math.max(0, deadline - this.now()), () => (live() ? `等${name}選門；要替他們選，按「⏰ 時間到」` : null), () => {
       if (live()) this.applyForkChoice(id, "timeout");
     });
   }
@@ -5251,7 +5300,7 @@ export class DungeonRoom {
       }, intro);
     }
     // In manual the pizza waits for the team; ▶ 下一步 (offered once the ball is down) is the clock running out.
-    this.pace("fortune", "fortune", Math.max(0, deadline - this.now()), () => (live() && this.fortuneStep() === "choose" ? `等${name}挑命運；按「下一步」算時間到` : null), () => {
+    this.pace("fortune", "fortune", Math.max(0, deadline - this.now()), () => (live() && this.fortuneStep() === "choose" ? `等${name}挑命運；要替他們挑，按「⏰ 時間到」` : null), () => {
       if (live()) this.applyFortune(this.randomFortuneEffect(), true);
     });
   }
