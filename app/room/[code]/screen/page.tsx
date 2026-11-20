@@ -418,6 +418,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // A persuasion 20's dish die: its question is never shown, so the panel has no question (QA 2026-11-19, L3).
   const persuadedRoll = !question && !reveal && pendingRoll?.kind === "dish" && !pendingRoll.rejudge && view.checks?.[checkKey(pendingRoll.questionId, pendingRoll.teamId)]?.value === 20;
   const stars = question ? "★".repeat(question.difficulty) + "☆".repeat(Math.max(0, 5 - question.difficulty)) : "";
+  // No question in STATE (the 說服成功 card holds it back): no stars to show, so no chip rather than a bare 「難度」.
+  const chipLabel = card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll || stageBeat === "check-twenty" ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : question ? `難度 ${stars}` : null;
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
   const asking = !reveal && !card && question?.content.kind === "youtube";
@@ -663,7 +665,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll || stageBeat === "check-twenty" ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            {chipLabel && <LabelChip>{chipLabel}</LabelChip>}
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. A die's banner
                 (RollOverlay) sits over this row, so the chip steps aside until the die is done (#443). */}
             {stageRoom !== null && !pendingRoll && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
