@@ -15,7 +15,7 @@ import { CATCH_PAY, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, ty
 
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, thrownOutText, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -41,7 +41,7 @@ import { McOption, optionLetter, type OptionLook } from "@/components/mc-option"
 import { Qr } from "@/components/qr";
 import { Stage } from "@/components/stage";
 import { InitiativeOverlay, KillRollOverlay, RollOverlay, TieRollOverlay } from "@/components/d20";
-import { checkChip } from "@/lib/class-dice";
+import { checkChip, NATURAL_ONE_CHIP } from "@/lib/class-dice";
 import { MageHint } from "@/components/mage-hint";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
@@ -439,7 +439,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // A buzzer phase has no persuasion check (boss-buzzer.md D6).
   const dcTarget = fillIn && !buzz && !inBoss && !turn?.sneakArmed ? turn?.checkTarget : undefined;
   // Its result replaces the DC once the die's beat is over (the record shows then).
-  const dcChip = dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
+  // A natural 1 throws the team out before any question shows: the 1 stands in the same pill as every check result.
+  const dcChip = stageBeat === "thrown-out" ? NATURAL_ONE_CHIP : dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
@@ -658,7 +659,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
-            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll ? "說服成功・免答" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
+            <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
             {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
             {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
@@ -691,7 +692,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             next question never shows underneath (or behind) the previous answer. */}
         {stageBeat ? (
           <div data-testid={`screen-${stageBeat}`} className="px-title-boss px-title-sm text-center" style={{ fontSize: 34, lineHeight: 1.3 }}>
-            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "thrown-out" ? thrownOutText(turn?.name ?? "", stageMonster?.name ?? "怪物") : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
+            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "thrown-out" ? "\u00a0" : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
           </div>
         ) : card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">

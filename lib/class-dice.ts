@@ -79,9 +79,12 @@ export function rollStatus(kind: string | undefined): string {
 
 /** The big screen's persuasion chip: the DC and the team's bonus before the roll, the result once its beat is over
  * (QA 2026-11-19, L7: a bare 「（+1）」 read like a roll of 1, and a failed check showed nothing). */
+/** A natural 1's chip: the team is thrown out, whatever the target. */
+export const NATURAL_ONE_CHIP = { text: "🗣️ 擲出 1：被轟出門", tone: "danger" } as const;
+
 export function checkChip(target: { bonus: number; dc: number }, check?: { value: number; bonus: number; dc: number; passed: boolean }): { text: string; tone: "warn" | "ok" | "danger" } {
   if (!check) return { text: `🗣️ 說服擲骰檢定 ${target.dc}（加值 +${target.bonus}）`, tone: "warn" };
-  if (check.value === 1) return { text: "🗣️ 擲出 1：被轟出門", tone: "danger" };
+  if (check.value === 1) return NATURAL_ONE_CHIP;
   // Kept short: the chip sits between the monster and the answer clock.
   const sum = `${check.value}+${check.bonus}=${check.value + check.bonus}`;
   return check.passed ? { text: `🗣️ 說服成功：${sum}≥${check.dc}`, tone: "ok" } : { text: `🗣️ 說服失敗：${sum}<${check.dc}`, tone: "danger" };
