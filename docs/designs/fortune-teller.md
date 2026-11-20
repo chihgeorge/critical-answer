@@ -31,8 +31,41 @@ The ❓ door of a fork ([branch-fork.md](branch-fork.md)) draws one of three sce
   pool (below); when the pool is empty there is no fortune this time (G2): it draws chest or statue 1/2 each, then
   that scene's outcome.
 - Balance for this deck was simulated before the build (`analysis/s3a-fortune-sim`, `DECK=3`): class win rates 25.0–28.2%,
-  inside the 24.2–30.2 target. A change to any number here needs that run again. (The 1/2 share above was set by
-  the owner without a re-run.)
+  inside the 24.2–30.2 target. A change to any number here needs that run again. `analysis/` is not in the repo, so
+  later runs use `scripts/balance-sim.ts`, which plays lib's forks and fortunes directly (a random effect); see below.
+
+### Fork chance (2026-11-20)
+
+With the 1/2 share, a 4-team game on the event bank still met no fortune teller 37% of the time, and no ❓ door 13% of
+the time, so the deck alone cannot make her a regular. The owner raised `EVENT_CHANCE` from 0.25 to 0.5 after this run.
+Even at 1.0 (a fork on every eligible advance) 5% of games meet none, since the doors are blind; a guarantee would need
+its own rule.
+
+Event bank, 4 teams, 20 000 games each (counts added to a scratch copy of the sim):
+
+| `EVENT_CHANCE` | games with no fortune | fortunes / game | ❓ rooms / game | turns / team |
+|---|---|---|---|---|
+| 0.25 | 37% | 0.96 | 1.9 | 21.5 |
+| 0.5 | 17% | 1.71 | 3.4 | 21.8 |
+| 0.75 | 9% | 2.29 | 4.6 | 22.0 |
+| 1.0 | 5% | 2.70 | 5.4 | 22.1 |
+
+Class win rates, event bank, 4 teams, 100 000 games each (±0.3; target 24.2–30.2):
+
+| Class | 0.25 | 0.5 |
+|---|---|---|
+| mage | 27.5 | 27.9 |
+| warrior | 27.1 | 27.3 |
+| chef | 26.4 | 26.8 |
+| thief | 27.2 | 26.4 |
+| cleric | 26.4 | 26.3 |
+| no class | 15.3 | 15.2 |
+
+6 teams (20 000 games, ±0.5, fair 16.7) moved inside the noise: warrior 20.0 → 19.8, cleric 18.5 → 17.8, mage
+18.1 → 18.3, thief 17.7 → 18.2, chef 17.1 → 17.4, no class 8.5 → 8.5.
+
+`ROOMS=1,2,2,3,4,4,5,5 TEXT=0.29 SORT=0.12 BOSSTEXT=1 BOSSD=4 HP2=20 TAP=0.07 BUZZD=2:17,3:38,4:13,5:4 LIB='EVENT_CHANCE=0.5' node --no-warnings scripts/balance-sim.ts 100000`
+(`TEAMS=6` for 6 teams).
 
 ## Conditions
 

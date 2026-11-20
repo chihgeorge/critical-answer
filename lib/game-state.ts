@@ -1960,7 +1960,7 @@ export function applySprint(prev: GameState, next: GameState): GameState {
 /* ---------- Event rooms (docs/designs/event-rooms.md) ---------- */
 
 /** The chance that a correct answer brings a team to a 叉路, whose ❓ door holds an event (D5, branch-fork.md). */
-export const EVENT_CHANCE = 0.25;
+export const EVENT_CHANCE = 0.5;
 /** What stands on stage: a chest (a feast or a rotten dish), the statue (`idol`: a blessing or a curse) or the fortune
  * teller (fortune-teller.md). `spring` and `fairy`, and the old lots `great`, `good` and `bad`, are never drawn any more:
  * they stay for a room saved mid-event before the 3-scene deck. */
