@@ -48,10 +48,12 @@ export function dishChangeLabel(value: number | undefined): string {
 }
 
 /** The phone's line for the dish die once its answer is scored: `bonus` is what it changed (negative on a 1), `points`
- * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18). A 2–6
+ * the answer's whole score after it, `unit` the score's name. A change reads 「原本 → 現在」 (owner, 2026-11-18), except a burnt
+ * dish, which shows only what is left: 「焦黑！+1」 (owner review, 2026-11-20: a halved answer's chain was hard to read). A 2–6
  * reads as served: only a chef's says it got no bonus. */
 export function dishPhoneLine(value: number, bonus: number, points: number, unit: string, chef = false): string {
   // A change leaves out 「料理骰 N：」, so the line fits one row of a phone.
+  if (bonus && value === 1) return `🍳 ${dishChangeLabel(value)}+${points} ${unit}`;
   if (bonus) return `🍳 ${dishChangeLabel(value)} ${points - bonus} → ${points} ${unit}`;
   const t = dishTier(value, chef);
   return t === 0 ? "🍳 料理骰 1：燒焦了" : t === 1 ? `🍳 料理骰 ${value}：上菜（沒加成）` : t === 2 ? `🍳 料理骰 ${value}：上菜` : "🍳 料理骰 20：傳說級料理";
@@ -73,4 +75,14 @@ export function rollStatus(kind: string | undefined): string {
   if (kind === "cleric") return "✝️ 祈禱擲骰中，看大螢幕 ▶";
   if (kind === "thief") return "🗡️ 偷襲擲骰中，看大螢幕 ▶";
   return "擲骰中！看大螢幕 ▶";
+}
+
+/** The big screen's persuasion chip: the DC and the team's bonus before the roll, the result once its beat is over
+ * (QA 2026-11-19, L7: a bare 「（+1）」 read like a roll of 1, and a failed check showed nothing). */
+export function checkChip(target: { bonus: number; dc: number }, check?: { value: number; bonus: number; dc: number; passed: boolean }): { text: string; tone: "warn" | "ok" | "danger" } {
+  if (!check) return { text: `🗣️ 說服擲骰檢定 ${target.dc}（加值 +${target.bonus}）`, tone: "warn" };
+  if (check.value === 1) return { text: "🗣️ 擲出 1：被轟出門", tone: "danger" };
+  // Kept short: the chip sits between the monster and the answer clock.
+  const sum = `${check.value}+${check.bonus}=${check.value + check.bonus}`;
+  return check.passed ? { text: `🗣️ 說服成功：${sum}≥${check.dc}`, tone: "ok" } : { text: `🗣️ 說服失敗：${sum}<${check.dc}`, tone: "danger" };
 }

@@ -15,7 +15,7 @@ describe.skipIf(!key)("LLM narrator (live)", () => {
     { type: "correct", team: "紅隊", monster: "害羞幽靈", points: 2 },
     { type: "retry", team: "藍隊", monster: "軟趴趴史萊姆" },
     { type: "boss-hit", team: "紅隊", bossHp: 3, bossMaxHp: 5 },
-    { type: "boss-kill", team: "藍隊", monster: "深淵小黑龍", bonus: 11 },
+    { type: "boss-kill", team: "藍隊", monster: "深淵小黑龍", bonus: 11, points: 11 },
   ];
 
   // The prompt asks for two lines (multi-segment narration); each one is a dialogue-box segment of at most MAX_LINE.

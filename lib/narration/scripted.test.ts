@@ -13,7 +13,7 @@ const samples: Exclude<NarrationEvent, { type: "epilogue" }>[] = [
   { type: "retry", team, monster, boss: true },
   { type: "flee", team, monster },
   { type: "boss-hit", team, bossHp: 4, bossMaxHp: 5 },
-  { type: "boss-kill", team, monster, bonus: 18 },
+  { type: "boss-kill", team, monster, bonus: 18, points: 18 },
 ];
 
 /** Small seeded generator so "random" tests are repeatable. */
@@ -443,8 +443,10 @@ describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
     const p = createScriptedProvider(lcg(3));
     const room = new Set(fills(DISH_VARIANTS, { team, monster, points: 10 }));
     for (let i = 0; i < DISH_VARIANTS.length; i++) expect(room.has(await p.narrate({ type: "correct", team, monster, points: 10, cooked: true }))).toBe(true);
-    const boss = new Set(fills(BOSS_DISH_VARIANTS, { team, monster, bonus: 18 }));
-    for (let i = 0; i < BOSS_DISH_VARIANTS.length; i++) expect(boss.has(await p.narrate({ type: "boss-kill", team, monster, bonus: 18, cooked: true }))).toBe(true);
+    // The card's whole gain, never the 4d20 alone (QA 2026-11-19: 「拿下 43」 under a +58 card).
+    for (const l of fills(BOSS_DISH_VARIANTS, { team, monster, bonus: 43, points: 58 })) expect(l).not.toContain("43");
+    const boss = new Set(fills(BOSS_DISH_VARIANTS, { team, monster, bonus: 18, points: 18 }));
+    for (let i = 0; i < BOSS_DISH_VARIANTS.length; i++) expect(boss.has(await p.narrate({ type: "boss-kill", team, monster, bonus: 18, points: 18, cooked: true }))).toBe(true);
     for (const l of [...DISH_VARIANTS, ...BOSS_DISH_VARIANTS]) expect(l).not.toContain("{dish}");
   });
 
@@ -551,7 +553,7 @@ describe("scripted: a roll's 20 or 1", () => {
     expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 9 })).toMatch(/^戰士擲出 9 點，命中！.*2 顆心/);
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 15, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！獎勵加倍！(?!.*戰士擲出)/);
     // The boss kill has no 大成功 line: it says the warrior's number.
-    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！/);
+    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, points: 40, warriorRoll: 20, roll: { kind: "crit", value: 20 } })).toMatch(/^戰士擲出 20 點，命中！/);
   });
 
   // Value: protects=the scripted line tells #305's warrior rules (#344); fails_when=warriorResult says only 命中 / 沒打中
@@ -561,7 +563,7 @@ describe("scripted: a roll's 20 or 1", () => {
     expect(p.line({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 1 })).toMatch(/^戰士擲出 1 點，大失敗，沒打中！/); // nothing to take
     expect(p.line({ type: "correct", team: "紅隊", monster: "史萊姆", points: 8, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！拿八成獎勵。/);
     expect(p.line({ type: "boss-hit", team: "紅隊", bossHp: 2, bossMaxHp: 3, warriorRoll: 7 })).toContain("拿八成獎勵");
-    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！(?!拿八成)/);
+    expect(p.line({ type: "boss-kill", team: "紅隊", monster: "魔王", bonus: 40, points: 40, warriorRoll: 12 })).toMatch(/^戰士擲出 12 點，命中！(?!拿八成)/);
     // A warrior's 20 is a crit too, but doubles: no crit line saying 多拿一半, whichever is picked.
     for (let i = 0; i < 6; i++) {
       const q = createScriptedProvider(() => i / 6);
@@ -680,7 +682,7 @@ describe("美食節目／生物學家口吻 (FOODIE)", () => {
 
   it("the boss kill's result, atmosphere and the boss handoff never say two food lines in a row; a chest dish is followed by a plain handoff", () => {
     const p = createScriptedProvider(lcg(6));
-    const kill: NarrationEvent = { type: "boss-kill", team: "紅隊", monster: "史萊姆", bonus: 3, cooked: true };
+    const kill: NarrationEvent = { type: "boss-kill", team: "紅隊", monster: "史萊姆", bonus: 3, points: 3, cooked: true };
     const said: string[] = [];
     for (let i = 0; i < 60; i++) said.push(p.nextLine({ team: "紅隊", monster: "史萊姆", boss: true }), p.line(kill), p.atmosphereLine(kill));
     for (let i = 1; i < said.length; i++) expect(isFood(said[i]) && isFood(said[i - 1]), `${said[i - 1]} / ${said[i]}`).toBe(false);

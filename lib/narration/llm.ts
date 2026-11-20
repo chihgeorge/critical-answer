@@ -226,8 +226,8 @@ function describeEvent(e: NarrationEvent): string {
       return `事件：首領${q(e.monster)}沒有倒下，血量全滿重新站起，戰鬥進入第${e.phase}階段${q(e.name)}。新的規則：${q(e.rule)}。不要提還有沒有下一個階段。`;
     case "boss-kill":
       return e.cooked
-        ? `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 飽足感。牠等一下會被煮成料理，不要說會煮成什麼。${describePart(e.part)}`
-        : `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，額外加 ${e.bonus} 分。`;
+        ? `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，這一擊共拿下 ${e.points} 飽足感（尾刀骰 ${e.bonus}）。牠等一下會被煮成料理，不要說會煮成什麼。${describePart(e.part)}`
+        : `事件：隊伍${q(e.team)}擊倒了首領${q(e.monster)}，這一擊共拿下 ${e.points} 分（尾刀骰 ${e.bonus}）。`;
     case "epilogue": {
       // Dishes make the score 飽足感 and the ending a feast (docs/designs/monster-cuisine.md).
       const feast = e.ranking.some((t) => t.dishes?.length);

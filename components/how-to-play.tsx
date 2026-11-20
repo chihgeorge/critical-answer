@@ -185,7 +185,7 @@ function Picture({ page }: { page: number }) {
           {face(17, "kept")}
           <span>→ 取高：17</span>
         </div>
-        <span className="text-[16px]">技能骰；技能次數用完就是料理骰</span>
+        <span className="text-[22px]">技能骰；技能次數用完就是料理骰</span>
       </div>
     );
   if (page === 7)
@@ -243,7 +243,7 @@ export function HowToPlay({ page }: { page: number }) {
   const text = INTRO_PAGE_TEXT[page - 1];
   if (!text) return null;
   return (
-    <div data-testid="how-to-play" className="absolute inset-0">
+    <div data-testid="how-to-play" className="px-intro absolute inset-0">
       <div className="absolute inset-x-0 text-center" style={{ top: 18, zIndex: 6 }}>
         <LabelChip>
           怎麼玩？ <span className="px-num text-[12px]">{page}/{INTRO_PAGES}</span>

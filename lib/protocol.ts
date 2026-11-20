@@ -576,6 +576,8 @@ export type ServerMessage =
       initiative?: InitiativeView;
       /** The boss phase under way, from phase 2 on (phase 1 stays a plain boss). Never a later phase. */
       bossPhaseInfo?: { name: string; rule: string };
+      /** The boss is on its last phase (a one-phase boss always is): the big screen's 「最後的挑戰！」 chip. */
+      bossFinal?: true;
       /** Every catalog monster has a dish, so a server since the catalog always sends it: scores read 飽足感 instead of 獎勵分. Absent from older servers. */
       cuisine?: true;
       /** The host's last ▶ ⏸ ⟲ for the video on screen. Only for that video's question; treat anything else as paused. */
