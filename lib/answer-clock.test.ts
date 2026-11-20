@@ -22,6 +22,8 @@ describe("stuckKey", () => {
   });
   it("keeps the other turns' rows: a pick (also during a plain question's clip), a wrong pick; none on a fill-in (its check rolls itself)", () => {
     expect(stuckKey({ ...mc, clock: { left: null } })).toBe("t1|q1|pick|7|clip");
+    // A video the host has not played yet: no row; once ▶ is pressed it arms as before.
+    expect(stuckKey({ ...mc, clock: { left: null }, clipIdle: true })).toBeNull();
     expect(stuckKey({ ...mc, wrong: true })).toBe("t1|q1|wrong|7|count");
     expect(stuckKey({ ...mc, mc: false })).toBeNull();
     expect(stuckKey({ ...mc, lock: true })).toBeNull();

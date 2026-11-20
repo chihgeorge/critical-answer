@@ -1303,11 +1303,12 @@ export default function PlayPage() {
           </div>
         )}
 
-        {/* From phase 2 on, a boss turn keeps the phase's rule in view (D5). */}
+        {/* From phase 2 on, a boss turn keeps the phase's rule in view (D5). A 卡點題 names itself instead: the phase's
+            rule is written for its music questions. */}
         {game && !finished && !game.phaseCard && (turn?.inBoss || buzz) && game.bossPhaseInfo && (
           <div data-testid="phone-phase-rule">
             <Panel tone="turn" className="px-3 py-[6px] text-[16px]">
-              {game.bossPhaseInfo.name}：{game.bossPhaseInfo.rule}
+              {game.bossPhaseInfo.name}：{game.question?.timing || game.reveal?.timing ? "卡點題" : game.bossPhaseInfo.rule}
             </Panel>
           </div>
         )}

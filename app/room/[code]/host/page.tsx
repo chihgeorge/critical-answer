@@ -43,6 +43,7 @@ import { BuzzTypePick } from "@/components/buzz-type-pick";
 import { createAiKeyQueue } from "@/lib/host-ai-queue";
 import { EVENT_OUTCOME_TITLE, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
 import { FALLBACK_SEEK_S, formatClipTime, hostBuzzWait, hostMediaStatus } from "@/lib/youtube";
+import { TAP_CLOCK_GRACE_MS } from "@/lib/tap-button-state";
 
 /** A cleric's wait, and the prayed attempt after it, ignore keys and clicks this long after they appear, so a
  * double-tap of 答錯 never lands on 祈禱 / 下輪再答, nor one of 祈禱 on the new attempt's 答對 / 答錯 (#106). */
@@ -511,7 +512,7 @@ export default function HostPage() {
   const [clockStuckKey, setClockStuckKey] = useState<string | null>(null);
   useEffect(() => {
     if (!clockKey) return;
-    const t = setTimeout(() => setClockStuckKey(clockKey), 3000);
+    const t = setTimeout(() => setClockStuckKey(clockKey), TAP_CLOCK_GRACE_MS);
     return () => clearTimeout(t);
   }, [clockKey]);
   const clockStuck = clockKey !== null && clockStuckKey === clockKey;
@@ -592,7 +593,7 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize });
+  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize, clipIdle: game?.question?.content.kind === "youtube" && game.media?.questionId !== game.question.id && !game.clipError && typeof game.answerClock?.left !== "number" });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
@@ -1304,7 +1305,7 @@ export default function HostPage() {
                       host watches the big screen instead. */}
                   {game.question?.content.kind === "youtube" && !phaseNext && !nextFolded && (
                     <div className="mt-1 inline-block bg-[var(--k)] px-2 py-[2px] text-[14px] text-[var(--cream)]">
-                      {game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
+                      {game.question.timing ? "🎯 卡點題（聽大螢幕）" : game.question.content.audioOnly ? "🎵 聽歌題（聽大螢幕）" : "▶ 影片題（看大螢幕）"}
                     </div>
                   )}
                   {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
@@ -1362,7 +1363,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} />
+                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} ended={!game.clipPlaying && !game.clipError} />
               )}
               {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
@@ -1868,7 +1869,7 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
  * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
  * the clip stop at its end. */
-function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK_S }, disabled, send, liveOpen = false, instagram = false }: { questionId: string; media?: MediaCommand; range?: { min: number; max: number }; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean }) {
+function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK_S }, disabled, send, liveOpen = false, instagram = false, ended = false }: { questionId: string; media?: MediaCommand; range?: { min: number; max: number }; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean; ended?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
   const [picked, setPicked] = useState<{ questionId: string; seq: number; at: number } | null>(null);
@@ -1890,7 +1891,7 @@ function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK
   return (
     <div data-testid="host-media" className="mt-2">
       <div className="text-[14px]" role="status">
-        {instagram ? `大螢幕（IG 詳解）：${playing ? "請旁邊的人點影片" : "已停止"}` : `大螢幕：${hostMediaStatus(playing, liveOpen)}`}
+        {instagram ? `大螢幕（IG 詳解）：${playing ? "請旁邊的人點影片" : "已停止"}` : `大螢幕：${hostMediaStatus(playing, liveOpen, ended)}`}
       </div>
       {!instagram && (
         <label className="mt-2 block text-[14px]">

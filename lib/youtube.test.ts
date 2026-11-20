@@ -43,6 +43,8 @@ describe("hostMediaStatus", () => {
   it("follows the player otherwise", () => {
     expect(hostMediaStatus(true, false)).toBe("播放中");
     expect(hostMediaStatus(false, false)).toBe("已暫停");
+    expect(hostMediaStatus(true, false, true)).toBe("播完了");
+    expect(hostMediaStatus(false, false, true)).toBe("已暫停");
   });
 });
 

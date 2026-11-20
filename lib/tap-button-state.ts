@@ -22,6 +22,8 @@ export interface TapButtonInput {
   /** The host's last ▶ ⏸ for this question: paused, or none yet. */
   paused: boolean;
   tapLive: boolean;
+  /** Within TAP_CLOCK_GRACE_MS of ▶ with no play clock yet: the music is still starting, not stuck. */
+  starting?: boolean;
   /** This phone has a fresh clock offset (lib/server-clock.ts bestOffset). */
   synced: boolean;
   /** A TAP_OK (or tap_taken) for this round of this question. */
@@ -34,6 +36,9 @@ export interface TapButtonInput {
   reveal?: { rows: { teamId: string; errorMs: number; bonus: number }[]; stunned?: string[] };
   teamId: string;
 }
+
+/** After ▶, the screen's play clock gets this long to report before the phone (and the host's warning) calls it stuck. */
+export const TAP_CLOCK_GRACE_MS = 3000;
 
 const HINT = { not_playing: "沒算到：音樂剛停，等音樂再按", tap_late: "沒算到：網路太慢，再按一次" } as const;
 
@@ -54,6 +59,7 @@ export function tapButtonState(i: TapButtonInput): TapButtonState {
   const hint = i.refused ? { hint: HINT[i.refused] } : {};
   if (!i.open) return { tone: "grey", label: "等音樂開始…", enabled: false, ...hint };
   if (i.paused) return { tone: "grey", label: "主持人暫停了", enabled: false, ...hint };
+  if (!i.tapLive && i.starting) return { tone: "grey", label: "等音樂開始…", enabled: false, ...hint };
   if (!i.tapLive) return { tone: "grey", label: "大螢幕卡住了，等一下", enabled: false, ...hint };
   if (!i.synced) return { tone: "grey", label: "連線中…", enabled: false, ...hint };
   return { tone: "red", label: "按！", enabled: true, ...hint };
