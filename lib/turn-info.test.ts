@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chargeFailText, describeTurn, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { chargeFailText, describeTurn, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, hostNoQuestionText, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -255,5 +255,19 @@ describe("chargeFailText (QA 2026-11-19 P1-2)", () => {
     expect(chargeFailText("戰士隊", 1, 20)).toBe("⚔️ 戰士隊衝鋒大失敗 −20（擲出 1）");
     expect(chargeFailText("戰士隊", 1, 0)).toBe("⚔️ 戰士隊衝鋒大失敗（擲出 1）");
     expect(chargeFailText("", 4, 0)).toBe("⚔️ 衝鋒失敗（擲出 4）");
+  });
+});
+
+describe("hostNoQuestionText", () => {
+  // Value: protects=the host never reads a bare question id (「題目 meme26-09」) aloud; fails_when=the card or 占卜師 falls back to the id
+  it("says what holds the question back", () => {
+    expect(hostNoQuestionText({ stageBeat: "check-success" })).toBe("🗣️ 說服成功，題目馬上出現…");
+    expect(hostNoQuestionText({ fortune: { step: "choose" } })).toBe("❓ 神秘房：🔮 占卜師");
+    expect(hostNoQuestionText({ stageBeat: "check-twenty" })).toBe("🗣️ 說服骰擲出 20：這題免答");
+    expect(hostNoQuestionText({ stageBeat: "thrown-out" })).toBe("🗣️ 說服失敗：這題不算");
+    expect(hostNoQuestionText({})).toBe("題目準備中…");
+  });
+  it("a live media question with no prompt is not 「準備中」", () => {
+    expect(hostNoQuestionText({ question: { id: "img-01" }, stageBeat: "check-success" })).toBe("（這題沒有文字，看大螢幕）");
   });
 });

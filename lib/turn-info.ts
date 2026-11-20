@@ -140,6 +140,17 @@ export function chargeFailText(team: string, value: number, penalty: number): st
   return `⚔️ ${team}衝鋒${value === 1 ? "大失敗" : "失敗"}${penalty > 0 ? ` −${penalty}` : ""}（擲出 ${value}）`;
 }
 
+/** The host card's question line when there is no prompt to print: a media question with no words, or the room holds
+ * no question (the 說服成功 card, 占卜師, a 1 or a 20). A status, never the bare question id. */
+export function hostNoQuestionText(game: { question?: unknown; fortune?: unknown; stageBeat?: string }): string {
+  if (game.question) return "（這題沒有文字，看大螢幕）";
+  if (game.fortune) return "❓ 神秘房：🔮 占卜師";
+  if (game.stageBeat === "check-success") return "🗣️ 說服成功，題目馬上出現…";
+  if (game.stageBeat === "check-twenty") return "🗣️ 說服骰擲出 20：這題免答";
+  if (game.stageBeat === "thrown-out") return "🗣️ 說服失敗：這題不算";
+  return "題目準備中…";
+}
+
 /** A persuasion check's natural 1 (stageBeat `thrown-out`), as the big screen, the phones and the host page say it.
  * An empty `team` is the team's own phone. */
 export function thrownOutText(team: string, monster: string): string {
