@@ -5128,6 +5128,20 @@ export class DungeonRoom {
     this.pace("lock", kind, READ_POLL_MS, label, tell, true);
   }
 
+  /** sayCheck, except while this turn's AI narration is still being written (`narrating`, for an eventSeq the last
+   * narration has not reached): the line then waits with it (appendLine holds it, uncut like sayCheck's), as
+   * writeScripted would move eventSeq past that narration and drop it. A full narration still takes the line (sayCheck),
+   * where appendLine would drop it. Held, it has no index yet, so no beat waits on it. */
+  private sayCheckHeld(line: string) {
+    const n = this.lastNarration;
+    if (this.narrating > 0 && this.eventSeq > (n?.eventId ?? 0)) {
+      this.beatLine = null;
+      this.appendLine(this.eventSeq, line, line.length);
+      return this.broadcastState();
+    }
+    this.sayCheck(line);
+  }
+
   /** Whether a big screen has not read the beat's line yet (typed, and spoken when its voice is on). */
   private beatLineUnread(): boolean {
     const n = this.lastNarration;
@@ -5157,8 +5171,7 @@ export class DungeonRoom {
       this.checkSuccessBeat(teamId, questionId);
       this.sayCheck(`說服成功！${said}接下來看題目。`);
     } else {
-      // sayCheck, not appendLine: a full narration would drop the line (#438 audit).
-      this.sayCheck(`說服失敗！${said}`);
+      this.sayCheckHeld(`說服失敗！${said}`);
     }
   }
 
@@ -5257,8 +5270,12 @@ export class DungeonRoom {
     const questionId = currentQuestionIdOf(game, teamId);
     if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) return false;
     this.thrownOutBeat(teamId, questionId);
-    // The card plays again, so its line does too: the flee's line follows on from the kick (#438 audit).
-    this.sayCheck(this.diceLines.checkLine("thrown", { ...this.lineNames(teamId), gift: this.giftPart() }));
+    // Each broadcast saves the narration, so the kick line said before the restart is still there: the replayed card waits
+    // for it as the first one did, and the line is never said twice (#442 review).
+    const kicks = new Set(this.diceLines.checkLines("thrown", { ...this.lineNames(teamId), gift: this.giftPart() }));
+    const n = this.lastNarration;
+    const at = n && n.eventId === this.eventSeq ? n.lines.findIndex((l) => kicks.has(l)) : -1;
+    this.beatLine = n && at >= 0 ? { eventId: n.eventId, index: at } : null;
     return true;
   }
 
@@ -5320,16 +5337,7 @@ export class DungeonRoom {
       this.dropCrit(lost.teamId, lost.questionId);
       return false;
     }
-    // The restart cut the beat's gift line: said now, under the dish die, so the dish line follows on from it (#438 audit).
-    if (this.rollingDish(lost.teamId)) {
-      this.sayCheck(this.diceLines.checkLine("gift", { ...this.lineNames(lost.teamId), gift: this.giftPart() }));
-    }
     return true;
-  }
-
-  /** Whether the team's dish die is rolling (a method, so a caller's earlier pendingRoll check does not narrow it). */
-  private rollingDish(teamId: string): boolean {
-    return this.pendingRoll?.kind === "dish" && this.pendingRoll.teamId === teamId;
   }
 
   /** A natural 20 whose win failed: marked in the saved check, so a later restart does not apply it long after. */

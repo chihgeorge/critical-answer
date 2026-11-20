@@ -54,8 +54,8 @@ describe("hostCheckLine", () => {
   // (#438 audit); fails_when=the host sees no result, or the hint shows while the 說服成功 card still holds it; seam=none
   it("says the result, then the hint once the card is over", () => {
     expect(hostCheckLine({ value: 3, bonus: 4, dc: 8, passed: false }, false)).toBe("🗣️ 說服失敗：3+4=7<8・直接作答");
-    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, true)).toBe("🗣️ 說服成功：5+4=9≥8・成功畫面結束後出題");
+    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, true)).toBe("🗣️ 說服成功：5+4=9≥8・稍後出題");
     expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true, hint: "萬" }, false)).toBe("🗣️ 說服成功：5+4=9≥8・提示第一個字「萬」");
-    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true }, false)).toBe("🗣️ 說服成功：5+4=9≥8・沒有第一個字提示");
+    expect(hostCheckLine({ value: 5, bonus: 4, dc: 8, passed: true }, false)).toBe("🗣️ 說服成功：5+4=9≥8");
   });
 });

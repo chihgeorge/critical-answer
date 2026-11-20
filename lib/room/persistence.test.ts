@@ -613,13 +613,10 @@ describe("restoring after a restart", () => {
     vi.advanceTimersByTime(LOST_CRIT_GAP_MS);
     settleDish(second.room); // the natural 20 rolls its dish die
     expect(second.room.game!.teams.find((t) => t.id === t0)!.currentQuestionId).not.toBe(q);
-    // The wrong answer's STATE goes out first, then the gift line the restart cut (under the dish die), then the natural
-    // 20's dish, each with its own event.
-    const msgs = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string));
-    const ids = msgs.filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
+    // The wrong answer's STATE goes out first, then the natural 20's, each with its own event.
+    const ids = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE" && m.eventId > seq).map((m) => m.eventId);
     expect(ids[0]).toBe(seq + 1);
-    expect(ids.at(-1)).toBe(seq + 3);
-    expect(msgs.find((m) => m.type === "NARRATION" && m.eventId === seq + 2)?.lines.at(-1)).toMatch(/送|塞給|分出/);
+    expect(ids.at(-1)).toBe(seq + 2);
     vi.useRealTimers();
   });
 

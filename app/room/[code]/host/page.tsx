@@ -1301,7 +1301,7 @@ export default function HostPage() {
                   )}
                   {shownCheck && !game.phaseCard && !game.forkBeat && (
                     <div data-testid="host-check-result" className="mt-1 text-[14px]" role="status">
-                      {hostCheckLine(shownCheck, game.stageBeat === "check-success")}
+                      {hostCheckLine(shownCheck, game.stageBeat === "check-success" || !!game.question?.memorize)}
                     </div>
                   )}
                   {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}
