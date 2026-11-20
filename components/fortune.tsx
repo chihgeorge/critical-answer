@@ -42,21 +42,29 @@ export function FortunePizza({ lit, size }: { lit?: FortuneEffect; size: number 
   );
 }
 
-/** The effect card (step 4): the effect, the count that hit, and each matching team's hero. */
-export function FortuneCard({ fortune, teams, heroScale }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId; look?: number }[]; heroScale: number }) {
+/** The heroes' sprite scale on the effect card. The card must clear the big screen's narration box, so the heroes stay
+ * on one row, and drop from 4 to 3 when the 「選的人自己也中了！」 line takes room or a row at 4 would not fit (7 or
+ * more; MAX_TEAMS 8 fit at 3). */
+export function fortuneHeroScale(matches: number, self: boolean): 3 | 4 {
+  return self || matches > 6 ? 3 : 4;
+}
+
+/** The effect card (step 4): the effect, the count that hit, and each matching team's hero. Big screen only. */
+export function FortuneCard({ fortune, teams }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId; look?: number }[] }) {
   if (!fortune.effect || !fortune.matchIds) return null;
   const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
   const unit = FORTUNE_CONDITION_TEXT[fortune.condition].unit;
   const self = fortune.matchIds.includes(fortune.teamId);
+  const heroScale = fortuneHeroScale(fortune.matchIds.length, self);
   return (
-    <div data-testid="fortune-card" data-effect={fortune.effect} className="flex flex-col items-center gap-2 text-center">
+    <div data-testid="fortune-card" data-effect={fortune.effect} className="flex flex-col items-center gap-1 text-center">
       <div className="px-title-gold px-title-sm" style={{ fontSize: "1.6em", lineHeight: 1.2 }}>{fx.icon} {fx.name}！</div>
       <div>{fx.line}</div>
-      <div className="flex flex-wrap justify-center gap-4">
+      <div className="flex w-full justify-center gap-3">
         {fortune.matchIds.map((id) => {
           const idx = teams.findIndex((t) => t.id === id);
           return (
-            <div key={id} className="flex flex-col items-center gap-1" style={{ maxWidth: 160 }}>
+            <div key={id} className="flex min-w-0 flex-col items-center gap-1" style={{ flex: "0 1 160px" }}>
               <Sprite kind="hero" variant={lookOf(teams[idx], Math.max(0, idx))} cls={teams[idx]?.classId} scale={heroScale} />
               <div className="w-full truncate">{teams[idx]?.name ?? ""}</div>
             </div>
