@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { BOSS_HP_STEP, FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -332,6 +332,8 @@ export type ClientMessage =
   | { type: "HOST_GIVE_ITEM"; teamId: string }
   /** ⚙ 更多's 修正 (game-state hostFix): one correction to a team, recorded in its game log. No line, no cue on the big screen. */
   | { type: "HOST_FIX"; teamId: string; fix: HostFix }
+  /** 首領血量 −5 / +5 (game-state adjustBossHp): `delta` is ±BOSS_HP_STEP. The room refuses it outside a boss fight's steady state. */
+  | { type: "HOST_BOSS_HP"; delta: number }
   /** 設定: the team's reward becomes `score` exactly (0..FIX_SCORE_MAX). */
   | { type: "HOST_SET_SCORE"; teamId: string; score: number }
   /** 改判: ledger entry `index` (HOST_PICKS `judged`) shows `correct` from now on; `teamId` and `questionId` must still match it. */
@@ -1060,6 +1062,8 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const fix = HOST_FIXES.find((f) => f === m.fix);
       return teamId === null || !fix ? null : { type: "HOST_FIX", teamId, fix };
     }
+    case "HOST_BOSS_HP":
+      return m.delta === BOSS_HP_STEP || m.delta === -BOSS_HP_STEP ? { type: "HOST_BOSS_HP", delta: m.delta } : null;
     case "HOST_SET_SCORE": {
       const teamId = str(m.teamId, MAX_ID);
       const ok = Number.isInteger(m.score) && (m.score as number) >= 0 && (m.score as number) <= FIX_SCORE_MAX;

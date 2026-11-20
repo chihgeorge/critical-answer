@@ -8,8 +8,8 @@ import type { Transition } from "@/lib/transitions";
 /** How long each transition covers the stage; reduced motion holds one still frame for less.
  * Keep MS just past the .px-door-*, .px-alarm-* and .px-boss-enter-* animations in app/globals.css (doors 0.6 s + 1 s,
  * alarm and boss entrance 2.4 s). */
-const MS = { open: 1700, boss: 2500, sprint: 2500, cheat: 2500, catch: 2500, undo: 2500 } as const;
-const STILL_MS = { open: 1000, boss: 1500, sprint: 1500, cheat: 1500, catch: 1500, undo: 1500 } as const;
+const MS = { open: 1700, boss: 2500, sprint: 2500, cheat: 2500, catch: 2500, undo: 2500, bossHp: 2500 } as const;
+const STILL_MS = { open: 1000, boss: 1500, sprint: 1500, cheat: 1500, catch: 1500, undo: 1500, bossHp: 1500 } as const;
 
 /** ① The boss entrance's silhouette lights up into full colour this long in (one flash of the shared budget). */
 const BOSS_LIT_MS = 1000;
@@ -71,6 +71,13 @@ export function TransitionOverlay({ play, onDone, flash }: { play: Transition; o
           <div className={`px-alarm-text px-sprint-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
             <div className="px-title-gold" style={{ fontSize: 52, lineHeight: 1.1 }}>↩ 主持人收回了剛才的裁決</div>
             <div className="mt-2 text-[28px] text-[var(--cream)] [text-shadow:3px_3px_0_var(--k)]">重新裁決中……</div>
+          </div>
+        </div>
+      ) : play.kind === "bossHp" ? (
+        // 首領血量 −5 / +5 (🍄 / 🍖): the same calm band as 撤回裁決; the owl's line under it says the new HP.
+        <div className={`px-alarm-band px-sprint-band absolute inset-x-0${cls}`} style={{ top: 170, height: 170 }}>
+          <div className={`px-alarm-text px-sprint-text absolute inset-0 flex flex-col items-center justify-center${cls}`}>
+            <div className="px-title-gold" style={{ fontSize: 56, lineHeight: 1.1 }}>{play.delta < 0 ? `🍄 吃到毒菇菇 −${-play.delta}！` : `🍖 偷吃大餐 +${play.delta}！`}</div>
           </div>
         </div>
       ) : play.kind === "sprint" ? (

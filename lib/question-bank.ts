@@ -15,7 +15,7 @@
 // BANK constant (or the bankJson import) to this file — that import belongs only in
 // lib/question-bank-data.ts.
 
-import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, type Difficulty, type RoomTemplate } from "./game-state";
+import { DEFAULT_BOSS_DIFFICULTY, DEFAULT_BOSS_HIT_REWARD, MAX_BOSS_HP, type Difficulty, type RoomTemplate } from "./game-state";
 import { MAX_FIELDS, MAX_ID, type FileVideo, type HiddenFile, type HiddenInstagram, type HiddenVideo, type InstagramVideo, type PublicMediaContent, type PublicQuestion } from "./protocol";
 import { catalogMonster, monsterById, variantOf } from "./monster-catalog";
 import { YOUTUBE_ID_RE } from "./youtube";
@@ -168,9 +168,8 @@ export interface BossPhase {
 export const MIN_OPTIONS = 2;
 /** The TV wall has four tile spots (app/room/[code]/screen/page.tsx TILE_SPOTS). */
 export const MAX_OPTIONS = 4;
-/** The big screen draws one heart per HP on the boss's nameplate up to MAX_HEARTS (lib/protocol.ts), a bar above (multi-field.md E5: a phase of
- * multi-field questions loses more than 1 HP a hit). */
-export const MAX_BOSS_HP = 60;
+// The bank's per-phase HP ceiling lives in game-state, which also caps the host's 首領血量 +5 with it.
+export { MAX_BOSS_HP } from "./game-state";
 /** Longest boss phase `name` and `rule`, in characters: at these the big screen's phase card keeps the title to one
  * line and the rule to two, so the new boss still shows under it (TODOS: /qa 2026-10-28). */
 export const MAX_PHASE_NAME = 12;

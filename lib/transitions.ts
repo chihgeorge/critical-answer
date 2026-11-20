@@ -6,7 +6,7 @@ import type { StateMessage } from "./protocol";
 import type { SpectatorView } from "./game-state";
 import { describeTurn, type Monster } from "./turn-info";
 
-export type Transition = { kind: "open"; team: string } | { kind: "boss"; monster: Monster } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string } | { kind: "undo" };
+export type Transition = { kind: "open"; team: string } | { kind: "boss"; monster: Monster } | { kind: "sprint"; names: string[] } | { kind: "cheat" } | { kind: "catch"; by: string; team: string } | { kind: "undo" } | { kind: "bossHp"; delta: number };
 
 /** `open`: this connection saw the lobby or the intro, so the first question is a start seen live.
  * `boss`: whether the boss room has been on screen; null until the first STATE after connecting. */
@@ -44,6 +44,14 @@ export function antiCheatBanner(seen: CheatSeen | null, view: Pick<SpectatorView
   const name = (id: string) => view.teams.find((t) => t.id === id)?.name ?? "";
   if (ac?.openCatch && !seen.open) return { seen: now, play: { kind: "catch", by: name(ac.openCatch.by), team: name(ac.openCatch.teamId) } };
   return { seen: now, play: ac?.on && now.on > seen.on ? { kind: "cheat" } : null };
+}
+
+/** 首領血量 −5 / +5's notice (docs/hosting.md): once per press seen live, like the catch banners. `seen` is the press count
+ * this connection last saw, null until the first STATE after connecting. */
+export function bossHpBanner(seen: number | null, view: Pick<SpectatorView, "bossHpAdjust">): { seen: number; play: Transition | null } {
+  const adj = view.bossHpAdjust;
+  const now = adj?.count ?? 0;
+  return { seen: now, play: seen !== null && adj && now > seen ? { kind: "bossHp", delta: adj.delta } : null };
 }
 
 export function nextTransition(seen: TransitionSeen, msg: StateMessage): { seen: TransitionSeen; play: Transition | null } {
