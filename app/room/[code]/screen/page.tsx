@@ -664,8 +664,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
             <LabelChip>{card ? "還沒結束！" : reveal ? (reveal.persuaded ? "說服成功" : "正解揭曉") : persuadedRoll || stageBeat === "check-twenty" ? "說服成功・免答" : stageBeat === "thrown-out" ? "說服失敗・被轟出門" : inBoss ? "首領題" : `難度 ${stars}`}</LabelChip>
-            {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. */}
-            {stageRoom !== null && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
+            {/* Going down (dungeon-scene C): how deep the room on stage is; the boss room says 首領題 already. A die's banner
+                (RollOverlay) sits over this row, so the chip steps aside until the die is done (#443). */}
+            {stageRoom !== null && !pendingRoll && <span data-testid="screen-floor"><LabelChip>{floorLabel(stageRoom)}</LabelChip></span>}
           </span>
           {/* From phase 2 on the chip names the phase under way (D5). 「最後的挑戰！」 only on the last phase: a phase 1 with
               more to come has no chip (QA 2026-11-19). */}
