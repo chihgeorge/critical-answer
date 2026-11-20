@@ -2,7 +2,7 @@
 
 import { revealNow } from "@/lib/podium";
 import { AnswerClock } from "@/components/answer-clock";
-import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs, stuckKey as stuckKeyFor } from "@/lib/answer-clock";
+import { ANSWER_SECONDS, clipIdle, DEFAULT_ANSWER_SECONDS, stuckDelayMs, stuckKey as stuckKeyFor } from "@/lib/answer-clock";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { isPending, keepLatest, type NarrationState } from "@/lib/narration/client";
 import { useParams } from "next/navigation";
@@ -593,7 +593,7 @@ export default function HostPage() {
     return () => clearTimeout(t);
   }, [holdKey]);
   const held = !!holdKey && releasedFor !== holdKey;
-  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize, clipIdle: game?.question?.content.kind === "youtube" && game.media?.questionId !== game.question.id && !game.clipError && typeof game.answerClock?.left !== "number" });
+  const stuckKey = stuckKeyFor({ teamId: turn?.team?.id, questionId: turn?.questionId, mc: isMc, lock: !!lock, roll: !!roll, wrong: !!wrong, eventId: game?.eventId, clock: game?.answerClock, memorize: game?.question?.memorize, clipIdle: clipIdle(game) });
   const [stuckShownFor, setStuckShownFor] = useState<string | null>(null);
   // With the countdown on, the row waits for its 0; off (or no count running), 15 s (lib/answer-clock.ts stuckDelayMs).
   // The key carries "clip" while a clip has not ended, so a row shown during the clip goes away and re-arms for the count.
@@ -1363,7 +1363,7 @@ export default function HostPage() {
                 </div>
               )}
               {game.question?.content.kind === "youtube" && !revealUp && (
-                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} ended={!game.clipPlaying && !game.clipError} />
+                <MediaControls questionId={game.question.id} media={game.media} range={videoRange?.questionId === game.question.id ? videoRange : undefined} disabled={!ready || !!game.question.checkFirst || !!game.pickHold} send={send} liveOpen={!!game.clipError && !!buzz?.open && !buzz.teamId} ended={!game.clipPlaying && !game.clipError && !game.stageBeat && !game.forkBeat && !game.fortune} />
               )}
               {/* The next buzzer question (#321, #370): the winner picks a category on its phone; the host may set a type, the question itself, or 下一步. */}
               {game.buzzTypes && <BuzzTypePick game={game} ready={ready} teamName={teamName} send={send} onQuestion={() => setPicking("buzz")} />}
@@ -1867,8 +1867,8 @@ function TwoLine({ top, bottom }: { top: string; bottom: string }) {
 }
 
 /** ▶ ⏸ ⟲ for the video on the big screen (docs/designs/youtube-questions.md D19). Three buttons, not a toggle: a
- * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7): the page cannot see
- * the clip stop at its end. */
+ * second press of ▶ on slow Wi-Fi is still ▶. The lit button is the host's last command (D7); the status line says 播完了
+ * once the screen reported this ▶'s end (STATE's clipPlaying gone, `ended`). */
 function MediaControls({ questionId, media, range = { min: 0, max: FALLBACK_SEEK_S }, disabled, send, liveOpen = false, instagram = false, ended = false }: { questionId: string; media?: MediaCommand; range?: { min: number; max: number }; disabled: boolean; send: (m: ClientMessage) => void; liveOpen?: boolean; instagram?: boolean; ended?: boolean }) {
   // A command for another question, or none (an older server), is paused.
   const playing = media?.questionId === questionId && media.state === "playing";
