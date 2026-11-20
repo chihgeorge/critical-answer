@@ -103,7 +103,8 @@ describe("boss phases in the room", () => {
     expect(msgs(g.phones[0].send.mock.calls).at(-1)).toMatchObject({ type: "ERROR", detail: "reveal_pending" });
 
     g.next();
-    expect(g.state()).toMatchObject({ question: { id: "p2-a" }, bossPhaseInfo: PHASE2 });
+    // bossFinal: only the last phase says 「最後的挑戰！」 on the big screen (QA 2026-11-19).
+    expect(g.state()).toMatchObject({ question: { id: "p2-a" }, bossPhaseInfo: PHASE2, bossFinal: true });
     expect(g.state().phaseCard).toBeUndefined();
   });
 
@@ -113,7 +114,7 @@ describe("boss phases in the room", () => {
     const before = [...msgs(g.io.broadcast.mock.calls), ...msgs(g.phones[0].send.mock.calls)];
     const leaked = JSON.stringify(before);
     for (const secret of ["p2-a", "p2-b", PHASE2.name, PHASE2.rule, "bossPhases"]) expect(leaked).not.toContain(secret);
-    expect(before.filter((m) => m.type === "STATE").every((m) => m.view.bossPhase === 1 && !m.bossPhaseInfo)).toBe(true);
+    expect(before.filter((m) => m.type === "STATE").every((m) => m.view.bossPhase === 1 && !m.bossPhaseInfo && !m.bossFinal)).toBe(true);
     const picks = msgs(g.host.send.mock.calls).findLast((m) => m.type === "HOST_PICKS");
     expect(picks).toMatchObject({ bossPhaseIndex: 0, bossPhases: [{ name: "", rule: "", maxHp: 1 }, { ...PHASE2, maxHp: 2 }] });
     g.next();

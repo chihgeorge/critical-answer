@@ -176,7 +176,7 @@ describe("prompt", () => {
       { type: "retry", team: "甲", monster: "小黑龍", boss: true },
       { type: "flee", team: "甲", monster: "史萊姆" },
       { type: "boss-hit", team: "甲", bossHp: 2, bossMaxHp: 5 },
-      { type: "boss-kill", team: "甲", monster: "小黑龍", bonus: 9 },
+      { type: "boss-kill", team: "甲", monster: "小黑龍", bonus: 9, points: 9 },
     ];
     for (const e of events) {
       const { system, user } = buildPrompt(e, []);
@@ -299,7 +299,7 @@ describe("multi-line prompts (result, atmosphere, then the next team)", () => {
   });
 
   it("asks for two lines (not three) when nobody is next", () => {
-    const { system } = buildPrompt({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9 }, []);
+    const { system } = buildPrompt({ type: "boss-kill", team: "藍隊", monster: "小黑龍", bonus: 9, points: 9 }, []);
     expect(system).toMatch(/兩行/);
     expect(system).not.toMatch(/三行/);
   });
@@ -514,7 +514,7 @@ describe("a boss phase out of questions (review finding, 2026-10-28)", () => {
 describe("monster dishes (docs/designs/monster-cuisine.md)", () => {
   it("keeps the dish name out of a cooked monster's line (cooking I1) and asks for a feast in the epilogue", () => {
     expect(buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 10, cooked: true }, []).user).toContain("不要說會煮成什麼");
-    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 18, cooked: true }, []).user).toContain("不要說會煮成什麼");
+    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 18, points: 18, cooked: true }, []).user).toContain("不要說會煮成什麼");
     const feast = buildPrompt({ type: "epilogue", ranking: [{ name: "紅隊", score: 30, dishes: ["湯"] }], winners: ["紅隊"] }, []);
     expect(`${feast.system}${feast.user}`).toContain("飽足感");
     expect(`${feast.system}${feast.user}`).toContain("大餐");
@@ -582,7 +582,7 @@ describe("prompt: 美食節目／生物學家口吻", () => {
     const { user } = buildPrompt(cooked, []);
     expect(user).toContain("牠能吃的部位是「外膜」。");
     expect(user).toContain("不要說會煮成什麼");
-    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 5, cooked: true, part: "尾巴」肉" }, []).user).toContain("牠能吃的部位是「尾巴肉」");
+    expect(buildPrompt({ type: "boss-kill", team: "紅隊", monster: "小黑龍", bonus: 5, points: 5, cooked: true, part: "尾巴」肉" }, []).user).toContain("牠能吃的部位是「尾巴肉」");
     expect(buildPrompt({ ...cooked, part: undefined }, []).user).not.toContain("能吃的部位");
     expect(buildPrompt({ type: "correct", team: "紅隊", monster: "史萊姆", points: 3, part: "外膜" }, []).user).not.toContain("能吃的部位");
   });

@@ -116,7 +116,8 @@ const TITLES: { id: string; icon: string; title: string; value: (t: TitleTeam, t
   { id: "crit", icon: "🎲", title: "大成功王", value: (t) => t.natural20s || null, reason: (n) => `擲出 ${n} 次 20` },
 ];
 
-/** The data titles this game earned, in award order: each to the teams with the best value, none for a value of 0. */
+/** The data titles this game earned, in award order: each to the teams with the best value, none for a value of 0, and
+ * none that every team (of two or more) ties on: 「大胃王」 to everyone singles nobody out (QA 2026-11-19). */
 export function awardTitles(teams: TitleTeam[]): Award[] {
   return TITLES.flatMap(({ id, icon, title, value, reason, fewest }) => {
     const held = teams.flatMap((t) => {
@@ -125,7 +126,9 @@ export function awardTitles(teams: TitleTeam[]): Award[] {
     });
     if (!held.length) return [];
     const best = (fewest ? Math.min : Math.max)(...held.map((h) => h.v));
-    return [{ id, icon, title, teamIds: held.filter((h) => h.v === best).map((h) => h.id), reason: reason(best) }];
+    const teamIds = held.filter((h) => h.v === best).map((h) => h.id);
+    if (teams.length > 1 && teamIds.length === teams.length) return [];
+    return [{ id, icon, title, teamIds, reason: reason(best) }];
   });
 }
 

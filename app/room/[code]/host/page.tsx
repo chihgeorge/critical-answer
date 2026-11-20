@@ -1,5 +1,6 @@
 "use client";
 
+import { revealNow } from "@/lib/podium";
 import { AnswerClock } from "@/components/answer-clock";
 import { ANSWER_SECONDS, DEFAULT_ANSWER_SECONDS, stuckDelayMs, stuckKey as stuckKeyFor } from "@/lib/answer-clock";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -52,6 +53,9 @@ const noSubscribe = () => () => {};
 const NARRATION_REFUSALS = new Set(["no_narration", "stale_narration", "bad_index", "line_read", "empty_edit"]);
 
 type Picks = Extract<ServerMessage, { type: "HOST_PICKS" }>;
+
+/** A team's pick never replaces the question it holds now: it is dealt when the team next moves to a new one (QA 2026-11-19). */
+const PICK_WHEN = "下一次換新題時出：";
 
 export default function HostPage() {
   // "" on the server, the real origin after hydration: reading location in render would mismatch the server HTML.
@@ -118,7 +122,8 @@ export default function HostPage() {
   // So does a memory question while its media plays (memory-questions.md): the host sees the whole question, marked.
   // And the buzzer question waiting for the winner's category (#370): STATE sends none, the host reads it here.
   // And the next question under a reveal (#362): STATE blanks its text until 下一題, the ⏭ preview reads it here.
-  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) || (state?.reveal && answer?.question && answer.questionId === state.question?.id) ? { ...state!, question: answer!.question! } : state, [state, answer]);
+  // A persuasion 20's dish die: STATE has no question (it is never shown), but the host still reads which one it won.
+  const game = useMemo(() => ((state?.question?.checkFirst || state?.question?.memorize) && answer?.question && answer.questionId === state.question.id) || (!state?.question && answer?.question?.checkFirst && state?.pendingRoll?.questionId === answer.questionId) || (state?.pickHold && answer?.question && answer.questionId === state.view.buzz?.questionId) || (state?.reveal && answer?.question && answer.questionId === state.question?.id) ? { ...state!, question: answer!.question! } : state, [state, answer]);
   const [drawer, setDrawer] = useState(false);
   /** ⚡ 加料: the big-screen sound pads, closed until the host opens them (host declutter). */
   const [fxOpen, setFxOpen] = useState(false);
@@ -848,7 +853,7 @@ export default function HostPage() {
         >
           交給新手機
         </PixelButton>
-        {picks?.queued[t.id] && <div className="min-w-0 basis-full truncate text-[13px]">下一題：{pickLabel(picks.queued[t.id])}</div>}
+        {picks?.queued[t.id] && <div className="min-w-0 basis-full truncate text-[13px]">{PICK_WHEN}{pickLabel(picks.queued[t.id])}</div>}
       </>
     );
   };
@@ -1251,7 +1256,7 @@ export default function HostPage() {
                   {/* Check first, question after: why the big screen has no question or count yet. Not while a 答錯 waits (no roll then). */}
                   {game.question?.checkFirst && !game.phaseCard && !game.forkBeat && !revealUp && !game.view.pendingWrong && (
                     <div data-testid="host-check-first" className="mt-1 text-[14px]" role="status">
-                      {game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 說服骰等一下會自動擲，結算後大螢幕才出題"}
+                      {game.pendingRoll?.kind === "dish" ? "🗣️ 說服骰擲出 20：這題免答，大螢幕不會出題" : game.pendingRoll?.kind === "check" ? "🎲 說服骰擲出了，結算後大螢幕才出題" : "🎲 說服骰等一下會自動擲，結算後大螢幕才出題"}
                     </div>
                   )}
                   {/* 記憶題 (memory-questions.md): the teams cannot see the question yet; ⏭ ends the media now. */}
@@ -1585,7 +1590,7 @@ export default function HostPage() {
               <Panel tone="turn" className="flex items-center gap-2 px-3 py-1">
                 <span className="min-w-0 flex-1 truncate text-[14px]">
                   {`下一隊 ${nextUp.name}：`}
-                  {picks?.queued[nextUp.id] ? <span data-testid="queued-pick">下一題：{pickLabel(picks.queued[nextUp.id])}</span> : "照順序出題"}
+                  {picks?.queued[nextUp.id] ? <span data-testid="queued-pick">{PICK_WHEN}{pickLabel(picks.queued[nextUp.id])}</span> : "照順序出題"}
                 </span>
                 {pickButton(nextUp.id)}
               </Panel>
@@ -1606,7 +1611,7 @@ export default function HostPage() {
                     {game.view.antiCheat?.on && t.catchesLeft !== undefined && <span title={`神諭剩 ${t.oracleLeft ?? 0} 次、抓包剩 ${t.catchesLeft} 次`}>🔮{t.oracleLeft ?? 0} 🚨{t.catchesLeft}</span>}
                     {t.oracle && <span title="這題請示了神諭：答對獎勵減半">🔮減半</span>}
                     {t.item && <span title="有一顆幸運骰">🍀</span>}
-                    {picks?.queued[t.id] && <span title={`下一題：${pickLabel(picks.queued[t.id])}`}>📌</span>}
+                    {picks?.queued[t.id] && <span title={`${PICK_WHEN}${pickLabel(picks.queued[t.id])}`}>📌</span>}
                     <span className="px-num text-[10px]" style={{ color: "#a8470f" }}>{Math.min(t.score, game.view.bossThreshold ?? BOSS_THRESHOLD)}/{game.view.bossThreshold ?? BOSS_THRESHOLD}</span>
                     <span className="px-num text-[10px]" style={{ color: "#2f6a2c" }} title={scoreName(game.cuisine)}>{t.reward}</span>
                   </div>
@@ -1635,8 +1640,9 @@ export default function HostPage() {
         {game && game.phase === "finished" && (
           <Panel tone="lav" className="mt-8 px-4 py-8 text-center">
             <div className="text-[28px]">遊戲結束！</div>
-            <div className="mt-2 text-[18px]">
-              {game.winners.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id).join("、")} 獲勝
+            {/* The winner waits for the big screen's reveal to reach first place: the room reads the host page too (QA 2026-11-19). */}
+            <div data-testid="host-winner" className="mt-2 text-[18px]">
+              {revealNow(game.podium, null).result ? `${game.winners.map((id) => game.view.teams.find((t) => t.id === id)?.name ?? id).join("、")} 獲勝` : "大螢幕正在揭曉稱號和名次……"}
             </div>
             {/* A long epilogue is split into pages on the big screen; the host turns them, like the intro. */}
             {game.epiloguePage && game.epiloguePage.of > 1 && (

@@ -63,7 +63,7 @@ export type NarrationEvent =
   | WithNext<{ type: "boss-phase"; monster: string; phase: number; name: string; rule: string }>
   /** A team opened its event room (event-rooms.md D11): `satiety` is the change made, `dish` the feast's catalog dish. */
   | WithNext<ByClass<{ type: "event-room"; team: string; scene: EventScene; outcome: EventOutcome; satiety: number; abilityUse?: true; dish?: string }>>
-  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; cooked?: true; part?: string }>>>
+  | WithNext<WithRoll<ByClass<{ type: "boss-kill"; team: string; monster: string; bonus: number; points: number; cooked?: true; part?: string }>>>
   /** Game over: ranking is sorted high to low. Longer line, longer timeout. */
   // ranking[].score carries reward points (Team.reward), not progress points (Team.score).
   // ranking[].dishes: what the team ate, without any dish holding a bank answer.
@@ -127,8 +127,10 @@ export function epilogueParts(e: Extract<NarrationEvent, { type: "epilogue" }>):
  */
 export function toNarrationEvent(prev: GameState, outcome: AnswerOutcome, monster: string, next?: NextTurn, bossPhase?: string): NarrationEvent {
   const event = baseEvent(prev, outcome, monster, bossPhase);
-  // A finished game has nobody next: the last line stands alone.
-  return next && event.type !== "boss-kill" ? { ...event, next } : event;
+  // A finished game has nobody next: the last line stands alone. Nor does a prayed retry in a room: the same team answers
+  // the same monster again, and a 「輪到…」 handoff would walk it into a new room (QA 2026-11-19).
+  const again = event.type === "retry" && event.prayed && !event.boss;
+  return next && event.type !== "boss-kill" && !again ? { ...event, next } : event;
 }
 
 /** `bossPhase`: the current boss phase's name, given only from phase 2 on. */
@@ -159,7 +161,7 @@ function baseEvent(prev: GameState, outcome: AnswerOutcome, monster: string, bos
       return { type: "flee", team, monster, ...(outcome.switchedTo ? { to: monsterById(outcome.switchedTo)?.name ?? "怪物" } : {}) };
     case "correct-boss-hit":
       return outcome.bossKilled
-        ? { type: "boss-kill", team, ...cls, ...roll, monster, bonus: outcome.killBonus ?? 0 }
+        ? { type: "boss-kill", team, ...cls, ...roll, monster, bonus: outcome.killBonus ?? 0, points: outcome.reward }
         : { type: "boss-hit", team, ...cls, ...roll, bossHp: outcome.bossHpRemaining, bossMaxHp: prev.boss.maxHp };
   }
 }
