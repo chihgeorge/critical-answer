@@ -993,7 +993,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceL
       </div>
       <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "16px 24px 12px", fontSize: 26, lineHeight: 1.3, zIndex: 5 }}>
         <div data-testid="fortune-screen" data-step={fortune.step}>{fortune.step === "card" ? (
-          <FortuneCard fortune={fortune} teams={view.teams} heroScale={4} />
+          <FortuneCard fortune={fortune} teams={view.teams} />
         ) : (
           <div className="flex flex-col items-center gap-2">
             <div className="px-title-gold px-title-sm" style={{ fontSize: 34, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE.fortune}</div>
