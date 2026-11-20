@@ -2,6 +2,14 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.111.0.0] - 2026-11-20
+
+### Changed
+- A natural 1 on a fill-in question's persuasion check now throws the team out (被轟出門), the mirror of a 20. The question never shows, it scores nothing, and the team flees to a new monster in the same room, the same as 「逃跑・換房」: the question drops one difficulty and the flee counts. The turn then passes to the next team. On the big screen the question card is labelled 「說服失敗・被轟出門」, the question's place stays empty, and the red 「🗣️ 擲出 1：被轟出門」 sits in the middle check pill (a 20 shows 「說服成功・免答」 and a green 「🗣️ 擲出 20：免答」). The phone and the host page say 「🗣️ 擲出 1！{怪物}把{隊名}轟出門了」. The old rule, where a correct answer paid only half, is gone.
+- A throw-out is not an answer, so the cleric cannot pray, the 🍀 lucky die stays with the team, and there is nothing to 改判. The host fixes the score with 修正. The next team's check does not wait the 5 seconds.
+- A natural 1 and a natural 20 each play a short scene on the big screen. The narrator says what the monster does, then the monster acts once the narrator has said that line. On a 1 it stomps under a 💢, then fades away, and the next team goes. On a 20 it hops for joy under hearts and its catalog ingredient flies to the team, then the dish die rolls and 🍲 上菜 plays the meal as before. The monster waits for the narrator up to 6 s, the act takes about 2.4 s, and it runs on its timer in 手動 pacing. Every persuasion die now waits for the big screen to finish reading the turn's narration first (at most 0.4 s per unread character plus 3 s; no wait with no screen), and its result pill sits just under the question card instead of over the monster's face. The phone and the host page say it in one line.
+- The narration has new scripted lines for the throw-out (the kick, then landing in front of the new monster), the 20's gift, and the gift dish after the dish die (no more 「+分」 line before the dish), and the AI prompts match. The tutorial owl, the dice chip and the rules (both languages) say 「擲到 1 被轟出門」.
+
 ## [0.110.0.0] - 2026-11-20
 
 ### Added
