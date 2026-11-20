@@ -1,7 +1,7 @@
 // Test-only helper for the room tests: send one message, then roll a correct answer's dish die (the host's 🎲 擲料理骰
 // under its reveal) and let it land at once, as if its 2 s beat had passed (class-dice-rework.md). Most room tests judge
 // an answer right and look at the scored state; the tests about the dish die's own beat call room.onMessage directly.
-import type { DungeonRoom } from "./dungeon-room";
+import { CHECK_GRACE_MS, type DungeonRoom } from "./dungeon-room";
 import type { AnswerReveal, PendingRoll } from "../protocol";
 import { checkKey, type GameState } from "../game-state";
 
@@ -23,10 +23,18 @@ export function settleDish(room: DungeonRoom): void {
  * as before the check rolled itself; a test about the check sets room.fixedDie before the question comes up, or
  * room.holdCheck to watch the beat. */
 export function settleCheck(room: DungeonRoom): void {
-  const r = room as unknown as { pendingRoll: PendingRoll | null; fixedDie?: number; game: GameState; resolveRoll(): void; unpace(k: string): void; broadcastState(): void; keepUndoOpen(g: GameState): void };
-  const roll = r.pendingRoll;
+  const r = room as unknown as { pendingRoll: PendingRoll | null; fixedDie?: number; game: GameState; resolveRoll(): void; unpace(k: string): void; broadcastState(): void; keepUndoOpen(g: GameState): void; checkGraceTimer: ReturnType<typeof setTimeout> | null; undo: { at: number } | null };
   // holdCheck: a test about the check's own beat lands it with its timers.
-  if (roll?.kind !== "check" || (room as unknown as { holdCheck?: boolean }).holdCheck) return;
+  if ((room as unknown as { holdCheck?: boolean }).holdCheck) return;
+  // A 答錯's CHECK_GRACE_MS passes at once too: the room refuses a judge for the next team until its check rolls.
+  if (r.checkGraceTimer) {
+    clearTimeout(r.checkGraceTimer);
+    r.checkGraceTimer = null;
+    if (r.undo) r.undo.at -= CHECK_GRACE_MS;
+    r.broadcastState();
+  }
+  const roll = r.pendingRoll;
+  if (roll?.kind !== "check") return;
   if (r.fixedDie !== undefined) return r.resolveRoll();
   // Silent: no 說服失敗 line or cue, which a test about something else does not expect in its narration.
   const key = checkKey(roll.questionId, roll.teamId);

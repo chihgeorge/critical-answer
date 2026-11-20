@@ -1441,6 +1441,25 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(sent.some((m) => m.pendingRoll?.teamId === ids[1])).toBe(false);
     });
 
+    // Value: protects=QA P2-11: a judge for the next team inside CHECK_GRACE_MS (its check not rolled, its question unseen)
+    // is refused; fails_when=the host's 答對 scores a question nobody saw and its check never rolls
+    it("refuses a judge for the next team while its check waits out the grace window", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids } = checkGame(2, 3);
+      vi.advanceTimersByTime(2000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      const b = room.game!.teams.find((t) => t.id === ids[1])!;
+      expect(lastBroadcast(room).checkDue).toBe(true);
+      const score = b.score;
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: b.currentQuestionId, correct: true, eventId: seqOf(room) });
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", detail: "check_pending" });
+      expect(room.game!.teams.find((t) => t.id === ids[1])!.score).toBe(score);
+      expect(lastBroadcast(room).view.currentTurnTeamId).toBe(ids[1]);
+      vi.advanceTimersByTime(CHECK_GRACE_MS);
+      expect(lastBroadcast(room).checkDue).toBeUndefined();
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
+    });
+
     it("rolls the next team's check at once after a restart inside that window (a restart keeps no 改判答對)", async () => {
       vi.useFakeTimers();
       const data = new Map<string, unknown>();

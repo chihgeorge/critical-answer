@@ -114,6 +114,9 @@ export interface RoomSnapshot {
   /** A boss-entry dish was on (#364): its narration, the team that walked in, and whether 最後衝刺 started with it.
    * restore() adds the entrance line the dish held back. Missing (or damaged) means none. */
   bossEntry?: { eventId: number; teamId: string; sprint?: true };
+  /** A correct answer waiting for its dish die (QA P2-16): nothing is scored before the die lands, so a restart without
+   * this replayed the question. `reveal`: its answer reveal was up; `value`: the die in its beat. Missing (or damaged) means none. */
+  dish?: { teamId: string; questionId: string; reveal?: true; fields?: boolean[]; warrior?: number; value?: number; values?: number[] };
 }
 
 const isString = (v: unknown): v is string => typeof v === "string";
@@ -207,6 +210,10 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
     const ms = raw.memoryShow;
     const memoryShow = isObject(ms) && isString(ms.questionId) && typeof ms.endsAt === "number" && Number.isFinite(ms.endsAt) ? { questionId: ms.questionId, endsAt: ms.endsAt } : null;
     const memoryDone = Array.isArray(raw.memoryDone) ? raw.memoryDone.filter(isString) : [];
+    const dish = raw.dish;
+    const dishOk =
+      isObject(dish) && isString(dish.teamId) && isString(dish.questionId) && (dish.fields === undefined || (Array.isArray(dish.fields) && dish.fields.every((f) => typeof f === "boolean"))) &&
+      (dish.warrior === undefined || d20(dish.warrior)) && (dish.value === undefined || d20(dish.value)) && (dish.values === undefined || (Array.isArray(dish.values) && dish.values.every(d20)));
     const revealFrom = typeof raw.revealFrom === "number" && Number.isFinite(raw.revealFrom) ? raw.revealFrom : null;
     return {
       ...(raw as unknown as RoomSnapshot),
@@ -230,6 +237,7 @@ export function parseSnapshot(raw: unknown): RoomSnapshot | null {
       ...(raw.memoryShow !== undefined ? { memoryShow } : {}),
       checkBeat: isObject(raw.checkBeat) && isString(raw.checkBeat.teamId) && isString(raw.checkBeat.questionId) ? { teamId: raw.checkBeat.teamId, questionId: raw.checkBeat.questionId } : undefined,
       bossEntry: isObject(raw.bossEntry) && Number.isInteger(raw.bossEntry.eventId) && isString(raw.bossEntry.teamId) ? { eventId: raw.bossEntry.eventId as number, teamId: raw.bossEntry.teamId, ...(raw.bossEntry.sprint === true ? { sprint: true as const } : {}) } : undefined,
+      dish: dishOk ? (dish as RoomSnapshot["dish"]) : undefined,
       game: withUses as GameState | null,
       lateTeams,
       // Anything but a key we wrote is none: the room then makes a new one, never matches a damaged value.

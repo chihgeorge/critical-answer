@@ -552,6 +552,8 @@ export type ServerMessage =
       eventId: number;
       /** The host's last 答錯 on a fill-in, while HOST_UNDO_WRONG may still turn it into 答對 (nothing has moved since). */
       undoWrong?: { teamId: string; questionId: string };
+      /** The team on turn owes its persuasion check, which waits out CHECK_GRACE_MS after a 答錯: no judging it until it rolls (QA P2-11). */
+      checkDue?: true;
       /** The catch ruling HOST_UNDO_RULING may still take back (anti-ai-cheating.md): until the next question shows or anything moves. */
       undoRuling?: { upheld: boolean };
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.
