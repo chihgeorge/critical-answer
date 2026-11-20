@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.113.0.3] - 2026-11-21
+
+### Fixed
+- Big screen: during the 說服成功 card the top-left chip no longer shows a bare 「難度」 with no stars. The room holds the question back during the card, so the chip steps aside until the question shows.
+
 ## [0.113.0.2] - 2026-11-21
 
 ### Fixed
