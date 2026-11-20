@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.113.0.1] - 2026-11-21
+
+### Fixed
+- The big screen's floor chip (「地下 N 樓」) steps aside while a die rolls, so the dish die's 「答對！擲料理骰」 banner no longer covers it.
+
 ## [0.113.0.0] - 2026-11-21
 
 ### Added
