@@ -67,6 +67,8 @@ function started(classes: (string | null)[] = ["thief", "chef"], storage = memor
     setDie(value);
     send(room, phones[0], { type: "TEAM_USE_ABILITY", questionId: q });
     vi.advanceTimersByTime(2000);
+    // A miss stays on show in its charge-fail beat before it is judged.
+    if ((room as unknown as { stageBeat: string | null }).stageBeat === "charge-fail") vi.advanceTimersByTime(2000);
     // A hit rolls its dish die (the same fixed value) in a beat of its own.
     if ((room as unknown as { pendingRoll: { kind: string } | null }).pendingRoll?.kind === "dish") vi.advanceTimersByTime(2000);
     // A hit's reveal (the answer first, then its dish die) closes as judge() closes one.

@@ -249,6 +249,10 @@ describe("buzzer boss phase in the room", () => {
     try {
       g.judge(IDS[2], true);
       expect(g.room.game!.phase).toBe("playing"); // the kill's 4d20 beat comes first
+      expect(g.state()).toMatchObject({ stageBeat: "kill-defeated", question: null });
+      // The 4d20 land over the defeated boss, not the buzz screen (QA 2026-11-19 P1-3): no question, so no 「搶到了」.
+      vi.advanceTimersByTime(2000);
+      expect(g.state()).toMatchObject({ stageBeat: "kill-roll", question: null, pendingRoll: { kind: "kill" }, view: { bossHp: 0 } });
       vi.advanceTimersByTime(10000);
     } finally {
       vi.useRealTimers();

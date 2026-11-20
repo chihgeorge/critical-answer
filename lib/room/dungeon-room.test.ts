@@ -1352,17 +1352,20 @@ describe("TEAM_SELECT_OPTION", () => {
     });
 
     // Value: protects=the check rolls as the turn opens, so a pass must not cut off the owl's unread lines (the last
-    // turn's result and 「輪到…」); fails_when=a passed check's narration replaces them (main-line e2e lost its ▼)
-    it("keeps the owl's unread lines ahead of a passed check's line", () => {
+    // turn's result and 「輪到…」), nor have the screen read them twice (QA 2026-11-19 P1-4); fails_when=a passed check's
+    // narration replaces them, or writes them again under a new eventId (the screen reads that one from its first line)
+    it("adds a passed check's line after the owl's lines, in the same narration", () => {
       vi.useFakeTimers();
       const { room } = checkGame(1, 15); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
       const r = room as unknown as { eventSeq: number; lastNarration: { eventId: number; lines: string[]; rev: number; done: number } | null };
-      r.lastNarration = { eventId: r.eventSeq, lines: ["甲隊答對了。", "輪到乙隊。"], rev: 0, done: 1 };
+      const eventId = r.eventSeq;
+      r.lastNarration = { eventId, lines: ["甲隊答對了。", "輪到乙隊。"], rev: 0, done: 1 };
+      const before = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.length;
       vi.advanceTimersByTime(2000);
-      const lines = r.lastNarration!.lines;
-      expect(lines[0]).toBe("輪到乙隊。");
-      expect(lines.at(-1)).toMatch(/^說服成功！/);
-      expect(lines).toHaveLength(2);
+      expect(r.lastNarration).toMatchObject({ eventId, rev: 1, lines: ["甲隊答對了。", "輪到乙隊。", expect.stringMatching(/^說服成功！.*接下來看題目。$/)] });
+      const told = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.slice(before).map((c) => JSON.parse(c[0])).filter((m) => m.type === "NARRATION");
+      expect(told).toHaveLength(1);
+      expect(told[0]).toMatchObject({ eventId, rev: 1 });
     });
 
     // Value: protects=the 說服成功 card stays the roller's turn (#394): a dropped phone or the host's 跳過 cannot move the
@@ -3900,8 +3903,34 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     const q = room.game!.teams[0].currentQuestionId;
     roll(5);
     vi.advanceTimersByTime(2000);
+    // The missed charge stays on show first (QA 2026-11-19 P1-2): still this team's turn, nothing judged yet.
+    expect(lastBroadcast(room)).toMatchObject({ stageBeat: "charge-fail", chargeBeat: { teamId: ids[0], value: 5, penalty: 0 }, question: null });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+    vi.advanceTimersByTime(2000);
+    expect(lastBroadcast(room).stageBeat).toBeUndefined();
     expect(lastBroadcast(room).reveal).toBeNull();
     expect(room.game!.teams[0]).toMatchObject({ abilityUses: 2, currentQuestionId: q, roomIndex: 0 });
+    expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+  });
+
+  // Value: protects=a fumbled charge says what it took before the turn moves on, and holds in manual (QA 2026-11-19 P1-2);
+  // fails_when=the miss is judged in the same press, or the beat names no penalty
+  it("a 1's charge-fail beat names the points it takes, and waits for 下一步 in manual", () => {
+    vi.useFakeTimers();
+    const { room, ids, roll, hostConn } = warriorGame();
+    room.game = { ...room.game!, teams: room.game!.teams.map((t, i) => (i === 0 ? { ...t, reward: 30 } : t)) };
+    send(room, hostConn, { type: "HOST_PACING", mode: "manual" });
+    roll(1);
+    vi.advanceTimersByTime(2000); // the warrior's die: the host's press is not needed, it lands on its timer
+    const beat = lastBroadcast(room);
+    expect(beat).toMatchObject({ stageBeat: "charge-fail", chargeBeat: { teamId: ids[0], value: 1 }, hold: { kind: "charge-fail" } });
+    const { penalty } = beat.chargeBeat;
+    expect(penalty).toBeGreaterThan(0);
+    vi.advanceTimersByTime(60_000);
+    expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+    expect(room.game!.teams[0].reward).toBe(30);
+    send(room, hostConn, { type: "HOST_STEP", eventId: beat.eventId, step: beat.hold.id });
+    expect(room.game!.teams[0].reward).toBe(30 - penalty);
     expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
   });
 
@@ -3912,7 +3941,7 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     const { room, roll } = warriorGame(1);
     const said = () => (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0])).filter((m) => m.type === "NARRATION").at(-1).lines[0];
     roll(5);
-    await vi.advanceTimersByTimeAsync(2000);
+    await vi.advanceTimersByTimeAsync(4000); // the die, then its charge-fail beat
     expect(said()).toMatch(/^戰士擲出 5 點，沒打中。/);
     roll(17);
     await vi.advanceTimersByTimeAsync(2000); // the roll's beat; the answer's reveal comes first

@@ -232,8 +232,10 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   // The check rolls itself before the host can judge, so the question was shown: the reveal does not repeat it.
   await expect(screen.getByTestId("reveal-question")).toHaveCount(0);
   await expect(host.getByRole("button", { name: "答對！" })).toHaveCount(0);
-  // The only team is next, but the reveal holds the room: its phone says it is next, not that it can answer (#263).
-  await expect(team.getByText("下一個是我們！")).toBeVisible();
+  // The reveal holds the room: its phone shows its own right answer, not that it can answer (#263) nor that it is next
+  // (QA 2026-11-19 P1-1: the turn stays on the answering team through the dish die and 上菜).
+  await expect(team.getByText("答對了！", { exact: true }).first()).toBeVisible();
+  await expect(team.getByText("下一個是我們！")).toHaveCount(0);
 
   // A reconnecting phone still sees it — the reveal rides on STATE, not a one-off message.
   await team.reload();
