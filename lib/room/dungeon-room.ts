@@ -44,6 +44,7 @@ import {
   sneakRoll,
   giveItem,
   hostFix,
+  adjustBossHp,
   hostRejudge,
   hostSetScore,
   recordJudgment,
@@ -2595,6 +2596,9 @@ export class DungeonRoom {
           break;
         case "HOST_FIX":
           this.handleHostFix(sender, msg.teamId, msg.fix);
+          break;
+        case "HOST_BOSS_HP":
+          this.handleHostBossHp(sender, msg.delta);
           break;
         case "HOST_SET_SCORE":
           this.handleHostSetScore(sender, msg.teamId, msg.score);
@@ -5637,6 +5641,27 @@ export class DungeonRoom {
    * a move: 改判答對 closes, so an undo can never wipe a correction. Kept in the team's game log and the transcript. */
   private handleHostFix(conn: Conn, teamId: string, fix: HostFix) {
     this.applyFix(conn, teamId, (g) => hostFix(g, teamId, fix), fix);
+  }
+
+  /** 首領血量 −5 / +5 (docs/hosting.md): the boss's HP moves (adjustBossHp), the owl says so in a scripted line and the
+   * big screen plays its notice from STATE's bossHpAdjust. The same holds as a 修正, for every team: a die, lock, door,
+   * waiting wrong answer or boss-entry dish in its beat would land on (or show) the HP from before. A kill roll is a die. */
+  private handleHostBossHp(conn: Conn, delta: number) {
+    if (!this.requireHost(conn)) return;
+    if (!this.game) return this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+    if (this.forkBeat || this.bossEntryBefore || this.pendingLock || this.pendingRoll || this.game.pendingWrong) {
+      return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "lock_pending" });
+    }
+    if (this.fortuneActive()) return this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "paused" });
+    try {
+      this.game = adjustBossHp(this.game, delta);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    const { hp, maxHp, hpAdjust } = this.game.boss;
+    this.addTranscript({ kind: "fix", at: new Date().toISOString(), text: `boss hp ${hpAdjust!.delta > 0 ? "+" : ""}${hpAdjust!.delta} → ${hp}/${maxHp}` });
+    this.appendLine(this.eventSeq, hpAdjust!.delta < 0 ? `首領體力不支了！血量 −${-hpAdjust!.delta}，只剩 ${hp}。` : `首領恢復了力氣！血量 +${hpAdjust!.delta}，回到 ${hp}。`);
+    this.broadcastState();
   }
 
   /** 設定 (docs/hosting.md): the team's reward set exactly, like a 修正 press. */

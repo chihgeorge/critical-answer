@@ -6,7 +6,7 @@ import { pressCooldown } from "@/lib/press-cooldown";
 import { getHostToken } from "@/lib/room-code";
 import type { ClientMessage, JudgedEntry, ScreenAudio } from "@/lib/protocol";
 import { BOSS_THRESHOLD } from "@/lib/turn-info";
-import { CATCH_USES, CLASS_ICONS, FIX_SCORE_MAX, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
+import { BOSS_HP_STEP, CATCH_USES, CLASS_ICONS, MAX_BOSS_HP, FIX_SCORE_MAX, FIX_SCORE_STEP, ORACLE_USES, type HostFix, type SpectatorView } from "@/lib/game-state";
 import { laterCorrect, questionOrdinals, rejudgeButton, rejudgeRows } from "@/lib/host-rejudge";
 import { Panel, PixelButton } from "@/components/pixel";
 import { Qr } from "@/components/qr";
@@ -31,6 +31,7 @@ export function MoreDrawer({
   bossPick,
   bossable,
   bossThreshold = BOSS_THRESHOLD,
+  bossHp,
   playing,
   antiCheat,
   screen,
@@ -70,6 +71,8 @@ export function MoreDrawer({
   bossable: { id: string; name: string }[];
   /** The game's 進王門檻 (view.bossThreshold), for the 送王房 line. */
   bossThreshold?: number;
+  /** The boss's HP while a team is in the boss room, for 首領血量 −5 / +5 (game-state adjustBossHp); undefined hides them. */
+  bossHp?: { hp: number; maxHp: number; phase: number };
   /** A game is under way, so 結束冒險 can end it. */
   playing: boolean;
   /** 🚨 抓包與神諭's switch while a game runs (docs/designs/anti-ai-cheating.md); undefined outside a game. */
@@ -351,6 +354,22 @@ export function MoreDrawer({
                   </PixelButton>
                 </div>
               ))}
+            </section>
+          )}
+          {bossHp && (
+            <section className="flex flex-col gap-2" data-testid="boss-hp-adjust">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="min-w-0 flex-1 text-[15px]">
+                  {`首領血量（第 ${bossHp.phase} 階段）`} <span className="px-num text-[15px]">{bossHp.hp}/{bossHp.maxHp}</span>
+                </span>
+                <PixelButton disabled={bossHp.hp <= 1} onClick={() => fixAllowed("boss-") && send({ type: "HOST_BOSS_HP", delta: -BOSS_HP_STEP })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
+                  {`首領血量 −${BOSS_HP_STEP}`}
+                </PixelButton>
+                <PixelButton disabled={bossHp.hp >= MAX_BOSS_HP} onClick={() => fixAllowed("boss+") && send({ type: "HOST_BOSS_HP", delta: BOSS_HP_STEP })} className="!m-0 min-h-[44px] !px-3 !py-1 text-[15px]">
+                  {`首領血量 +${BOSS_HP_STEP}`}
+                </PixelButton>
+              </div>
+              <div className="text-[13px]">{`想早點結束或多玩一會？只動現在這個階段，最少留 1 血（最後一擊一定是隊伍打的），最多 ${MAX_BOSS_HP}。大螢幕會出提示、貓頭鷹說一句。`}</div>
             </section>
           )}
           {tapLatency !== undefined && (
