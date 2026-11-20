@@ -15,7 +15,8 @@ names, and may land it on itself.
 
 ## The event deck (G3)
 
-The ❓ door of a fork ([branch-fork.md](branch-fork.md)) draws one of three scenes, 1/3 each:
+The ❓ door of a fork ([branch-fork.md](branch-fork.md)) draws one of three scenes: the fortune teller 1/2, the chest and the statue 1/4 each
+(owner, 2026-11-20: at 1/3 she was too rare, about 1.3 per six-team game; at 1/2 about 1.9):
 
 | Scene | Outcome |
 |---|---|
@@ -30,7 +31,8 @@ The ❓ door of a fork ([branch-fork.md](branch-fork.md)) draws one of three sce
   pool (below); when the pool is empty there is no fortune this time (G2): it draws chest or statue 1/2 each, then
   that scene's outcome.
 - Balance for this deck was simulated before the build (`analysis/s3a-fortune-sim`, `DECK=3`): class win rates 25.0–28.2%,
-  inside the 24.2–30.2 target. A change to any number here needs that run again.
+  inside the 24.2–30.2 target. A change to any number here needs that run again. (The 1/2 share above was set by
+  the owner without a re-run.)
 
 ## Conditions
 
