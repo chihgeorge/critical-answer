@@ -279,7 +279,9 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
     }, LOCK_CONFIRM_MS);
     return () => clearTimeout(id);
   }, [inFlight]);
-  const frozen = !!lock || !!wrong || inFlight || rolling;
+  // The boss room's answer clock ran out (QA P2-14): the room takes no pick or lock now; one locked in time still reveals.
+  const timeUp = !!me?.inBossPhase && !lock && !wrong && game.answerClock?.left === 0;
+  const frozen = !!lock || !!wrong || inFlight || rolling || timeUp;
   const stripId = useId();
   const text = questionLine(q);
   // A sort question: this phone's own order until it locks, kept across a 重答 so the team fixes only the ✕ places.
@@ -381,6 +383,8 @@ function MyChoicePanel({ game, teamId, send, drops }: { game: StateMessage; team
         <div className="px-bar mt-1" role="status">已鎖定！看大螢幕揭曉 ▶</div>
       ) : inFlight ? (
         <div className="px-bar ok mt-1" role="status">鎖定中…</div>
+      ) : timeUp ? (
+        <div data-testid="boss-time-up" className="px-bar mt-1" role="status">⏰ 時間到！不能再選或鎖定，等主持人</div>
       ) : (
         <>
         <PotionButton game={game} teamId={teamId} questionId={q.id} send={send} />

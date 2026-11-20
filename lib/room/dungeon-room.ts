@@ -655,6 +655,8 @@ export class DungeonRoom {
   private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
   /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
   private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Fires the STATE at the boss room's answer deadline (armBossDeadline). Memory only. */
+  private bossDeadline: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -1554,7 +1556,33 @@ export class DungeonRoom {
     const waiting = !!want && (want.memorize || (want.video && this.clipEnded !== want.questionId));
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
     if (waiting) return { answerClock: { left: null } };
+    this.armBossDeadline(want);
     return this.answerClock ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
+  }
+
+  /** The boss room's answer clock ran out on `teamId`'s turn (owner, QA P2-14): its phones may no longer pick or lock. A lock
+   * made before stays; the host's 下輪換題 then counts the turn as wrong. Other rooms keep the count as a reminder only. */
+  private bossTimeUp(teamId: string): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || !game.teams.find((t) => t.id === teamId)?.inBoss) return false;
+    const want = this.answering();
+    if (!want || want === "hold" || want.key.split(":")[0] !== teamId) return false;
+    this.syncAnswerClock();
+    return this.answerClock?.key === want.key && this.now() >= this.answerClock.endsAt;
+  }
+
+  /** A STATE at the boss room's deadline, so the phones grey their options out (bossTimeUp) with left 0. Memory only:
+   * a restored room sends a STATE on every connect, which carries the same. */
+  private armBossDeadline(want: ReturnType<DungeonRoom["answering"]>) {
+    const clock = this.answerClock;
+    const team = want && want !== "hold" && this.game?.phase === "playing" ? this.game.teams.find((t) => `${t.id}:${want.questionId}` === want.key) : undefined;
+    const at = team?.inBoss && clock?.key === (want as { key: string }).key && clock.endsAt > this.now() ? clock.endsAt : null;
+    if (this.bossDeadline?.at === at) return;
+    if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
+    this.bossDeadline = at === null ? null : { at, timer: setTimeout(() => {
+      this.bossDeadline = null;
+      this.broadcastState();
+    }, at - this.now()) };
   }
 
   /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
@@ -3245,6 +3273,8 @@ export class DungeonRoom {
     this.lostCritTimer = null;
     if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
     this.checkGraceTimer = null;
+    if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
+    this.bossDeadline = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
     this.tapReveal = null;
@@ -4315,6 +4345,7 @@ export class DungeonRoom {
     if (this.paused()) return reject("reveal_pending");
     if (this.memorizing()) return reject("memorizing");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
+    if (this.bossTimeUp(teamId)) return reject("time_up");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (!isAutoJudged(q) || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     const pick = team?.currentSelection ?? null;
@@ -5832,6 +5863,10 @@ export class DungeonRoom {
     }
     if (this.memorizing()) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
+      return;
+    }
+    if (this.bossTimeUp(teamId)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "time_up" });
       return;
     }
     // A locked or wrong-locked pick is final until the turn resolves (phone-answering.md premise 2).

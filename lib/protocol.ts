@@ -69,7 +69,7 @@ export type FileVideo = { kind: "file"; url: string; audioOnly?: true };
 export type ScreenVideo = Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo;
 /** Why the room refused a TEAM_LOCK_OPTION (the ERROR invalid_action detail): the phone drops 鎖定中… at once instead of
  * waiting out its confirm timer. The room's lock handler can send only these. */
-export const LOCK_REFUSALS = ["reveal_pending", "memorizing", "answer_pending", "not_your_turn", "stale_question", "no_selection", "selection_changed"] as const;
+export const LOCK_REFUSALS = ["reveal_pending", "memorizing", "answer_pending", "not_your_turn", "stale_question", "no_selection", "selection_changed", "time_up"] as const;
 export type LockRefusal = (typeof LOCK_REFUSALS)[number];
 
 /** Why the big screen's test load of one clip failed (docs/designs/screen-media-test.md D3). */
