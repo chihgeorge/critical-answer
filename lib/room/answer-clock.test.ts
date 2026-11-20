@@ -381,3 +381,61 @@ describe("HOST_START bossShuffle", () => {
     expect(second.room.game!.config.bossShuffle).toBe(true);
   });
 });
+
+// Value: protects=the owner's QA P2-14 ruling: in the boss room, once the answer clock runs out the team on turn can no
+// longer pick or lock; a lock made in time still reveals; normal rooms keep the count as a reminder; fails_when=a lock
+// after 「⏰ 時間到」 lands, or a normal room refuses one
+describe("the boss room's 時間到 (QA P2-14)", () => {
+  const bossBank = () =>
+    parseBank({
+      rooms: [{ monster: "slime-soft", baseDifficulty: 1, questions: [mc("r1"), mc("r2"), mc("r3"), mc("r4")] }],
+      boss: { monster: "dragon", maxHp: 3, questions: [mc("b1"), mc("b2"), mc("b3")] },
+    });
+  const lastErr = (c: Conn & { send: ReturnType<typeof vi.fn> }) => msgs(c.send.mock.calls).findLast((m) => m.type === "ERROR");
+  const toBoss = (g: ReturnType<typeof started>) => {
+    send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: A });
+    send(g.room, g.host, { type: "HOST_SEND_TO_BOSS", teamId: B });
+    for (let i = 0; i < 4 && g.state().view.currentTurnTeamId !== A; i++) send(g.room, g.host, { type: "HOST_NEXT", eventId: g.state().eventId });
+  };
+
+  it("refuses a pick and a lock after the deadline, and sends the STATE that says so", () => {
+    const g = started({ answerSeconds: 30 }, bossBank());
+    toBoss(g);
+    expect(g.room.game!.teams.find((t) => t.id === A)!.inBoss).toBe(true);
+    expect(g.state().view.currentTurnTeamId).toBe(A);
+    const q = g.state().question.id;
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 1 });
+    vi.advanceTimersByTime(30_000);
+    expect(g.state().answerClock).toEqual({ left: 0 });
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 0 });
+    expect(lastErr(g.phones[0])).toMatchObject({ detail: "time_up" });
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: q, optionIndex: 1 });
+    expect(lastErr(g.phones[0])).toMatchObject({ detail: "time_up" });
+    expect(g.state().pendingLock).toBeNull();
+    // The host's 下輪換題 counts it as wrong and the next team answers.
+    send(g.room, g.host, { type: "HOST_JUDGE", teamId: A, questionId: q, correct: false, fleeChoice: "retry", eventId: g.state().eventId });
+    expect(g.room.game!.teams.find((t) => t.id === A)!.score).toBe(0);
+  });
+
+  it("a lock made before the deadline still reveals after it", () => {
+    const g = started({ answerSeconds: 30 }, bossBank());
+    toBoss(g);
+    const q = g.state().question.id;
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: q, optionIndex: 0 });
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: q, optionIndex: 0 });
+    vi.advanceTimersByTime(40_000);
+    expect(g.state().pendingLock).toMatchObject({ teamId: A, optionIndex: 0 });
+    send(g.room, g.host, { type: "HOST_REVEAL", teamId: A, questionId: q });
+    vi.advanceTimersByTime(5000);
+    expect(g.state().pendingLock).toBeNull();
+    expect(g.state().reveal).toMatchObject({ questionId: q });
+  });
+
+  it("a normal room still takes a lock after its count runs out", () => {
+    const g = started({ answerSeconds: 30 }, bank(mc("m1")));
+    vi.advanceTimersByTime(31_000);
+    send(g.room, g.phones[0], { type: "TEAM_SELECT_OPTION", questionId: "m1", optionIndex: 0 });
+    send(g.room, g.phones[0], { type: "TEAM_LOCK_OPTION", questionId: "m1", optionIndex: 0 });
+    expect(g.state().pendingLock).toMatchObject({ teamId: A });
+  });
+});

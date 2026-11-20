@@ -613,8 +613,8 @@ export class DungeonRoom {
   /** The lock being held for the beat (E2). Memory only, like the reveal: a restart drops it and the team locks again. */
   private pendingLock: LockedOption | null = null;
   /** Dice in their beat: a warrior's roll, a correct answer's dish die, a class die, a persuasion check, or the kill's 4d20 (value is
-   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a team whose
-   * dish die was rolling answers or is judged again; a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
+   * then the scored bonus). Memory only, like pendingLock: a restart drops it (a warrior's use stays spent; a correct
+   * answer's dish die is saved instead, with its value, and lands after the restart (snapshot `dish`, QA P2-16); a cut-off kill, with pendingKill, is lost: the team answers the final blow again, and a lost natural 20 comes back
    * through lostCrit with fresh dice). Shares the "lock" step. */
   private pendingRoll: PendingRoll | null = null;
   /** 每題作答倒數 (docs/designs/answer-countdown.md): this game's seconds (0 is off), the running count, and the last
@@ -659,6 +659,8 @@ export class DungeonRoom {
   private undo: { prev: GameState; after: GameState; teamId: string; questionId: string; verdict?: { upheld: boolean }; at?: number } | null = null;
   /** Wakes autoCheck once CHECK_GRACE_MS after a 答錯 has passed. Memory only: a restart has no undo, so the check rolls at once. */
   private checkGraceTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Fires the STATE at the boss room's answer deadline (armBossDeadline). Memory only. */
+  private bossDeadline: { at: number; timer: ReturnType<typeof setTimeout> } | null = null;
   /** The undo a 答錯 being judged right now will leave (withUndo), so the STATE it sends already offers it. */
   private undoPending: { prev: GameState; teamId: string; questionId: string } | null = null;
   /** True inside judge(): a lost natural 20 waits for it to finish rather than judging inside it. */
@@ -1137,12 +1139,25 @@ export class DungeonRoom {
     };
   }
 
-  /** The beats a restart can bring back (#364 follow-up): a passed check's card, and the boss entrance a dish was holding
-   * back. The crit and kill beats are not saved: their lock or dice are memory only, and the team answers again. */
-  private savedBeats(): Pick<RoomSnapshot, "checkBeat" | "bossEntry"> {
+  /** The beats a restart can bring back (#364 follow-up): a passed check's card, the boss entrance a dish was holding
+   * back, and a correct answer waiting for its dish die (its reveal, or the die in its beat with the same value). The crit and kill beats are not saved: their lock or dice are memory only, and the team answers again. */
+  private savedBeats(): Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish"> {
     const game = this.game;
     if (game?.phase !== "playing") return {};
-    const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry"> = {};
+    const out: Pick<RoomSnapshot, "checkBeat" | "bossEntry" | "dish"> = {};
+    const roll = this.pendingRoll?.kind === "dish" && !this.pendingRoll.rejudge ? this.pendingRoll : null;
+    const dishTeam = roll?.teamId ?? (this.reveal?.dishNext ? currentTurnTeamId(game) : null);
+    if (dishTeam) {
+      const a = this.pendingAnswer;
+      out.dish = {
+        teamId: dishTeam,
+        questionId: roll?.questionId ?? this.reveal!.questionId,
+        ...(this.reveal?.dishNext ? { reveal: true as const } : {}),
+        ...(a?.fields ? { fields: a.fields } : {}),
+        ...(a?.warrior !== undefined ? { warrior: a.warrior } : {}),
+        ...(roll ? { value: roll.value, ...(roll.values ? { values: roll.values } : {}) } : {}),
+      };
+    }
     if (this.stageBeat === "check-success" && this.checkBeatAt) out.checkBeat = this.checkBeatAt;
     const entered = this.bossEntryBefore && this.reveal?.scored?.teamId;
     if (entered) out.bossEntry = { eventId: this.eventSeq, teamId: entered, ...(game.sprint && !this.bossEntryBefore!.sprint ? { sprint: true as const } : {}) };
@@ -1332,6 +1347,14 @@ export class DungeonRoom {
     if (game?.phase !== "playing" || this.phaseCard) return;
     const c = s.checkBeat;
     if (c && currentTurnTeamId(game) === c.teamId && currentQuestionIdOf(game, c.teamId) === c.questionId && game.checks?.[checkKey(c.questionId, c.teamId)]?.passed) this.checkSuccessBeat(c.teamId, c.questionId);
+    const d = s.dish;
+    if (d && currentTurnTeamId(game) === d.teamId && currentQuestionIdOf(game, d.teamId) === d.questionId) {
+      const q = this.question(d.questionId);
+      const marks = q?.kind === "text" && q.fields ? (d.fields ?? q.fields.map(() => true)) : undefined;
+      if (d.reveal) this.reveal = this.answerFirst(d.teamId, d.questionId, marks);
+      if (d.value !== undefined) this.paceRoll({ teamId: d.teamId, questionId: d.questionId, value: d.value, kind: "dish", ...(d.warrior !== undefined ? { warrior: d.warrior } : {}), ...(d.values ? { values: d.values } : {}) });
+      if (this.reveal || this.pendingRoll) this.pendingAnswer = { ...(d.fields ? { fields: d.fields } : {}), ...(d.warrior !== undefined ? { warrior: d.warrior } : {}) };
+    }
     const e = s.bossEntry;
     const n = this.lastNarration;
     if (!e || n?.eventId !== e.eventId) return;
@@ -1537,7 +1560,33 @@ export class DungeonRoom {
     const waiting = !!want && (want.memorize || (want.video && this.clipEnded !== want.questionId));
     this.answerClock = nextAnswerClock(this.answerClock, want && !waiting ? want.key : null, this.now(), this.answerSeconds * 1000);
     if (waiting) return { answerClock: { left: null } };
+    this.armBossDeadline(want);
     return this.answerClock ? { answerClock: { left: Math.max(0, this.answerClock.endsAt - this.now()) } } : {};
+  }
+
+  /** The boss room's answer clock ran out on `teamId`'s turn (owner, QA P2-14): its phones may no longer pick or lock. A lock
+   * made before stays; the host's 下輪換題 then counts the turn as wrong. Other rooms keep the count as a reminder only. */
+  private bossTimeUp(teamId: string): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || !game.teams.find((t) => t.id === teamId)?.inBoss) return false;
+    const want = this.answering();
+    if (!want || want === "hold" || want.key !== `${teamId}:${want.questionId}`) return false;
+    this.syncAnswerClock();
+    return this.answerClock?.key === want.key && this.now() >= this.answerClock.endsAt;
+  }
+
+  /** A STATE at the boss room's deadline, so the phones grey their options out (bossTimeUp) with left 0. Memory only:
+   * a restored room sends a STATE on every connect, which carries the same. */
+  private armBossDeadline(want: ReturnType<DungeonRoom["answering"]>) {
+    const clock = this.answerClock;
+    const team = want && want !== "hold" && this.game?.phase === "playing" ? this.game.teams.find((t) => `${t.id}:${want.questionId}` === want.key) : undefined;
+    const at = team?.inBoss && clock?.key === (want as { key: string }).key && clock.endsAt > this.now() ? clock.endsAt : null;
+    if (this.bossDeadline?.at === at) return;
+    if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
+    this.bossDeadline = at === null ? null : { at, timer: setTimeout(() => {
+      this.bossDeadline = null;
+      this.broadcastState();
+    }, at - this.now()) };
   }
 
   /** SCREEN_CLIP_ENDED (D4): for the question video on screen right now, even while an answer waits (a 重答 then
@@ -1594,7 +1643,7 @@ export class DungeonRoom {
     if (!q) return;
     const buzzer = this.game && isBuzzPhase(this.game) ? this.game.teams.find((t) => t.id === this.game!.buzz?.teamId && t.typedAnswer !== undefined) : undefined;
     const typed = buzzer ? { teamId: buzzer.id, text: buzzer.typedAnswer!, ...(buzzer.typedFields ? { fields: buzzer.typedFields } : {}) } : undefined;
-    // STATE holds the question back until the check is done; the host still reads it out and may judge at once.
+    // STATE holds the question back until the check is done; the host still reads it out, and judges once it has rolled.
     // So does a memory question's watching phase: the host's copy is the whole question, marked.
     const question = this.awaitingCheck()
       ? { question: { ...q.full, checkFirst: true as const } }
@@ -1758,6 +1807,7 @@ export class DungeonRoom {
       ...(this.epilogue ? { epiloguePage: { page: this.epiloguePage, of: epiloguePages(this.epilogue).length } } : {}),
       eventId: this.eventSeq,
       ...this.undoWrong(),
+      ...(this.checkDue() ? { checkDue: true as const } : {}),
       ...(this.rulingUndoOpen() ? { undoRuling: { upheld: this.undo!.verdict!.upheld } } : {}),
       ...(this.cue ? { cue: this.cue } : {}),
       cueSeq: this.cueSeq,
@@ -2695,6 +2745,9 @@ export class DungeonRoom {
     if (this.screenTest && !this.game) this.sendScreenTest();
     this.sendAnswer(conn);
     this.sendPicks(conn);
+    // After a restart a check owed in the 答錯 grace window rolls at the next STATE: send it now, or the host's judge
+    // buttons stay dark (checkDue) until a phone comes back (review).
+    if (this.autoCheck()) this.broadcastState();
     const closing = this.closingMessage();
     if (closing.minutesLeft !== null) this.sendTo(conn, closing);
   }
@@ -3234,6 +3287,8 @@ export class DungeonRoom {
     this.lostCritTimer = null;
     if (this.checkGraceTimer) clearTimeout(this.checkGraceTimer);
     this.checkGraceTimer = null;
+    if (this.bossDeadline) clearTimeout(this.bossDeadline.timer);
+    this.bossDeadline = null;
     if (this.tapTimer) clearTimeout(this.tapTimer);
     this.tapTimer = null;
     this.tapReveal = null;
@@ -3764,6 +3819,8 @@ export class DungeonRoom {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: this.paused() ? "reveal_pending" : this.pendingRoll ? "roll_pending" : "lock_pending" });
       return;
     }
+    // The team's question is not out until its check has rolled (QA P2-11).
+    if (this.checkDue()?.teamId === teamId) return void this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "check_pending" });
     if (fleeChoice === "team" || fleeChoice === "pray") return this.hostClericWrong(conn, teamId, questionId, fleeChoice);
     // A multipleChoice or sort question is judged by its lock; the host may only pick 重答 / 逃跑 for a stuck
     // team (E5), never 答對.
@@ -4302,6 +4359,7 @@ export class DungeonRoom {
     if (this.paused()) return reject("reveal_pending");
     if (this.memorizing()) return reject("memorizing");
     if (this.pendingLock || this.pendingRoll || game.pendingWrong) return reject("answer_pending");
+    if (this.bossTimeUp(teamId)) return reject("time_up");
     if (game.phase !== "playing" || currentTurnTeamId(game) !== teamId) return reject("not_your_turn");
     if (!isAutoJudged(q) || currentQuestionIdOf(game, teamId) !== questionId) return reject("stale_question");
     const pick = team?.currentSelection ?? null;
@@ -4735,6 +4793,8 @@ export class DungeonRoom {
     if (this.pendingLock || this.pendingRoll) return reject("answer_pending");
     // No ability while a memory question's media plays: a mage's hint or a removed option would tell the question.
     if (this.memorizing()) return reject("memorizing");
+    // A die after the boss room's 時間到 would start a fresh clock when it lands (review).
+    if (this.bossTimeUp(teamId)) return reject("time_up");
     const classId = game.teams.find((t) => t.id === teamId)?.classId;
     const q = this.question(questionId);
     // A fill-in question is a persuasion check first; the warrior's roll comes after it (dnd design R2), and so does the
@@ -4809,15 +4869,22 @@ export class DungeonRoom {
     const value = extra && "value" in extra ? extra.value : potion ? Math.max(...potion) : die();
     // A sneak die's 1 shows what it takes as it lands (sneakRoll, tried on the game now).
     const penalty = kind === "thief" && value === 1 && this.game ? sneakRoll(this.game, teamId, 1).penalty : undefined;
-    this.pendingRoll = { teamId, questionId, value, kind, ...extra, ...(potion ? { values: potion } : {}), ...(penalty !== undefined ? { penalty } : {}) };
+    const roll: PendingRoll = { teamId, questionId, value, kind, ...extra, ...(potion ? { values: potion } : {}), ...(penalty !== undefined ? { penalty } : {}) };
     const values = potion ?? (extra && "values" in extra ? extra.values : undefined);
     console.log(JSON.stringify({ event: "roll", kind, value, ...(values ? { values } : {}) }));
     // The warrior's roll has its own sound; the crit, check and kill dice share the tumble.
     this.setCue(kind === "warrior" ? "warrior-roll" : "roll");
-    const roll = this.pendingRoll;
+    this.paceRoll(roll);
+  }
+
+  /** Puts `roll` in its beat: resolveRoll lands it after the beat in auto, and in manual too for a die a host press rolled. */
+  private paceRoll(roll: PendingRoll) {
+    this.pendingRoll = roll;
+    const kind = roll.kind;
     // A dish die (擲料理骰, 改成答對) and a check (rolled on the host's 下一題) follow a host press, so they land on their timer
-    // in manual too. So does a warrior's die: its result holds instead (a hit's answer, a miss's charge-fail beat).
-    const timed = kind === "dish" || kind === "check" || kind === "warrior";
+    // in manual too. So does a warrior's die: its result holds instead (a hit's answer, a miss's charge-fail beat). So do the
+    // class dice a player presses (mage, cleric, thief; owner 2026-11-20). Only the kill's 4d20 holds.
+    const timed = kind !== "kill";
     this.pace("lock", "roll", kind === "kill" ? KILL_BEAT_MS : BEAT_MS, () => (this.pendingRoll !== roll ? null : kind === "kill" ? "接下來結算擊殺擲骰" : "接下來結算擲骰結果"), () => this.resolveRoll(), timed);
   }
 
@@ -5329,23 +5396,32 @@ export class DungeonRoom {
     if (next) this.appendLine(this.eventSeq, this.scripted.nextLine(next));
   }
 
+  /** The check the team on turn still owes (autoCheck rolls it once nothing holds the turn), or null. A judge for that
+   * team waits for it (QA P2-11): during CHECK_GRACE_MS its question is not out yet. */
+  private checkDue() {
+    const game = this.game;
+    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return null;
+    const teamId = currentTurnTeamId(game);
+    // A restored natural 20 (lostCrit) judges its own team's turn; another team's check need not wait for it.
+    if (this.lostCrit?.teamId === teamId) return null;
+    const team = game.teams.find((t) => t.id === teamId);
+    // The boss room has no check (#382), and a fork holds no question to roll on.
+    if (!teamId || !team || team.inBoss || atFork(team)) return null;
+    const questionId = currentQuestionIdOf(game, teamId);
+    const q = this.question(questionId);
+    // A typed answer already waits for the host: a natural 20 must not win over it.
+    if (q?.kind !== "text" || game.checks?.[checkKey(questionId, teamId)] || team.typedAnswer !== undefined) return null;
+    return { game, teamId, questionId, q };
+  }
+
   /** The persuasion check rolls itself (owner, 2026-11-19): once the team on turn faces a fill-in question it has no check
    * on, and nothing else holds the turn (a reveal, a card, a lock, a die), the room rolls d20 + its class bonus. Called
    * from the end of broadcastState (and of a judgment), so every change that frees the turn rolls it. Returns whether it
    * rolled: the caller then sends the STATE that carries the die. */
   private autoCheck(): boolean {
-    const game = this.game;
-    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
-    const teamId = currentTurnTeamId(game);
-    // A restored natural 20 (lostCrit) judges its own team's turn; another team's check need not wait for it.
-    if (this.lostCrit?.teamId === teamId) return false;
-    const team = game.teams.find((t) => t.id === teamId);
-    // The boss room has no check (#382), and a fork holds no question to roll on.
-    if (!teamId || !team || team.inBoss || atFork(team)) return false;
-    const questionId = currentQuestionIdOf(game, teamId);
-    const q = this.question(questionId);
-    // A typed answer already waits for the host: a natural 20 must not win over it.
-    if (q?.kind !== "text" || game.checks?.[checkKey(questionId, teamId)] || team.typedAnswer !== undefined) return false;
+    const due = this.checkDue();
+    if (!due) return false;
+    const { game, teamId, questionId, q } = due;
     // Another team's 答錯 that 改判答對 can still undo gives the host CHECK_GRACE_MS first: a 20 here would end that undo.
     // Inside the 答錯 itself (withUndo) the undo is still pending: it opens now.
     const undo = this.undo;
@@ -5842,6 +5918,10 @@ export class DungeonRoom {
     }
     if (this.memorizing()) {
       this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "memorizing" });
+      return;
+    }
+    if (this.bossTimeUp(teamId)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "time_up" });
       return;
     }
     // A locked or wrong-locked pick is final until the turn resolves (phone-answering.md premise 2).

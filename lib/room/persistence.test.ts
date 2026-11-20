@@ -688,10 +688,10 @@ describe("restoring after a restart", () => {
     expect(lastOf(after, "STATE").question).not.toBeNull();
   });
 
-  // Value: protects=a restart under a correct answer's reveal, before its dish die, loses nothing and scores nothing twice
-  // (the reveal is memory only, like the die's beat); fails_when=the room comes back stuck on the pinned turn or with the
-  // answer half scored; seam=none; no_claim=real Durable Object storage (memory storage)
-  it("a restart under a correct answer's reveal, before its dish die, comes back unscored: the team answers again", async () => {
+  // Value: protects=QA P2-16: a restart (a deploy) under a correct answer's reveal, before its dish die, keeps the
+  // judgment: the reveal comes back and 🎲 擲料理骰 scores it once; fails_when=the reveal is memory only and the team
+  // answers the question again; seam=none; no_claim=real Durable Object storage (memory storage)
+  it("a restart under a correct answer's reveal, before its dish die, brings the reveal back and scores it once", async () => {
     const storage = memoryStorage();
     const first = makeRoom(storage);
     const { host } = startedGame(first.room);
@@ -699,18 +699,47 @@ describe("restoring after a restart", () => {
     const onTurn = first.room.game!.turnOrder[first.room.game!.currentTurnIndex];
     first.room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q, correct: true }), host);
     expect((first.room as unknown as { reveal: { dishNext?: true } | null }).reveal?.dishNext).toBe(true);
+    const eventId = (first.room as unknown as { eventSeq: number }).eventSeq;
 
     const second = makeRoom(storage);
     await second.room.restore();
     expect(second.room.game!.teams.every((t) => t.score === 0)).toBe(true);
-    expect(currentTurnTeamId(second.room.game!)).toBe(onTurn);
-    expect(second.room.game!.teams.find((t) => t.id === onTurn)!.currentQuestionId).toBe(q);
+    expect((second.room as unknown as { reveal: { dishNext?: true; questionId: string } | null }).reveal).toMatchObject({ dishNext: true, questionId: q });
     const host2 = makeConn("host2");
     send(second.room, host2, { type: "HOST_CLAIM", token: TOKEN });
-    rejoin(second.room, T1, TEAM_KEY, "a-again");
+    const states = second.io.broadcast.mock.calls.map((c) => JSON.parse(c[0] as string)).filter((m) => m.type === "STATE");
+    expect(states.at(-1).reveal).toMatchObject({ questionId: q });
+    // A phone coming back does not skip the team whose answer waits for its dish die.
     rejoin(second.room, T2, TEAM_KEY + "2", "b-again");
-    send(second.room, host2, { type: "HOST_JUDGE", teamId: onTurn, questionId: q, correct: true });
+    send(second.room, host2, { type: "HOST_NEXT", eventId }); // 🎲 擲料理骰, landed by sendSettled
     expect(second.room.game!.teams.find((t) => t.id === onTurn)!.score).toBe(1);
+    expect(second.room.game!.teams.find((t) => t.id === onTurn)!.currentQuestionId).not.toBe(q);
+  });
+
+  // Value: protects=QA P2-16: a restart inside the dish die's beat lands the same die once the room is back (no reroll, no
+  // replay); fails_when=the die is memory only and the question is answered again, or it rolls again; seam=none
+  it("a restart inside a correct answer's dish die beat lands the same value after the restart", async () => {
+    vi.useFakeTimers();
+    const storage = memoryStorage();
+    const first = makeRoom(storage);
+    const { host } = startedGame(first.room);
+    const q = lastOf(host, "HOST_ANSWER").questionId;
+    const onTurn = first.room.game!.turnOrder[first.room.game!.currentTurnIndex];
+    first.room.onMessage(JSON.stringify({ type: "HOST_JUDGE", teamId: onTurn, questionId: q, correct: true }), host);
+    (first.room as unknown as { fixedDie: number }).fixedDie = 15;
+    first.room.onMessage(JSON.stringify({ type: "HOST_NEXT", eventId: (first.room as unknown as { eventSeq: number }).eventSeq }), host);
+    expect((first.room as unknown as { pendingRoll: { kind: string; value: number } | null }).pendingRoll).toMatchObject({ kind: "dish", value: 15 });
+
+    // No fixed die here: a reroll would show the rng's 1.
+    const second = makeRoom(storage);
+    await second.room.restore();
+    expect((second.room as unknown as { pendingRoll: { kind: string; value: number } | null }).pendingRoll).toMatchObject({ kind: "dish", value: 15, teamId: onTurn, questionId: q });
+    expect(second.room.game!.teams.every((t) => t.score === 0)).toBe(true);
+    vi.advanceTimersByTime(5000);
+    const team = second.room.game!.teams.find((t) => t.id === onTurn)!;
+    expect(team.score).toBe(1);
+    expect(team.currentQuestionId).not.toBe(q);
+    expect((second.room as unknown as { reveal: { dish?: { value?: number } } | null }).reveal?.dish).toBeDefined();
   });
 
   it("the event counter continues, so narration ids never repeat", async () => {

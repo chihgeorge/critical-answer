@@ -1444,6 +1444,25 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(sent.some((m) => m.pendingRoll?.teamId === ids[1])).toBe(false);
     });
 
+    // Value: protects=QA P2-11: a judge for the next team inside CHECK_GRACE_MS (its check not rolled, its question unseen)
+    // is refused; fails_when=the host's 答對 scores a question nobody saw and its check never rolls
+    it("refuses a judge for the next team while its check waits out the grace window", () => {
+      vi.useFakeTimers();
+      const { room, hostConn, ids } = checkGame(2, 3);
+      vi.advanceTimersByTime(2000);
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[0], questionId: "r0-t1", correct: false, fleeChoice: "retry", eventId: seqOf(room) });
+      const b = room.game!.teams.find((t) => t.id === ids[1])!;
+      expect(lastBroadcast(room).checkDue).toBe(true);
+      const score = b.score;
+      send(room, hostConn, { type: "HOST_JUDGE", teamId: ids[1], questionId: b.currentQuestionId, correct: true, eventId: seqOf(room) });
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", detail: "check_pending" });
+      expect(room.game!.teams.find((t) => t.id === ids[1])!.score).toBe(score);
+      expect(lastBroadcast(room).view.currentTurnTeamId).toBe(ids[1]);
+      vi.advanceTimersByTime(CHECK_GRACE_MS);
+      expect(lastBroadcast(room).checkDue).toBeUndefined();
+      expect(lastBroadcast(room).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
+    });
+
     it("rolls the next team's check at once after a restart inside that window (a restart keeps no 改判答對)", async () => {
       vi.useFakeTimers();
       const data = new Map<string, unknown>();
@@ -1455,14 +1474,15 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(lastBroadcast(room).pendingRoll).toBeNull();
       const second = new DungeonRoom({ ...makeRoom(), storage } as any, () => 0.1, { bank: checkBank });
       expect(await second.restore()).toBe("restored");
+      (second as unknown as { holdCheck: boolean }).holdCheck = true;
       const host2 = makeConn("host-conn-2");
       second.onConnect(host2);
-      claim(second, host2);
       expect(second.game!.teams.find((t) => t.id === ids[1])).toBeDefined();
       const b = second.game!.teams.find((t) => t.id === ids[1])!;
-      // The next STATE the restored room sends (a phone or the host reconnecting) runs autoCheck: no window to wait out.
-      (second as unknown as { broadcastState(): void }).broadcastState();
+      // The host reconnecting rolls it (no window to wait out), so its judge buttons are not left dark (checkDue).
+      claim(second, host2);
       expect(lastBroadcast(second).pendingRoll).toMatchObject({ teamId: ids[1], kind: "check" });
+      expect(lastBroadcast(second).checkDue).toBeUndefined();
       expect(second.game!.checks?.[checkKey(b.currentQuestionId, ids[1])]).toBeDefined();
     });
 

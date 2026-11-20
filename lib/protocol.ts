@@ -69,7 +69,7 @@ export type FileVideo = { kind: "file"; url: string; audioOnly?: true };
 export type ScreenVideo = Extract<PublicMediaContent, { kind: "youtube" }> | InstagramVideo | FileVideo;
 /** Why the room refused a TEAM_LOCK_OPTION (the ERROR invalid_action detail): the phone drops 鎖定中… at once instead of
  * waiting out its confirm timer. The room's lock handler can send only these. */
-export const LOCK_REFUSALS = ["reveal_pending", "memorizing", "answer_pending", "not_your_turn", "stale_question", "no_selection", "selection_changed"] as const;
+export const LOCK_REFUSALS = ["reveal_pending", "memorizing", "answer_pending", "not_your_turn", "stale_question", "no_selection", "selection_changed", "time_up"] as const;
 export type LockRefusal = (typeof LOCK_REFUSALS)[number];
 
 /** Why the big screen's test load of one clip failed (docs/designs/screen-media-test.md D3). */
@@ -552,6 +552,8 @@ export type ServerMessage =
       eventId: number;
       /** The host's last 答錯 on a fill-in, while HOST_UNDO_WRONG may still turn it into 答對 (nothing has moved since). */
       undoWrong?: { teamId: string; questionId: string };
+      /** The team on turn owes its persuasion check, which waits out CHECK_GRACE_MS after a 答錯: no judging it until it rolls (QA P2-11). */
+      checkDue?: true;
       /** The catch ruling HOST_UNDO_RULING may still take back (anti-ai-cheating.md): until the next question shows or anything moves. */
       undoRuling?: { upheld: boolean };
       /** The latest sound effect (an event's, or a roll's): the big screen plays it once, when cueSeq goes up.

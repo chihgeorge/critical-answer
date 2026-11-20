@@ -163,16 +163,19 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
     expect(state(s.room).reveal).toBeNull();
   });
 
-  // Value: protects=the split the owner chose: a pause the room starts on its own still holds; fails_when=a held kind gets timed
-  it("a step the room starts on its own still holds: a class die waits for 下一步", () => {
-    const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
-    s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
-    send(s.room, s.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(s.room).question.id });
-    expect(state(s.room)).toMatchObject({ pendingRoll: { kind: "mage" }, hold: { kind: "roll" } });
-    vi.advanceTimersByTime(LONG);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "mage" });
-    step(s);
-    expect(state(s.room).pendingRoll).toBeNull();
+  // Value: protects=the owner's 2026-11-20 ruling: a class die the team presses (mage 洞悉, thief 偷襲; the cleric's 祈禱 uses
+  // the same roll) plays on its auto timer in manual; fails_when=a class die holds for 下一步 again
+  it("a class die the team presses plays on its timer: no hold", () => {
+    for (const classId of ["mage", "thief"] as const) {
+      const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
+      s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => ({ ...t, classId, abilityUses: 3 })) };
+      send(s.room, s.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(s.room).question.id });
+      expect(state(s.room).pendingRoll).toMatchObject({ kind: classId });
+      expect(state(s.room).hold).toBeUndefined();
+      vi.advanceTimersByTime(BEAT_MS);
+      expect(state(s.room).pendingRoll).toBeNull();
+      expect(state(s.room).hold).toBeUndefined();
+    }
   });
 
   it("a second press with the same ids, or an old eventId, runs nothing more", () => {
@@ -293,16 +296,16 @@ describe("手動停頓: each pause waits for ▶ 下一步", () => {
 
 describe("手動停頓: switching with a pause up", () => {
   it("manual to auto: the waiting beat runs its whole length again from the switch", () => {
-    const s = setup({ bank: mcBank, teams: 1, fixedDie: 10 });
-    s.room.game = { ...s.room.game!, teams: s.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
-    send(s.room, s.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(s.room).question.id });
-    vi.advanceTimersByTime(LONG);
+    const s = setup({ bank: mcBank, teams: 1 });
+    send(s.room, s.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(s, false);
+    vi.advanceTimersByTime(BEAT_MS + LONG); // the lock's beat on its timer, then the boss miss waits
     pacing(s, "auto");
     expect(state(s.room).hold).toBeUndefined();
     vi.advanceTimersByTime(BEAT_MS - 1);
-    expect(state(s.room).pendingRoll).toMatchObject({ kind: "mage" });
+    expect(s.room.game!.pendingWrong).not.toBeNull();
     vi.advanceTimersByTime(1);
-    expect(state(s.room).pendingRoll).toBeNull();
+    expect(s.room.game!.pendingWrong).toBeNull();
   });
 
   it("manual to auto on a boss miss, and on an open door: each runs its beat again", () => {
@@ -349,15 +352,15 @@ describe("手動停頓: switching with a pause up", () => {
 
   it("auto to manual: a running beat and a running door clock stop and wait; a timed one runs on", () => {
     const m = setup({ bank: mcBank, manual: false, teams: 1, fixedDie: 10 });
-    m.room.game = { ...m.room.game!, teams: m.room.game!.teams.map((t) => ({ ...t, classId: "mage" as const, abilityUses: 3 })) };
-    send(m.room, m.phones[0], { type: "TEAM_USE_ABILITY", questionId: state(m.room).question.id });
-    vi.advanceTimersByTime(BEAT_MS / 2);
+    send(m.room, m.host, { type: "HOST_SEND_TO_BOSS", teamId: T1 });
+    lockAndReveal(m, false);
+    vi.advanceTimersByTime(BEAT_MS + BEAT_MS / 2); // the lock's beat, then half of the boss miss's
     pacing(m, "manual");
-    expect(state(m.room).hold).toMatchObject({ kind: "roll" });
+    expect(state(m.room).hold).toMatchObject({ kind: "boss-miss" });
     vi.advanceTimersByTime(LONG);
-    expect(state(m.room).pendingRoll).toMatchObject({ kind: "mage" });
+    expect(m.room.game!.pendingWrong).not.toBeNull();
     step(m);
-    expect(state(m.room).pendingRoll).toBeNull();
+    expect(m.room.game!.pendingWrong).toBeNull();
 
     const s = setup({ bank: mcBank, manual: false, teams: 1, fixedDie: 10 });
     lockAndReveal(s, true);
