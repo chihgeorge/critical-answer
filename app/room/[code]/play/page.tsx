@@ -13,7 +13,7 @@ import { LOCK_REFUSALS, MAX_TYPED_ANSWER, REACTIONS, REACT_GAP_MS, cleanTypedAns
 import { ABILITY_USES, CATCH_PAY, ORACLE_USES, CLASS_ICONS, CLASS_IDS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, WARRIOR_TARGET, FORTUNE_EFFECTS, checkKey, hasSkillUses, skillRolledOn, type ClassId } from "@/lib/game-state";
 import { TEAM_LOOKS } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, nextUp, ownReveal, turnLive, turnOpened } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, thrownOutText, nextUp, ownReveal, turnLive, turnOpened } from "@/lib/turn-info";
 import { useWakeLock } from "@/lib/use-wake-lock";
 import { sprintSeen } from "@/lib/transitions";
 import { ordinal } from "@/lib/ordinal";
@@ -598,7 +598,7 @@ function TextAnswerPanel({ game, teamId, send, offline, noHint, buzzed = false }
             gets a mage hint later (mageHint refuses it, no_hint), so this label does not flip afterwards. */}
         {check && (
           <div className="px-bar mt-1 !text-[17px]" role="status" data-testid="check-result">
-            🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "說服失敗……答對只拿一半" : check.passed ? (check.hint !== undefined ? "過了！看提示" : game.view.mageHints[q.id] !== undefined ? "過了！提示法師已經給了" : "過了！答案太短，沒有提示") : "沒過，直接答吧"}
+            🗣️ {check.value === 20 ? "說服成功！" : check.value === 1 ? "擲出 1，被轟出門" : check.passed ? (check.hint !== undefined ? "過了！看提示" : game.view.mageHints[q.id] !== undefined ? "過了！提示法師已經給了" : "過了！答案太短，沒有提示") : "沒過，直接答吧"}
           </div>
         )}
         {check?.hint !== undefined && <MageHint hint={check.hint} testId="check-hint" />}
@@ -1269,6 +1269,15 @@ export default function PlayPage() {
           <div data-testid="phone-charge-fail">
             <Panel tone="lav" role="status" className="px-3 py-[14px] text-center text-[20px]">
               {chargeFailText(game.chargeBeat.teamId === teamId ? "" : (game.view.teams.find((t) => t.id === game.chargeBeat!.teamId)?.name ?? ""), game.chargeBeat.value, game.chargeBeat.penalty)}
+            </Panel>
+          </div>
+        )}
+
+        {/* A natural 1's thrown-out card, as the big screen shows it, before the team flees unseen and the turn moves on. */}
+        {game && !finished && game.stageBeat === "thrown-out" && game.thrownOut && (
+          <div data-testid="phone-thrown-out">
+            <Panel tone="lav" role="status" className="px-3 py-[14px] text-center text-[20px]">
+              {thrownOutText(game.thrownOut.teamId === teamId ? "" : (game.view.teams.find((t) => t.id === game.thrownOut!.teamId)?.name ?? ""), game.stageMonster?.name ?? "怪物")}
             </Panel>
           </div>
         )}

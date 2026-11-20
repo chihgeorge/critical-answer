@@ -15,7 +15,7 @@ import { CATCH_PAY, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, ty
 
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, thrownOutText, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -683,7 +683,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             next question never shows underneath (or behind) the previous answer. */}
         {stageBeat ? (
           <div data-testid={`screen-${stageBeat}`} className="px-title-boss px-title-sm text-center" style={{ fontSize: 34, lineHeight: 1.3 }}>
-            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
+            {stageBeat === "check-success" ? "說服成功！準備看題目" : stageBeat === "charge-fail" ? (charge ? chargeFailText(nameOf(charge.teamId), charge.value, charge.penalty) : "⚔️ 衝鋒失敗") : stageBeat === "thrown-out" ? thrownOutText(turn?.name ?? "", stageMonster?.name ?? "怪物") : stageBeat === "kill-roll" ? "首領被擊敗了！擲尾刀骰" : "首領被擊敗了！接下來擲尾刀骰"}
           </div>
         ) : card ? (
           <div data-testid="phase-card" className="flex flex-col items-center gap-2">

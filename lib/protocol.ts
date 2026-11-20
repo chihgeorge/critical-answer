@@ -233,7 +233,7 @@ export type Pacing = "auto" | "manual";
 /** What a manual room waits on (manual-pacing.md). `id` goes back in HOST_STEP; `label` is the host page's text. */
 export interface Hold {
   id: number;
-  kind: "initiative" | "phase-card" | "lock" | "roll" | "check-success" | "kill-defeated" | "charge-fail" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
+  kind: "initiative" | "phase-card" | "lock" | "roll" | "check-success" | "kill-defeated" | "charge-fail" | "thrown-out" | "boss-miss" | "fork" | "fork-beat" | "fortune" | "fortune-beat" | "podium";
   label: string;
 }
 
@@ -621,8 +621,11 @@ export type ServerMessage =
       pacing?: "manual";
       hold?: Hold;
       /** A narrated pause before the next question or die. `kill-roll`: the kill's 4d20 land over the defeated boss (no
-       * question, no buzz). `charge-fail`: a warrior's missed charge before it is judged (`chargeBeat`). */
-      stageBeat?: "check-success" | "kill-defeated" | "kill-roll" | "charge-fail";
+       * question, no buzz). `charge-fail`: a warrior's missed charge before it is judged (`chargeBeat`). `thrown-out`: a
+       * persuasion check's natural 1, before the team flees unseen (`thrownOut`). */
+      stageBeat?: "check-success" | "kill-defeated" | "kill-roll" | "charge-fail" | "thrown-out";
+      /** The team a natural 1 throws out (stageBeat `thrown-out`). */
+      thrownOut?: { teamId: string };
       /** The missed charge on show (stageBeat `charge-fail`): its die, and what a 1 takes (0 for 2–6). */
       chargeBeat?: { teamId: string; value: number; penalty: number };
       /** The monster on stage during `stageBeat`, which sends no `question` (#401): the room's monster, or the boss.

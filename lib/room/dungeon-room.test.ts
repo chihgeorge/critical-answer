@@ -1554,6 +1554,64 @@ describe("TEAM_SELECT_OPTION", () => {
       expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
     });
 
+    // Value: protects=被轟出門 (owner, 2026-11-19): a natural 1 shows its card, then the team flees unseen to a new monster
+    // and the turn passes, with no answer revealed, no 改判 entry and no 改判答對; fails_when=the question or its answer
+    // reaches a screen, the team keeps the turn, the throw-out lands in the ledger or opens an undo
+    it("a natural 1 throws the team out: its card, then a new monster, the next team, and nothing about the question", async () => {
+      vi.useFakeTimers();
+      const { room, ids } = checkGame(2, 1);
+      vi.advanceTimersByTime(2000);
+      const card = lastBroadcast(room);
+      expect(card).toMatchObject({ stageBeat: "thrown-out", thrownOut: { teamId: ids[0] }, question: null, cue: "check-fail" });
+      expect(currentTurnTeamId(room.game!)).toBe(ids[0]);
+      vi.advanceTimersByTime(2000);
+      const after = lastBroadcast(room);
+      expect(after.stageBeat).toBeUndefined();
+      expect(after.reveal).toBeNull();
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+      const team = room.game!.teams[0];
+      expect(team).toMatchObject({ reward: 0, score: 0, flees: 1, natural1s: 1 });
+      // This tiny bank has no other fill-in at difficulty 1: the flee's deal moves the team on from it all the same.
+      expect(team.currentQuestionId).not.toBe("r0-t1");
+      expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toBeUndefined();
+      expect(room.game!.judgments ?? []).toEqual([]);
+      expect((room as any).undo).toBeNull();
+      // The question's text and answer never went out.
+      expect(JSON.stringify((room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls)).not.toContain("萬家福");
+      await vi.runAllTimersAsync();
+      expect((room as any).lastNarration.lines.join("")).toMatch(/踹出門|關門送客|丟出去/);
+    });
+
+    // Value: protects=the thrown-out card follows the check-result rule (#429): it runs on its timer in manual too;
+    // fails_when=it waits for ▶ 下一步
+    it("the thrown-out card does not hold in manual", () => {
+      vi.useFakeTimers();
+      const { room, ids, hostConn } = checkGame(2, 1);
+      send(room, hostConn, { type: "HOST_PACING", mode: "manual" });
+      vi.advanceTimersByTime(2000);
+      expect(lastBroadcast(room).stageBeat).toBe("thrown-out");
+      vi.advanceTimersByTime(2000);
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
+    // Value: protects=a restart that cuts the thrown-out card (memory only) still throws the team out; fails_when=the
+    // natural 1 stays on the question and the question shows
+    it("a natural 1 whose card was lost starts it again on the next STATE", () => {
+      vi.useFakeTimers();
+      const { room, ids } = checkGame(2, 1);
+      vi.advanceTimersByTime(2000);
+      // What a restart loses: the card and its step (the check itself is saved).
+      (room as any).unpace("lock");
+      (room as any).stageBeat = null;
+      (room as any).checkBeatAt = null;
+      expect(room.game!.checks?.[checkKey("r0-t1", ids[0])]).toMatchObject({ value: 1 });
+      (room as any).broadcastState();
+      expect(lastBroadcast(room)).toMatchObject({ stageBeat: "thrown-out", question: null });
+      vi.advanceTimersByTime(2000);
+      expect(room.game!.teams[0]).toMatchObject({ flees: 1, reward: 0 });
+      expect(currentTurnTeamId(room.game!)).toBe(ids[1]);
+    });
+
     it("skips persuasion on a boss fill-in turn", () => {
       vi.useFakeTimers();
       const { room } = checkGame(2);
@@ -1711,7 +1769,7 @@ describe("TEAM_SELECT_OPTION", () => {
     // Value: protects=the thief's 偷襲 waits for the question on a fill-in (owner, 2026-11-09); fails_when=the room rolls it before the check
     it("refuses the thief's sneak attack during the check's beat, and rolls it after", () => {
       vi.useFakeTimers();
-      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: checkBank });
+      const room = new DungeonRoom(makeRoom() as any, () => 0, { bank: checkBank, fixedDie: 2 }); // the `() => 0` rng rolls 1s: a natural 1 would throw the team out (throwOut)
       (room as any).holdCheck = true;
       const host = makeConn("host-conn");
       room.onConnect(host);

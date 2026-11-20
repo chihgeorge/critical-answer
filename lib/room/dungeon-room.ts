@@ -59,6 +59,7 @@ import {
   recordTextWrong,
   warriorRoll,
   recordCheck,
+  throwOut,
   checkKey,
   checkTarget,
   atFork,
@@ -536,10 +537,11 @@ export class DungeonRoom {
   /** The answer on show until the host moves on (D7). In memory only: a restart simply drops it. */
   private reveal: AnswerReveal | null = null;
   /** Short narrated cards before the next die or question. The step owns their duration. */
-  private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | null = null;
+  private stageBeat: "check-success" | "kill-defeated" | "charge-fail" | "thrown-out" | null = null;
   /** A warrior's missed charge on show before it is judged (charge-fail beat): its die and what a 1 takes. Memory only. */
   private chargeBeat: { teamId: string; questionId: string; value: number; penalty: number } | null = null;
-  /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller. */
+  /** Whose passed check the check-success beat is for: the turn is not pinned during it, so the save names the roller.
+   * The thrown-out beat names its team here too (not saved: autoThrowOut starts it again after a restart). */
   private checkBeatAt: { teamId: string; questionId: string } | null = null;
   /** Keep the map at the answered room until its dish has been eaten. */
   private bossEntryBefore: GameState | null = null;
@@ -1512,7 +1514,8 @@ export class DungeonRoom {
     const won = roll?.kind === "kill" && check?.value === 20 && !check.dropped;
     // So does the dish die that a natural 20's free answer rolls (class-dice-rework.md): no video, memory timer or hints.
     if (this.persuadedDish() && roll!.teamId === teamId && roll!.questionId === id) return true;
-    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check;
+    // A natural 1 throws the team out before its question is ever shown (throwOut).
+    return ((roll?.kind === "check" || won) && roll.teamId === teamId && roll.questionId === id) || !check || check.value === 1;
   }
 
   /** The turn answering now (answer-countdown.md D3), or null: nobody is answering while an answer waits for the host,
@@ -1775,6 +1778,7 @@ export class DungeonRoom {
       // A beat sends no question, so it names the monster the stage keeps (#401); nobody on turn in the buzz phase is the boss.
       ...(beat ? { stageBeat: beat, stageMonster: this.currentQuestion()?.pub.monster ?? (view.buzz ? this.bossLook() : undefined) } : {}),
       ...(this.stageBeat === "charge-fail" && this.chargeBeat ? { chargeBeat: { teamId: this.chargeBeat.teamId, value: this.chargeBeat.value, penalty: this.chargeBeat.penalty } } : {}),
+      ...(this.stageBeat === "thrown-out" && this.checkBeatAt ? { thrownOut: { teamId: this.checkBeatAt.teamId } } : {}),
       ...(this.lateTeams.length ? { late: { teams: this.lateTeams, ...(lateJoinOpen(this.game) ? {} : { closed: true as const }) } } : {}),
       // No door clock in manual: the doors wait for the team, or for the host's ▶ 下一步.
       ...(this.game.phase === "playing" && choosing?.phase === "choosing" && this.pacing === "auto" ? { forkLeft: Math.max(0, choosing.deadline - this.now()) } : {}),
@@ -2041,7 +2045,7 @@ export class DungeonRoom {
       this.broadcast({ type: "GAME_OVER", winners: this.game.winners });
     }
     // After the STATE that opened the turn (its start or handoff cue plays first); a judgment rolls it once it is done.
-    if (!this.judging && this.autoCheck()) this.broadcastState();
+    if (!this.judging && (this.autoCheck() || this.autoThrowOut())) this.broadcastState();
   }
 
   private markActivity() {
@@ -2326,6 +2330,8 @@ export class DungeonRoom {
     if (this.reveal?.dishNext && this.game.phase === "playing" && currentTurnTeamId(this.game) === teamId) return;
     // And a missed charge on show (charge-fail): a phone locked during it must not dodge the miss or a 1's penalty.
     if (this.stageBeat === "charge-fail" && this.chargeBeat?.teamId === teamId) return;
+    // And a natural 1's thrown-out card: a phone locked during it must not dodge the throw-out.
+    if (this.stageBeat === "thrown-out" && this.checkBeatAt?.teamId === teamId) return;
     try {
       this.setOnline(teamId, false);
       this.broadcastState();
@@ -3275,7 +3281,7 @@ export class DungeonRoom {
     // A dish die's, a check's or a kill's team was kept on turn like a locked one (onClose): it too may be offline now. So
     // was the team whose answer's reveal waits for its dish die.
     const dishTeam = this.reveal?.dishNext && this.game?.phase === "playing" ? currentTurnTeamId(this.game) ?? undefined : undefined;
-    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId));
+    const lockTeam = this.pendingLock?.teamId ?? (holdsTurn(this.pendingRoll) ? this.pendingRoll.teamId : (dishTeam ?? this.chargeBeat?.teamId ?? (this.stageBeat === "thrown-out" ? this.checkBeatAt?.teamId : undefined)));
     this.pendingLock = null;
     this.pendingRoll = this.pendingKill = null;
     this.stageBeat = null;
@@ -4102,12 +4108,13 @@ export class DungeonRoom {
       this.judging = false;
     }
     if (this.lostCrit) this.applyLostCrit();
-    if (this.autoCheck()) this.broadcastState();
+    if (this.autoCheck() || this.autoThrowOut()) this.broadcastState();
   }
 
   /** `fields`: a correct answer's per-field verdicts on a music question (multi-field.md F6); absent, every field is right.
-   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line. */
-  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }) {
+   * `caught`: 🚨 成立 (anti-ai-cheating.md): upholdCatch instead of the answer, with the answer revealed and its own line.
+   * `thrown`: a natural 1's 被轟出門 (throwOut): no answer to reveal, and nothing for the 改判 ledger (nothing was answered). */
+  private judgeNow(teamId: string, questionId: string, correct: boolean, fleeChoice: FleeChoice, roll?: JudgeRoll, killDice?: number[], fields?: boolean[], caught?: { by: string }, thrown = false) {
     const prev = this.game;
     if (!prev) return;
     // A correct turn-based answer rolls the dish die first (class-dice-rework.md), once the host has seen its answer and
@@ -4166,6 +4173,8 @@ export class DungeonRoom {
     const run = (rng: () => number, dice?: number[]) =>
       caught
         ? upholdCatch(prev, rng)
+        : thrown
+        ? throwOut(prev, teamId, questionId, rng)
         : roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, roll.dish, dice)
         : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.kind === "dish" ? roll.value : undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length, marks });
@@ -4205,7 +4214,7 @@ export class DungeonRoom {
     const picked = queued !== undefined && judged.game.teams.find((t) => t.id === teamId)?.currentQuestionId === queued;
     const afterMonster = prev.teams.find((t) => t.id === teamId)?.fork?.phase === "monster";
     // The 改判 ledger gets every applied judgment, never a 🚨 catch (it scores nothing).
-    const ledgered = caught ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
+    const ledgered = caught || thrown ? judged.game : recordJudgment(judged.game, prev, teamId, questionId, outcome, roll?.kind === "warrior");
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
@@ -4269,7 +4278,7 @@ export class DungeonRoom {
     // The room the answer was given in, from before the turn moved on: the stage keeps it through the reveal (TODOS).
     const at = justAnswered && before ? { monster: justAnswered.pub.monster, room: outcome.type === "correct-boss-hit" || before.inBoss ? null : before.roomIndex } : undefined;
     // 🚨 成立 shows the answer it was caught on (owner gate d4): it is revealed now and never scored.
-    if ((caught || outcome.type === "incorrect-flee" || (outcome.type === "incorrect-retry" && game.revealedQuestionIds.includes(questionId) && !prev.revealedQuestionIds.includes(questionId))) && justAnswered) {
+    if ((caught || (outcome.type === "incorrect-flee" && !thrown) || (outcome.type === "incorrect-retry" && game.revealedQuestionIds.includes(questionId) && !prev.revealedQuestionIds.includes(questionId))) && justAnswered) {
       // Only a reveal: it may play a different clip (an uploaded explanation) under the same question id, which reports
       // its own error. A wrong buzz keeps the host's live-play fallback up (review).
       this.clipError = null;
@@ -4952,7 +4961,8 @@ export class DungeonRoom {
     // A check or dish die that killed has started the kill's beat: its team stays on turn until that beat lands.
     // So does a check 20 or a warrior's hit that started its dish die.
     const next = this.pendingRoll as PendingRoll | null;
-    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId)) this.syncLockTeamAndShow(roll.teamId);
+    // So does a natural 1's thrown-out card (it syncs the team when it ends).
+    if (holdsTurn(roll) && !(holdsTurn(next) && next.teamId === roll.teamId) && !(this.stageBeat === "thrown-out" && this.checkBeatAt?.teamId === roll.teamId)) this.syncLockTeamAndShow(roll.teamId);
   }
 
   /** The thief's sneak die landed (class-dice-rework.md): a 1 loses a tenth of the question's reward now, 7–19 or 20
@@ -4995,6 +5005,11 @@ export class DungeonRoom {
     if (!this.game!.checks?.[checkKey(questionId, teamId)]) return this.broadcastState();
     // A natural 20 goes straight to the win: one STATE, with the correct answer's cue (dnd design E2).
     if (value === 20) return this.judge(teamId, questionId, true, "retry");
+    // A natural 1 throws the team out, the question unseen (throwOut).
+    if (value === 1) {
+      this.thrownOutBeat(teamId, questionId);
+      return this.broadcastState();
+    }
     const passed = this.game!.checks![checkKey(questionId, teamId)].passed;
     this.setCue(passed ? "check-pass" : "check-fail");
     const said = this.diceLines.checkLine(passed ? "pass" : value === 1 ? "fumble" : "fail", this.lineNames(teamId));
@@ -5016,7 +5031,7 @@ export class DungeonRoom {
         this.sendNarration();
       }
     } else {
-      this.appendLine(this.eventSeq, `說服${value === 1 ? "擲出 1" : "失敗"}！${said}`);
+      this.appendLine(this.eventSeq, `說服失敗！${said}`);
       this.broadcastState();
     }
   }
@@ -5043,6 +5058,42 @@ export class DungeonRoom {
       this.syncLockTeamAndShow(teamId);
     });
     this.broadcastState();
+  }
+
+  /** 被轟出門 (owner, 2026-11-19): a natural 1's card, then throwOut judges it (no answer shown, a new monster, the next
+   * team). Like every check result it runs on its timer in manual too (#429). The caller sends the STATE. */
+  private thrownOutBeat(teamId: string, questionId: string) {
+    this.stageBeat = "thrown-out";
+    this.checkBeatAt = { teamId, questionId };
+    this.setCue("check-fail");
+    this.pace("lock", "thrown-out", BEAT_MS, () => (this.stageBeat === "thrown-out" ? "接下來換下一隊" : null), () => {
+      this.stageBeat = null;
+      this.checkBeatAt = null;
+      const game = this.game;
+      if (game?.phase !== "playing" || currentTurnTeamId(game) !== teamId || currentQuestionIdOf(game, teamId) !== questionId) return this.broadcastState();
+      try {
+        this.judge(teamId, questionId, false, "switch", undefined, undefined, undefined, undefined, true);
+      } catch (err) {
+        console.error(JSON.stringify({ event: "throw_out_failed", error: String(err) }));
+        this.broadcastState();
+      }
+      // A phone that dropped during the card (kept on turn by onClose) shows offline now.
+      this.syncLockTeamAndShow(teamId);
+    }, true);
+  }
+
+  /** A natural 1 whose card a restart cut (it lives in memory): once its team is on turn again with nothing else on, it
+   * is thrown out after all. Returns whether the card started: the caller sends the STATE. */
+  private autoThrowOut(): boolean {
+    const game = this.game;
+    if (game?.phase !== "playing" || this.paused() || this.pendingLock || this.pendingRoll || game.pendingWrong || isBuzzPhase(game)) return false;
+    const teamId = currentTurnTeamId(game);
+    const team = game.teams.find((t) => t.id === teamId);
+    if (!teamId || !team || team.inBoss || atFork(team)) return false;
+    const questionId = currentQuestionIdOf(game, teamId);
+    if (game.checks?.[checkKey(questionId, teamId)]?.value !== 1) return false;
+    this.thrownOutBeat(teamId, questionId);
+    return true;
   }
 
   /** The passed check's card before the question; restore() starts it again for a save made during it. */

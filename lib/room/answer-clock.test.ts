@@ -43,6 +43,7 @@ function makeRoom(storage = memoryStorage(), b = bank()) {
 function started(fields: object = { answerSeconds: 60 }, b = bank(), holdCheck = false) {
   const g = makeRoom(memoryStorage(), b);
   (g.room as unknown as { holdCheck: boolean }).holdCheck = holdCheck;
+  if (holdCheck) (g.room as unknown as { fixedDie: number }).fixedDie = 2; // the `() => 0` rng rolls 1s: a natural 1 would throw the team out (throwOut)
   const host = makeConn("host");
   g.room.onConnect(host);
   send(g.room, host, { type: "HOST_CLAIM", token: TOKEN });
@@ -187,6 +188,7 @@ describe("每題作答倒數 in the room", () => {
     expect(g.state().answerClock).toBeUndefined();
     vi.advanceTimersByTime(10000);
     send(g.room, g.host, { type: "HOST_ROLL_INITIATIVE" });
+    (g.room as unknown as { fixedDie: number }).fixedDie = 2; // the `() => 0` rng rolls 1s: a natural 1 would throw the team out
     vi.advanceTimersByTime(30000); // the order holds, then the first question
     expect(g.state().initiative).toBeUndefined();
     expect(g.state().question).not.toBeNull();

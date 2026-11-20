@@ -140,6 +140,12 @@ export function chargeFailText(team: string, value: number, penalty: number): st
   return `⚔️ ${team}衝鋒${value === 1 ? "大失敗" : "失敗"}${penalty > 0 ? ` −${penalty}` : ""}（擲出 ${value}）`;
 }
 
+/** A persuasion check's natural 1 (stageBeat `thrown-out`), as the big screen, the phones and the host page say it.
+ * An empty `team` is the team's own phone. */
+export function thrownOutText(team: string, monster: string): string {
+  return `🗣️ 擲出 1！${monster}把${team || "你們"}轟出門了`;
+}
+
 /** The host's answer box (HOST_ANSWER) shows only for the question on turn while nothing holds it: under a reveal the
  * turn has already moved on, and the next answer beside the revealed one gets read out (#339). A door opening holds it
  * too: ⚔️'s question is not up until the door has opened (branch-fork.md). A boss phase card still due (phaseCardDue)

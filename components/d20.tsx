@@ -82,7 +82,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
   }, []);
   const landed = face === null;
   const check = kind === "check";
-  // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 halves.
+  // A persuasion check (dnd design R6): die + class bonus against the monster's DC; a 20 wins outright, a 1 throws the team out.
   const hit = check ? value === 20 || (value !== 1 && value + bonus >= dc) : kind === "warrior" ? value >= WARRIOR_TARGET : kind === "dish" ? value !== 1 : skillTier(value) >= 2;
   // The dish die is red only on a 1: a 2–6 pays as usual, so it reads 成功, or 沒加成 in plain cream for a chef.
   const dish = kind === "dish" ? dishTier(value, chef) : undefined;
@@ -101,7 +101,7 @@ export function RollOverlay({ teamName, value, values, kind = "warrior", bonus =
               ? value === 20
                 ? "20！說服成功，免答"
                 : value === 1
-                  ? "1……說服失敗，答對只拿一半"
+                  ? "1……被轟出門，這題不算分"
                   : `${value} + ${bonus} = ${value + bonus} ${hit ? "≥" : "<"} 擲骰檢定 ${dc}${hit ? " 過了！" : " 沒過"}`
               : warriorEffect(value);
   const chip =

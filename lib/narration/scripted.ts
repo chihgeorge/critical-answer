@@ -126,7 +126,7 @@ export const CLASS_VARIANTS: Record<ClassId, { correct: string[]; "boss-hit": st
 /** A natural 20 or 1 behind a hit (event.roll): a class die's 20 (`crit`: a warrior's roll or the sneak die), the dish
  * die's 20 (`legend`) or 1 (`burnt`), or the persuasion check's. This line replaces the usual one, it is not an extra
  * line (dnd design R1, E3; class-dice-rework.md). */
-export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded" | "blunder", { correct: string[]; "boss-hit": string[] }> = {
+export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded", { correct: string[]; "boss-hit": string[] }> = {
   crit: {
     correct: [
       "{team}擲出 20！一擊打飛{monster}，+{points}！",
@@ -157,7 +157,7 @@ export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded" | "
       "{team}的料理骰擲出 1，滿室黑煙，首領剩 {bossHp} 顆心。",
     ],
   },
-  // A persuasion check (kind "check"): a natural 20 wins without an answer, a 1 halves the reward.
+  // A persuasion check (kind "check"): a natural 20 wins without an answer (a 1 throws the team out: THROWN_OUT_VARIANTS).
   persuaded: {
     correct: [
       "擲出 20！{team}說動{monster}讓路，+{points}！",
@@ -169,16 +169,6 @@ export const ROLL_VARIANTS: Record<"crit" | "legend" | "burnt" | "persuaded" | "
     "boss-hit": [
       "擲出 20！{team}說服首領，剩 {bossHp} 顆心！",
       "20 點！首領被{team}說動，剩 {bossHp} 顆心！",
-    ],
-  },
-  blunder: {
-    correct: [
-      "說服擲出 1，{team}失言，只拿一半，+{points}。",
-      "{team}一開口就失言，答對只拿一半，+{points}。",
-    ],
-    "boss-hit": [
-      "{team}說服擲出 1，首領剩 {bossHp} 顆心。",
-      "{team}說服失敗但答對，首領剩 {bossHp} 顆心。",
     ],
   },
 };
@@ -400,6 +390,12 @@ export const CAUGHT_VARIANTS = [
   "🚨 {caught}抓到{team}偷問 AI，換一題！",
   "🚨 抓包成立！{team}換題，{caught}領賞！",
   "🚨 {caught}眼尖！{team}這題作廢，換題！",
+];
+/** 被轟出門 (owner, 2026-11-19): the persuasion check's natural 1, so {monster} threw {team} out unseen, into {to}. */
+export const THROWN_OUT_VARIANTS = [
+  "說服擲出 1！{monster}一腳把{team}踹出門，外面站著{to}。",
+  "1 點！{team}一開口，{monster}直接關門送客，門外是{to}。",
+  "{monster}聽完拎起{team}丟出去，正好摔在{to}面前。",
 ];
 /** 逃跑: the team ran from {monster} into {to}, its new monster in the same room. */
 export const FLEE_SWITCH_VARIANTS = [
@@ -643,6 +639,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
       if (event.type === "epilogue") return scriptedEpilogue(event.ranking, event.winners, rng);
       if ((event.type === "retry" || event.type === "boss-hit") && event.exhausted) return fill(pick(BOSS_EXHAUSTED_VARIANTS, "boss-exhausted"), event);
       if (event.type === "flee" && event.caught) return fill(pick(CAUGHT_VARIANTS, "caught"), event);
+      if (event.type === "flee" && event.thrownOut) return fill(pick(THROWN_OUT_VARIANTS, "thrown-out"), { ...event, to: event.to ?? "新的怪物" });
       if (event.type === "flee" && event.to) return fill(pick(FLEE_SWITCH_VARIANTS, "flee-switch"), event);
       // In the boss room the prayer brings a new question: the boss-miss lines say so and never say "next round".
       // The prayer die's line already said the team answers again (owner, #416): only a beat of atmosphere, never 「下一輪」.
@@ -684,7 +681,7 @@ export function createScriptedProvider(rng: () => number = Math.random) {
         // A warrior answered with its own d20, so a check's line (說服, 答對) would tell the wrong story.
         if (event.roll && !(event.roll.kind === "check" && event.warriorRoll !== undefined)) {
           const twenty = event.roll.value === 20;
-          const kind = event.roll.kind === "check" ? (twenty ? "persuaded" : "blunder") : event.roll.kind === "dish" ? (twenty ? "legend" : "burnt") : "crit";
+          const kind = event.roll.kind === "check" ? "persuaded" : event.roll.kind === "dish" ? (twenty ? "legend" : "burnt") : "crit";
           saidDie = event.roll.kind === "crit";
           return fill(pick(ROLL_VARIANTS[kind][event.type], `${kind}-${event.type}`), event);
         }

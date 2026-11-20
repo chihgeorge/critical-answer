@@ -12,7 +12,7 @@ import { useWakeLock } from "@/lib/use-wake-lock";
 import { freshAttempt, freshHostPath, generateRoomCode, getHostToken, isFreshRoomHash, MAX_FRESH_ATTEMPTS, settledHash } from "@/lib/room-code";
 import { DEFAULT_BANK_ENTRY, FORTUNE_HOST_GRACE_MS, HANDOFF_MS, INTRO_PAGES, MAX_PASSWORD, scoreName, SERVE_HOLD_MS, serveSecondsLeft, type ClientMessage, type LobbyTeams, type MediaAction, type MediaCommand, type ServerMessage, type StateMessage } from "@/lib/protocol";
 import { forgetStored, writeStored } from "@/lib/stored";
-import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline } from "@/lib/turn-info";
+import { BOSS_THRESHOLD, describeTurn, hostAnswerShown, PAUSED_OFFLINE, pausedOffline, thrownOutText } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { bankSizeWarning, bankSizeWarningText, type BankSize } from "@/lib/bank-size";
 import { BOSS_THRESHOLDS, CATCH_PAY, CLASS_ICONS, CLASS_LABELS, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER } from "@/lib/game-state";
@@ -1218,6 +1218,12 @@ export default function HostPage() {
               </PixelButton>
             )}
             <TurnRibbon color={buzz || turn.inBoss ? "var(--boss)" : undefined}>{buzz ? (turn.team ? `搶答：${turn.team.name}搶到了` : "首領戰　搶答中") : `${turn.inBoss ? "首領戰　" : ""}輪到：${turn.team?.name}`}</TurnRibbon>
+            {/* A natural 1 (被轟出門): nothing to judge, the room moves the team on by itself. */}
+            {game.stageBeat === "thrown-out" && game.thrownOut && (
+              <Panel tone="lav" className="px-3 py-2 text-center text-[16px]" role="status">
+                <div data-testid="host-thrown-out">{thrownOutText(game.view.teams.find((t) => t.id === game.thrownOut!.teamId)?.name ?? "這隊", game.stageMonster?.name ?? "怪物")}：這題不算分，自動換一隻怪物、換下一隊</div>
+              </Panel>
+            )}
             <Panel tone="turn" className="px-3 py-[10px]">
               <div className="flex items-center gap-3">
                 {/* A fork holds no monster and no question (branch-fork.md). */}

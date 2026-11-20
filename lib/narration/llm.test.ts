@@ -108,10 +108,6 @@ describe("prompt", () => {
     const hit = buildPrompt({ ...event, warriorRoll: 14 } as NarrationEvent, []).user;
     expect(hit).toMatch(/擲出 14 點（\d+ 點以上算命中），命中，/);
     expect(hit).not.toContain("沒打中");
-    // A check's 1 is the persuasion die, whose line says 答對: the warrior's roll is told instead.
-    const both = buildPrompt({ ...event, warriorRoll: 9, roll: { kind: "check", value: 1 } } as NarrationEvent, []).user;
-    expect(both).toContain("擲出 9 點");
-    expect(both).not.toContain("說服");
     expect(buildPrompt({ type: "retry", team: "紅隊", monster: "史萊姆", warriorRoll: 4 }, []).user).toMatch(/擲出 4 點（\d+ 點以上算命中），沒打中/);
   });
 
@@ -132,13 +128,15 @@ describe("prompt", () => {
   });
 
   // Value: protects=a check's 20 or 1 is told as 說服, not as an attack (dnd design R7, R8); fails_when=describeRoll ignores kind
-  it("tells the model a check's 20 persuaded the monster and its 1 halved the reward", () => {
+  it("tells the model a check's 20 persuaded the monster, and a 1 threw the team out", () => {
     const won = buildPrompt({ ...event, roll: { kind: "check", value: 20 } } as NarrationEvent, []).user;
     expect(won).toContain("說服成功");
     expect(won).not.toContain("大成功");
-    const blunder = buildPrompt({ ...event, roll: { kind: "check", value: 1 } } as NarrationEvent, []).user;
-    expect(blunder).toContain("一半");
-    expect(blunder).not.toContain("大失敗");
+    const thrown = buildPrompt({ type: "flee", team: "紅隊", monster: "史萊姆", to: "幽靈", thrownOut: true }, []).user;
+    expect(thrown).toContain("轟出門");
+    expect(thrown).toContain("「幽靈」");
+    expect(thrown).toContain("不要說他們答錯、逃跑");
+    expect(thrown).not.toContain("一半");
   });
 
   it("names the team's class and its weapons, and tells the model to fit the attack to it", () => {
