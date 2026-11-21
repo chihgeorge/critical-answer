@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.116.6.1] - 2026-11-22
+
+### Fixed
+- Big screen: on an image question with option or sort tiles, the sneak attack banner no longer covers the image or the B tile. It now sits in the question box, under the question, and a long question shrinks to make room. Questions without an image, video questions and image questions without tiles look the same as before.
+
 ## [0.116.6.0] - 2026-11-22
 
 ### Fixed
