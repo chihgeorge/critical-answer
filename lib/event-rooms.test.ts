@@ -553,4 +553,36 @@ describe("占卜師 effects (fortune-teller.md)", () => {
     const done = apply(at([0, 40], ["t1"], () => ({}), ["chef", "chef"]), "relief");
     expect(rewards(done)).toEqual([20, 20]);
   });
+
+  // Value: protects=the card's per-team changes (fortune.changes) for every effect, teams outside matchIds included;
+  // fails_when=a payer, a receiver, an unchanged held potion or boon, or a stunned team is listed wrong; no_claim=rendering
+  describe("fortune.changes: what the card lists", () => {
+    const changes = (g: GameState, e: FortuneEffect) => apply(g, e).fortune?.changes;
+    it("blessing and curse: each matching team whose boon changed", () => {
+      const g = at([0, 0, 0], ["t1", "t2"], (t) => (t.id === "t1" ? { boon: "curse" } : {}));
+      expect(changes(g, "blessing")).toEqual([{ teamId: "t1", boon: "blessing" }, { teamId: "t2", boon: "blessing" }]);
+      expect(changes(g, "curse")).toEqual([{ teamId: "t2", boon: "curse" }]);
+    });
+    it("potion: only matching teams without one", () => {
+      const g = at([0, 0, 0], ["t1", "t2"], (t) => (t.id === "t1" ? { item: "luckyPotion" } : {}));
+      expect(changes(g, "potion")).toEqual([{ teamId: "t2", potion: true }]);
+    });
+    it("stun: each matching team, even one the turn change skips at once", () => {
+      expect(changes(at([0, 0, 0], ["t1", "t2"]), "stun")).toEqual([{ teamId: "t1", stun: true }, { teamId: "t2", stun: true }]);
+    });
+    it("tribute: the teams that pay are listed too", () => {
+      expect(changes(at([0, 3, 50, 50], ["t0", "t1"]), "tribute")).toEqual([
+        { teamId: "t0", satiety: 10 },
+        { teamId: "t1", satiety: 10 },
+        { teamId: "t2", satiety: -10 },
+        { teamId: "t3", satiety: -10 },
+      ]);
+      expect(changes(at([10, 20], ["t0", "t1"]), "tribute")).toEqual([]);
+    });
+    it("relief: the lowest teams receive though the condition missed them", () => {
+      expect(changes(at([50, 30, 5], ["t0", "t1"]), "relief")).toEqual([{ teamId: "t0", satiety: -20 }, { teamId: "t1", satiety: -20 }, { teamId: "t2", satiety: 40 }]);
+      expect(changes(at([50, 0, 0, 0], ["t0"]), "relief")).toEqual([{ teamId: "t0", satiety: -18 }, { teamId: "t1", satiety: 6 }, { teamId: "t2", satiety: 6 }, { teamId: "t3", satiety: 6 }]);
+      expect(changes(at([3, 3, 40], ["t0", "t1"]), "relief")).toEqual([]);
+    });
+  });
 });

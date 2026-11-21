@@ -4,7 +4,7 @@
 // teams the condition hit. Shared by the big screen and the phones. Pure view, no question or answer.
 
 import { FORTUNE_EFFECTS, type ClassId, type FortuneEffect } from "@/lib/game-state";
-import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
+import { FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT, fortuneChangeParts } from "@/lib/event-text";
 import type { FortuneView } from "@/lib/protocol";
 import { prefersReducedMotion, Sprite } from "./pixel";
 import { lookOf } from "@/lib/team-look";
@@ -44,18 +44,20 @@ export function FortunePizza({ lit, size }: { lit?: FortuneEffect; size: number 
 
 /** The heroes' sprite scale on the effect card. The card must clear the big screen's narration box, so the heroes stay
  * on one row, and drop from 4 to 3 when the 「選的人自己也中了！」 line takes room or a row at 4 would not fit (7 or
- * more; MAX_TEAMS 8 fit at 3). */
-export function fortuneHeroScale(matches: number, self: boolean): 3 | 4 {
-  return self || matches > 6 ? 3 : 4;
+ * more; MAX_TEAMS 8 fit at 3). The row of changes takes room too: 3 with any, 2 once they may wrap (more than 4). */
+export function fortuneHeroScale(matches: number, self: boolean, changes = 0): 2 | 3 | 4 {
+  if (changes > 4) return 2;
+  return self || matches > 6 || changes > 0 ? 3 : 4;
 }
 
 /** The effect card (step 4): the effect, the count that hit, and each matching team's hero. Big screen only. */
-export function FortuneCard({ fortune, teams }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId; look?: number }[] }) {
+export function FortuneCard({ fortune, teams, score }: { fortune: FortuneView; teams: { id: string; name: string; classId?: ClassId; look?: number }[]; score: string }) {
   if (!fortune.effect || !fortune.matchIds) return null;
   const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
   const unit = FORTUNE_CONDITION_TEXT[fortune.condition].unit;
   const self = fortune.matchIds.includes(fortune.teamId);
-  const heroScale = fortuneHeroScale(fortune.matchIds.length, self);
+  const changes = fortune.changes ?? [];
+  const heroScale = fortuneHeroScale(fortune.matchIds.length, self, changes.length);
   return (
     <div data-testid="fortune-card" data-effect={fortune.effect} className="flex flex-col items-center gap-1 text-center">
       <div className="px-title-gold px-title-sm" style={{ fontSize: "1.6em", lineHeight: 1.2 }}>{fx.icon} {fx.name}！</div>
@@ -71,8 +73,21 @@ export function FortuneCard({ fortune, teams }: { fortune: FortuneView; teams: {
           );
         })}
       </div>
-      <div style={{ fontSize: "0.8em" }}>{fortune.value} {unit}</div>
-      {self && <div data-testid="fortune-self">選的人自己也中了！</div>}
+      <div>
+        <span style={{ fontSize: "0.8em" }}>{fortune.value} {unit}</span>
+        {self && <span data-testid="fortune-self">　選的人自己也中了！</span>}
+      </div>
+      {/* Every team the effect changed, the ones the condition missed too (救濟's receivers, 進貢's payers). */}
+      {changes.length > 0 && (
+        <div data-testid="fortune-changes" className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1" style={{ fontSize: "0.8em" }}>
+          {changes.some((c) => c.satiety) && <span>{score}</span>}
+          {changes.map((c) => (
+            <span key={c.teamId} data-testid="fortune-change" data-team={c.teamId} className="px-chip" style={{ fontSize: "1em", background: c.satiety ? TONE[c.satiety > 0 ? "good" : "bad"] : c.stun || c.boon === "curse" ? TONE.bad : TONE.good, color: "var(--k)" }}>
+              {teams.find((t) => t.id === c.teamId)?.name ?? ""} {fortuneChangeParts(c).join("　")}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

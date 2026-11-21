@@ -31,7 +31,7 @@ import { MageHint } from "@/components/mage-hint";
 import { initialSortOrder, sortCode, sortOrderOf } from "@/lib/sort-order";
 import { introDots, introStatus } from "@/components/how-to-play";
 import { HostAwayBanner } from "@/components/host-away-banner";
-import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT } from "@/lib/event-text";
+import { BOON_TEXT, EVENT_OUTCOME_TITLE, eventEffectLine, signed, FORK_DOOR_LABEL, FORK_SIDE_LABEL, FORTUNE_CONDITION_TEXT, FORTUNE_EFFECT_TEXT, fortuneChangeParts } from "@/lib/event-text";
 
 /** What each class does, one line each for the lobby (ui-simplify P4, owner 2026-11-19): no dice numbers here, the
  * how-to-play pages explain the dice (docs/designs/class-abilities.md has the full rules). */
@@ -1484,11 +1484,13 @@ function FortunePanel({ game, teamId, send }: { game: StateMessage; teamId: stri
   if (fortune.step === "card" && fortune.effect) {
     const fx = FORTUNE_EFFECT_TEXT[fortune.effect];
     const hit = !!fortune.matchIds?.includes(teamId);
+    const mine = fortune.changes?.find((c) => c.teamId === teamId);
     return (
       <Panel className="flex flex-col items-center gap-1 px-3 py-[12px] text-center text-[18px]">
         <LabelChip>🔮 占卜師</LabelChip>
         <span data-testid="phone-fortune-result">{hit ? `你們中了：${fx.icon} ${fx.name}` : `${fx.icon} ${fx.name}，你們沒中`}</span>
         {hit && <span className="text-[15px]">{fx.line}</span>}
+        {mine && <span data-testid="phone-fortune-change" className="text-[15px]">你們：{fortuneChangeParts(mine, scoreName(game.cuisine)).join("　")}</span>}
         <span className="text-[15px]">看大螢幕 📺　主持人按「下一題」後繼續</span>
       </Panel>
     );

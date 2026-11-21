@@ -170,7 +170,7 @@ step 1 is over (`fortune_intro`). A press at or after the deadline (auto) is the
 ## What the screens see (G4, G5, R12)
 
 - At steps 1–3 every STATE, the host's included, carries `game.fortune` as `{ teamId, condition }` only: no `value`, no
-  `matchIds`, and the effect only from step 3 (the lit slice). Step 4 adds `value`, `matchIds` and `effect`. STATE during
+  `matchIds`, and the effect only from step 3 (the lit slice). Step 4 adds `value`, `matchIds`, `effect` and `changes`: every team the effect changed, matching or not (飽足感 moved, a boon, a lucky die, a stun), diffed in `resolveFortune` before and after the effect and saved with the fortune; the card lists them as chips, the host line and each changed phone repeat them. STATE during
   the door opening carries no fortune at all.
 - The host sees the matching teams only after the reveal, with everyone else.
 - The drawing team's phone does not show its own count.

@@ -2253,6 +2253,16 @@ export interface FortuneState extends FortuneDraw {
   deadline?: number;
   effect?: FortuneEffect;
   timeout?: true;
+  /** What the effect changed for every team it touched, matching or not (set with `effect`). */
+  changes?: FortuneChange[];
+}
+/** One team's change from a fortune's effect: 飽足感 moved, a boon, a lucky die, or a stun (skips its next turn). */
+export interface FortuneChange {
+  teamId: string;
+  satiety?: number;
+  boon?: Boon;
+  potion?: true;
+  stun?: true;
 }
 /** One fortune in the drawing team's record (the podium and lib/game-log.ts read the hit teams off `matchIds`). */
 export interface FortuneRecord extends FortuneDraw {
@@ -2324,6 +2334,22 @@ function applyFortuneEffect(game: GameState, matchIds: string[], effect: Fortune
   return { ...game, teams: game.teams.map((t) => (pay.has(t.id) || get.has(t.id) ? { ...t, reward: t.reward - (pay.get(t.id) ?? 0) + (get.get(t.id) ?? 0) } : t)) };
 }
 
+/** Every team the effect changed, in team order: a diff of before and after `applyFortuneEffect`, so it is what landed. */
+export function fortuneChanges(before: GameState, after: GameState): FortuneChange[] {
+  const out: FortuneChange[] = [];
+  for (const t of after.teams) {
+    const b = before.teams.find((x) => x.id === t.id);
+    if (!b) continue;
+    const c: FortuneChange = { teamId: t.id };
+    if (t.reward !== b.reward) c.satiety = t.reward - b.reward;
+    if (t.boon && t.boon !== b.boon) c.boon = t.boon;
+    if (t.item === "luckyPotion" && !b.item) c.potion = true;
+    if (t.stunned && !b.stunned) c.stun = true;
+    if (Object.keys(c).length > 1) out.push(c);
+  }
+  return out;
+}
+
 /**
  * The fortune's effect lands (fortune-teller.md R2, E3, G10), in one change: the turn is checked while no effect is set, the
  * effect lands on the matching teams, the fortune event opens (openEvent: recorded, the turn counts, the team walks on,
@@ -2334,12 +2360,14 @@ export function resolveFortune(game: GameState, effect: FortuneEffect, timeout: 
   const fortune = game.fortune;
   if (!fortune || fortune.effect) throw new InvalidActionError("no_fortune");
   assertTurn(game, fortune.teamId);
-  const { game: opened } = openEvent(applyFortuneEffect(game, fortune.matchIds, effect), fortune.teamId, rng);
+  const applied = applyFortuneEffect(game, fortune.matchIds, effect);
+  const changes = fortuneChanges(game, applied);
+  const { game: opened } = openEvent(applied, fortune.teamId, rng);
   const { condition, value, matchIds, teamId } = fortune;
   const record: FortuneRecord = { condition, value, matchIds, effect, ...(timeout ? { timeout: true as const } : {}), ...(matchIds.includes(teamId) ? { self: true as const } : {}) };
   return {
     ...opened,
-    fortune: { ...fortune, effect, ...(timeout ? { timeout: true as const } : {}) },
+    fortune: { ...fortune, effect, ...(timeout ? { timeout: true as const } : {}), changes },
     teams: patchTeam(opened.teams, teamId, (t) => ({ fortunes: [...(t.fortunes ?? []), record] })),
   };
 }

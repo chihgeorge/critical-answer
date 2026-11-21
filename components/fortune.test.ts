@@ -11,3 +11,11 @@ it("shrinks the effect card's heroes for the self line and for a full room", () 
   expect(fortuneHeroScale(7, false)).toBe(3);
   expect(fortuneHeroScale(MAX_TEAMS, true)).toBe(3);
 });
+
+// Value: protects=the row of per-team changes under the heroes still clears the narration box; fails_when=changes keep 4x
+// heroes, or 5+ changes (two chip rows) keep 3x; no_claim=the pixel layout itself (checked in screenshots)
+it("shrinks the heroes for the row of changes", () => {
+  expect(fortuneHeroScale(2, false, 2)).toBe(3);
+  expect(fortuneHeroScale(2, false, 4)).toBe(3);
+  expect(fortuneHeroScale(2, true, MAX_TEAMS)).toBe(2);
+});

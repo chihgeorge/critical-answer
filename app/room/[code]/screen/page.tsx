@@ -997,7 +997,7 @@ function EventRoomScreen({ view, reveal, eventId, narration, onRead, voiceLine }
 /** 占卜師 on the big screen (fortune-teller.md): the crystal ball with the condition, then the pizza and its clock, the
  * picked slice lit, then the effect card with every team the condition hit, until 下一題. The view is the game from before
  * the pick until the card. */
-function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceLine }: { view: SpectatorView; fortune: FortuneView; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void; voiceLine?: number }) {
+function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceLine, cuisine }: { view: SpectatorView; fortune: FortuneView; cuisine?: true; left?: number; eventId: number; narration: NarrationState; onRead: (eventId: number, count: number) => void; voiceLine?: number }) {
   const idx = view.teams.findIndex((t) => t.id === fortune.teamId);
   const team = view.teams[idx];
   const name = team?.name ?? "";
@@ -1019,7 +1019,7 @@ function FortuneScreen({ view, fortune, left, eventId, narration, onRead, voiceL
       </div>
       <Panel className="px-stone absolute text-center" style={{ left: 110, right: 110, top: 96, padding: "16px 24px 12px", fontSize: 26, lineHeight: 1.3, zIndex: 5 }}>
         <div data-testid="fortune-screen" data-step={fortune.step}>{fortune.step === "card" ? (
-          <FortuneCard fortune={fortune} teams={view.teams} />
+          <FortuneCard fortune={fortune} teams={view.teams} score={scoreName(cuisine)} />
         ) : (
           <div className="flex flex-col items-center gap-2">
             <div className="px-title-gold px-title-sm" style={{ fontSize: 34, lineHeight: 1.2 }}>{EVENT_OUTCOME_TITLE.fortune}</div>
@@ -2257,7 +2257,7 @@ export default function ScreenPage() {
         )}
         {/* A door opening first (its view is the game before the press), then a ❓ outcome, then a team choosing its door. */}
         {game?.phase === "playing" && !game.intro && !game.initiative && game.fortune ? (
-          <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
+          <FortuneScreen view={game.view} fortune={game.fortune} left={game.fortuneLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} cuisine={game.cuisine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && (game.forkBeat || (!game.eventReveal && !game.reveal && !game.phaseCard && !game.phaseCardDue && describeTurn(game.view, null).team?.fork === "choosing")) ? (
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
