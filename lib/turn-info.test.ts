@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chargeFailText, describeTurn, explanationBig, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, hostNoQuestionText, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { chargeFailText, describeTurn, explanationBig, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, hostShrinks, hostNoQuestionText, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -274,7 +274,7 @@ describe("hostNoQuestionText", () => {
 
 describe("explanationBig", () => {
   const file = { questionId: "q1", explanation: { kind: "file" } } as const;
-  // Value: protects=the explanation covers the stage only while its own player plays; fails_when=a YouTube explanation,
+  // Value: protects=the explanation covers the stage only for the reveal whose player started it; fails_when=a YouTube explanation,
   // a stale playing flag from another question, or a held reveal (timing, die, audio only) enlarges it
   it("enlarges an uploaded or Instagram explanation while it plays", () => {
     expect(explanationBig(file as never, "q1", false)).toBe(true);
@@ -288,5 +288,21 @@ describe("explanationBig", () => {
     expect(explanationBig({ questionId: "q1", explanation: { kind: "youtube", value: "x" } } as never, "q1", false)).toBe(false);
     expect(explanationBig({ questionId: "q1" }, "q1", false)).toBe(false);
     expect(explanationBig({ questionId: "q1", explanation: { kind: "file", audioOnly: true } }, "q1", false)).toBe(false);
+  });
+});
+
+describe("hostShrinks", () => {
+  // Value: protects=only the host shrinks a big explanation (owner, 2026-11-20); fails_when=its own end, ▶, ⟲ or a seek
+  // shrinks it, or ⏸ / ⏹ / a die's roll leaves it big
+  it("shrinks on a host press that stops the clip, or a die's roll", () => {
+    expect(hostShrinks({ press: 1, state: "playing" }, { press: 2, state: "paused" }, false)).toBe(true);
+    expect(hostShrinks({ press: 1, state: "playing" }, { press: 1, state: "playing" }, true)).toBe(true);
+    // 🍲 上菜 pauses the clip without a press.
+    expect(hostShrinks({ press: 1, state: "playing" }, { press: 1, state: "paused" }, false)).toBe(true);
+  });
+  it("keeps it big on ▶, ⟲, a seek or nothing new (the clip ending by itself, an Instagram click)", () => {
+    expect(hostShrinks({ press: 1, state: "playing" }, { press: 2, state: "playing" }, false)).toBe(false);
+    expect(hostShrinks({ press: 1, state: "playing" }, { press: 1, state: "playing" }, false)).toBe(false);
+    expect(hostShrinks({ press: 1, state: "paused" }, { press: 1, state: "paused" }, false)).toBe(false);
   });
 });

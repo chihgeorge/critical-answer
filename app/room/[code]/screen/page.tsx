@@ -15,7 +15,7 @@ import { CATCH_PAY, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, ty
 
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, explanationBig, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, explanationBig, floorLabel, hostShrinks, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -487,11 +487,15 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
   const playerUp = inPanelPlayer || (tileVideo && !!video) || !!instagram;
-  // Which reveal's player last said it really plays: ⏸, its own end, a die's stop or 下一題 shrink it back.
+  // Which reveal's explanation started playing big. Only the host shrinks it (owner, 2026-11-20): its own end leaves it
+  // big on the last frame; the host's ⏸ / ⏹ (a press that is not ▶), a die's roll or 下一題 (another reveal) clear it.
   const [playingFor, setPlayingFor] = useState<string | null>(null);
+  const [seen, setSeen] = useState(media);
+  if (playingFor !== null && (!reveal || hostShrinks(seen, media, !!pendingRoll))) setPlayingFor(null);
+  if (media?.press !== seen?.press || media?.state !== seen?.state) setSeen(media);
   const onPlaying = (playing: boolean) => {
     onVideoPlaying(playing);
-    setPlayingFor(playing ? (reveal?.questionId ?? null) : null);
+    if (playing) setPlayingFor(reveal?.questionId ?? null);
   };
   const big = explanationBig(reveal, playingFor, !!tapReveal || !!pendingRoll);
   // Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial music
