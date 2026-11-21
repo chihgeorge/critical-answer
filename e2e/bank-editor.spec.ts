@@ -1073,6 +1073,24 @@ async function loadEditor(page: Page) {
   return rows(room0).first();
 }
 
+test("YouTube 試聽: a second row's preview closes the first, so only one player is mounted", async ({ page, request }) => {
+  await page.route(/youtube(-nocookie)?\.com|ytimg\.com/, (route) => route.abort());
+  await resetFirstQuestion(request);
+  autoAcceptConfirms(page);
+  const firstRow = await loadEditor(page);
+  const secondRow = rows(page.getByTestId("bank-pool-1")).nth(1);
+  for (const row of [firstRow, secondRow]) {
+    await row.getByRole("button", { name: "題目：YouTube" }).click();
+    await row.getByLabel("題目的 YouTube 網址").fill("https://youtu.be/dQw4w9WgXcQ");
+  }
+
+  await firstRow.getByRole("button", { name: "▶ 試聽片段" }).click();
+  await expect(firstRow.getByTestId("youtube-player")).toHaveCount(1);
+  await secondRow.getByRole("button", { name: "▶ 試聽片段" }).click();
+  await expect(secondRow.getByTestId("youtube-player")).toHaveCount(1);
+  await expect(page.getByTestId("youtube-player")).toHaveCount(1);
+});
+
 test("dismissing the discard confirm() keeps the slot's media type and content untouched", async ({ page, request }) => {
   await resetFirstQuestion(request);
   const firstRow = await loadEditor(page);
