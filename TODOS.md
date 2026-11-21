@@ -31,6 +31,7 @@
 - [活動後清掉有版權疑慮的上傳影片和聲音](#活動後清掉有版權疑慮的上傳影片和聲音)（[#303](https://github.com/chihgeorge/critical-answer/issues/303)） — S，活動後
 - [玩家自己選攻擊或說服](#玩家自己選攻擊或說服)（[#306](https://github.com/chihgeorge/critical-answer/issues/306)） — M
 - [在全新的 Cloudflare／Vercel 帳號上照部署指南做一遍](#在全新的-cloudflarevercel-帳號上照部署指南做一遍)（[#307](https://github.com/chihgeorge/critical-answer/issues/307)） — S（人工約 2 小時 / CC 約 30 分鐘）
+- [主持人頁和大廳加一個「回首頁」按鈕](#主持人頁和大廳加一個回首頁按鈕)（[#451](https://github.com/chihgeorge/critical-answer/issues/451)） — S
 
 ### P4
 
@@ -167,6 +168,18 @@
 **Depends on:** 題庫格式升版。
 
 ---
+
+## 主持人頁和大廳加一個「回首頁」按鈕
+
+**What:** 主持人頁（大廳和遊戲中）加一個「回首頁」按鈕。遊戲中放在「⚙ 更多」裡，按了先確認：房間不會關，用主持人連結可以再回來。大螢幕頁和手機的大廳也許一樣加。
+
+**Why:** 現在主持人頁沒有路回首頁，只能自己改網址。（[#451](https://github.com/chihgeorge/critical-answer/issues/451)）
+
+**Context:**
+- `app/room/[code]/host/page.tsx`（大廳和「⚙ 更多」）
+- 大螢幕頁、手機大廳要不要加，做的時候再決定
+
+**Effort/Priority:** S / P3
 
 ## 頒獎稱號「命運之子」
 

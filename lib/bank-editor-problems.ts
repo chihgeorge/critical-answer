@@ -3,8 +3,8 @@
 // Client-safe: types and pure helpers only, never the parsed bank (CLAUDE.md, check:bundle).
 import { BANK_NOT_FOUND } from "./bank-api";
 import { timingFieldError } from "./bank-editor-question";
-import { DIFFICULTIES, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_PROMPT, MIN_FIELDS, MIN_OPTIONS, bossDifficulty, isMusicQuestion, memoryProblem, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
-import { byDifficulty, type Difficulty } from "./game-state";
+import { DIFFICULTIES, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_PROMPT, MIN_FIELDS, MIN_OPTIONS, isMusicQuestion, memoryProblem, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
+import type { Difficulty } from "./game-state";
 
 /** A page of the editor (docs/designs/scoring-and-score-pools.md D2=B: one pool per tab). */
 export type EditorTab = "rooms" | Difficulty | "boss";
@@ -27,8 +27,7 @@ export function locateQuestion(bank: Bank, id: string): { tab: EditorTab; index:
   }
   for (const [n, p] of bank.boss.phases.entries()) {
     const index = p.questions.findIndex((q) => q.id === id);
-    // The editor lists a boss phase easiest first (lib/bank-editor-list.ts listNumber): name it by that number.
-    if (index >= 0) return { tab: "boss", index, where: `首領第 ${n + 1} 階段第 ${byDifficulty(p.questions, bossDifficulty).indexOf(p.questions[index]) + 1} 題`, question: p.questions[index] };
+    if (index >= 0) return { tab: "boss", index, where: `首領第 ${n + 1} 階段第 ${index + 1} 題`, question: p.questions[index] };
   }
   return null;
 }
@@ -127,11 +126,10 @@ export function bankProblems(bank: Bank): BankProblem[] {
     if (n > 0 && !p.name.trim()) problem(`${phase}：名稱不能空白`);
     if (n > 0 && !p.rule.trim()) problem(`${phase}：規則不能空白`);
     if (p.questions.length === 0) problem(`${phase}還沒有題目`);
-    const order = byDifficulty(p.questions, bossDifficulty); // numbered as the editor lists the phase (locateQuestion)
-    p.questions.forEach((q) => {
+    p.questions.forEach((q, i) => {
       // Answer fields only on a buzzer phase's music questions (multi-field.md F1, E3); timing questions need every
       // team at once (timing-tap.md): a buzzer phase only. parseBank refuses the rest too.
-      const message = questionError(label(q, `${phase}第 ${order.indexOf(q) + 1} 題`), q, !!p.buzzer);
+      const message = questionError(label(q, `${phase}第 ${i + 1} 題`), q, !!p.buzzer);
       if (message) out.push({ tab: "boss", questionId: q.id, message });
     });
   }

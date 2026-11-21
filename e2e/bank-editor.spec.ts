@@ -1340,10 +1340,10 @@ test("boss bank filter: category and difficulty chips narrow a buzzer phase; a s
     await page.getByRole("button", { name: "載入題庫" }).click();
     await page.getByTestId("bank-tab-boss").click();
     const phase = page.getByTestId("bank-room-boss-2");
-    // Play order: difficulty 1 first (bank order within it), unset counts as 3.
+    // Play order is bank order, whatever the difficulty.
     await expect(rows(phase)).toHaveCount(5);
-    await expect(rows(phase).first()).toHaveAttribute("data-testid", "question-f-a2");
-    await expect(rows(phase).last()).toHaveAttribute("data-testid", "question-f-a1");
+    await expect(rows(phase).first()).toHaveAttribute("data-testid", "question-f-a1");
+    await expect(rows(phase).last()).toHaveAttribute("data-testid", "question-f-a3");
 
     const categories = phase.getByTestId("bank-filter-category");
     await categories.getByRole("button", { name: /^動漫 · 3$/ }).click();

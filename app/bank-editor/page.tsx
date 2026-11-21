@@ -26,7 +26,7 @@ import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime, youtubeWatchUrl } from "@/lib/youtube";
 import { pageOf, questionPage } from "@/lib/bank-editor-pages";
-import { NO_FILTER, canShift, categoryChips, difficultyChips, fallback, isFiltered, pick, playOrder, shiftWithinDifficulty, shownList, withAdded, type Chip, type PhaseFilter } from "@/lib/bank-editor-categories";
+import { NO_FILTER, categoryChips, difficultyChips, fallback, isFiltered, pick, shownList, withAdded, type Chip, type PhaseFilter } from "@/lib/bank-editor-categories";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
@@ -493,9 +493,6 @@ export default function BankEditorPage() {
   // no attacker needed).
   const updateQuestion = (loc: Location, id: string, updater: (q: BankQuestion) => BankQuestion) => {
     setToast((t) => (t?.undo ? t : null)); // a move or copy note is stale once editing goes on; an undo stays
-    // A boss list is sorted by difficulty: under 全部 a new difficulty moves the row, and its page follows it.
-    const old = loc.kind === "boss" && bank && !isFiltered(filterAt(loc.phase).filter) ? questionsAt(bank, loc).find((q) => q.id === id) : undefined;
-    if (old && bossDifficulty(updater(old)) !== bossDifficulty(old)) setJump((j) => ({ id, tab: "boss", seq: (j?.seq ?? 0) + 1 }));
     setBank((prev) => {
       if (!prev) return prev;
       const questions = questionsAt(prev, loc).map((q) => (q.id === id ? updater(q) : q));
@@ -540,8 +537,7 @@ export default function BankEditorPage() {
 
   /** 上移／下移: the row's page follows it (a jump), so it stays in view across a page edge. */
   const shift = (loc: Location, id: string, delta: -1 | 1) => {
-    // A boss list is in play order, so ↑/↓ swap with the neighbour of the same difficulty there.
-    setBank((prev) => (prev ? (loc.kind === "boss" ? withQuestions(prev, loc, shiftWithinDifficulty(questionsAt(prev, loc), id, delta)) : shiftQuestion(prev, loc, id, delta)) : prev));
+    setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta) : prev));
     setJump((j) => ({ id, tab: tabOf(loc), seq: (j?.seq ?? 0) + 1 })); // not goTo: a closed row stays closed
   };
 
@@ -570,7 +566,7 @@ export default function BankEditorPage() {
     setBank((prev) => (prev ? withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]) : prev));
     if (loc.kind === "boss") {
       addToShown(loc.phase, id);
-      setJump((j) => ({ id, tab: "boss", seq: (j?.seq ?? 0) + 1 })); // its sorted place, not the last page
+      setJump((j) => ({ id, tab: "boss", seq: (j?.seq ?? 0) + 1 })); // its page in the shown list, filtered or not
     }
   };
 
@@ -1215,7 +1211,6 @@ function RoomEditor({
   const filtered = isFiltered(f);
   const filterLine = loosened ? "篩選裡沒有題目了，已放寬篩選" : filterNote;
   const list = boss ? shownList(questions, f, categoryOf) : questions;
-  const order = boss ? playOrder(questions) : questions;
   const diffChips = boss ? difficultyChips(questions, f, categoryOf) : [];
   const catChips = usesCategories ? categoryChips(questions, f, categoryOf) : [];
   const jumpPage = (j: Jump | null) => {
@@ -1301,15 +1296,16 @@ function RoomEditor({
             {filtered ? `${pickedLabel}，共 ${list.length} 題` : filterLine ? `已回到全部，共 ${list.length} 題` : ""}
           </div>
         )}
-        {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
+        {/* A buzzer phase has no persuasion check, so there the difficulty only sets the hit reward. */}
         {difficulty && (
           <div id={difficultyHintId} className="text-[13px]">
-            難度 1 最易、5 最難（沒改就是 {DEFAULT_BOSS_DIFFICULTY}）：同一階段由易到難出題；同難度照這裡的順序（開了首領題隨機順序，同難度內會打亂）
-            {categories ? "。" : (
+            難度 1 最易、5 最難（沒改就是 {DEFAULT_BOSS_DIFFICULTY}）：決定打中首領的獎勵
+            {!categories && (
               <>
-                ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>。
+                ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>
               </>
             )}
+            ；同一階段照這裡的順序出題（開了首領題隨機順序才會打亂，並由易到難）。
           </div>
         )}
         {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
@@ -1322,15 +1318,15 @@ function RoomEditor({
         {list.slice(start, end).map((q, i) => (
           <QuestionRow
             key={q.id}
-            number={boss ? order.indexOf(q) + 1 : start + i + 1}
+            number={boss ? questions.indexOf(q) + 1 : start + i + 1}
             question={q}
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             problem={problems.get(q.id)}
             open={actions.isOpen(q.id)}
-            last={boss ? filtered || !canShift(questions, q.id, 1) : start + i === questions.length - 1}
-            upOff={boss ? filtered || !canShift(questions, q.id, -1) : undefined}
+            last={filtered || start + i === questions.length - 1}
+            upOff={filtered || undefined}
             shiftNoteId={filtered ? shiftNoteId : undefined}
             tag={boss ? `${usesCategories ? `${categoryOf[q.id] || "未分類"}・` : ""}難度 ${bossDifficulty(q)}` : undefined}
             actions={actions}
@@ -1343,7 +1339,7 @@ function RoomEditor({
         <PixelButton
           onClick={() => {
             onAdd();
-            if (!boss) setPage(pageOf(questions.length)); // the new question's page; a boss list's sorted place comes as a jump
+            if (!boss) setPage(pageOf(questions.length)); // the new question's page; a boss list's page (filtered or not) comes as a jump
           }}
         >
           + 新增題目

@@ -546,7 +546,7 @@ export function bossQuestions(bank: Bank): BankQuestion[] {
 
 export const bossDifficulty = (q: BankQuestion): Difficulty => q.difficulty ?? DEFAULT_BOSS_DIFFICULTY;
 
-/** Each phase's HP and question ids in bank order, the shape GameState's boss keeps (createGame deals easiest first). */
+/** Each phase's HP and question ids in bank order, the shape GameState's boss keeps (createGame deals it as is, or shuffled then easiest first under 首領題隨機順序). */
 export function bossPhaseStates(bank: Bank): { maxHp: number; questionIds: string[]; buzzer?: true }[] {
   return bank.boss.phases.map((p) => ({ maxHp: p.maxHp, questionIds: p.questions.map((q) => q.id), ...(p.buzzer ? { buzzer: true as const } : {}) }));
 }

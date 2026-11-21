@@ -1,6 +1,6 @@
-// The bank editor's boss-phase filter (docs/designs/boss-bank-categories.md): difficulty and category chips, the
-// list in base play order, and moving a question within its difficulty. Pure: the page holds the state.
-import { byDifficulty, type Difficulty } from "./game-state";
+// The bank editor's boss-phase filter (docs/designs/boss-bank-categories.md): difficulty and category chips over the
+// phase in bank order (its play order). Pure: the page holds the state.
+import type { Difficulty } from "./game-state";
 import { bossDifficulty, type BankQuestion } from "./question-bank";
 
 /** The 未分類 chip's value: a question with no category. */
@@ -24,16 +24,13 @@ type CategoryOf = Record<string, string | undefined>;
 
 const categoryOfQ = (q: BankQuestion, categoryOf: CategoryOf): string => categoryOf[q.id] ?? UNCATEGORIZED;
 
-/** Easiest first, ties in bank order: the order a game deals the phase with 首領題隨機順序 off. */
-export const playOrder = (questions: readonly BankQuestion[]): BankQuestion[] => byDifficulty(questions, bossDifficulty);
-
 const matches = (q: BankQuestion, difficulty: Difficulty | null, category: string | null, categoryOf: CategoryOf) =>
   (difficulty === null || bossDifficulty(q) === difficulty) && (category === null || categoryOfQ(q, categoryOf) === category);
 
-/** The rows on screen, in order: the live play order under 全部, else the ids fixed at the pick (minus any gone). */
+/** The rows on screen, in order: the live bank order under 全部, else the ids fixed at the pick (minus any gone). */
 export function shownList(questions: readonly BankQuestion[], f: PhaseFilter, categoryOf: CategoryOf): BankQuestion[] {
-  if (!isFiltered(f)) return playOrder(questions);
-  if (!f.shown) return playOrder(questions).filter((q) => matches(q, f.difficulty, f.category, categoryOf));
+  if (!isFiltered(f)) return [...questions];
+  if (!f.shown) return questions.filter((q) => matches(q, f.difficulty, f.category, categoryOf));
   const byId = new Map(questions.map((q) => [q.id, q]));
   return f.shown.flatMap((id) => byId.get(id) ?? []);
 }
@@ -89,26 +86,4 @@ export function categoryChips(questions: readonly BankQuestion[], f: PhaseFilter
   if (!values.some((c) => c !== UNCATEGORIZED)) return [];
   const count = (c: string | null) => questions.filter((q) => matches(q, f.difficulty, c, categoryOf)).length;
   return row(values, (c) => (c === UNCATEGORIZED ? "未分類" : c), count, f.category, shownCount);
-}
-
-/** The question this one swaps with on ↑ (-1) / ↓ (+1): its neighbour of the same difficulty in play order; null at
- * either end of its difficulty. */
-function swapPartner(questions: readonly BankQuestion[], id: string, delta: -1 | 1): BankQuestion | null {
-  const order = playOrder(questions);
-  const i = order.findIndex((q) => q.id === id);
-  const other = order[i + delta];
-  return i >= 0 && other && bossDifficulty(other) === bossDifficulty(order[i]) ? other : null;
-}
-
-export const canShift = (questions: readonly BankQuestion[], id: string, delta: -1 | 1): boolean => swapPartner(questions, id, delta) !== null;
-
-/** Swaps the question's bank position with its same-difficulty neighbour; every other question keeps its place. */
-export function shiftWithinDifficulty(questions: readonly BankQuestion[], id: string, delta: -1 | 1): BankQuestion[] {
-  const other = swapPartner(questions, id, delta);
-  if (!other) return [...questions];
-  const a = questions.findIndex((q) => q.id === id);
-  const b = questions.findIndex((q) => q.id === other.id);
-  const next = [...questions];
-  [next[a], next[b]] = [next[b], next[a]];
-  return next;
 }

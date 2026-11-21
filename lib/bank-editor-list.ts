@@ -1,8 +1,8 @@
 // The bank editor's question list (app/bank-editor/page.tsx, editor-ux #2 and #3): each question's one-line summary,
 // the whole-bank search, and moving, copying and deleting a question with undo. Pure, so it has unit tests.
 // Client-safe: types and helpers only, never the parsed bank (CLAUDE.md, check:bundle).
-import { DIFFICULTIES, bossDifficulty, type Bank, type BankQuestion } from "./question-bank";
-import { DEFAULT_BOSS_DIFFICULTY, byDifficulty, type Difficulty } from "./game-state";
+import { DIFFICULTIES, type Bank, type BankQuestion } from "./question-bank";
+import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "./game-state";
 import { placementError, questionName, type EditorTab } from "./bank-editor-problems";
 import { formatSongTime } from "./tap-clock";
 
@@ -56,10 +56,9 @@ function searchText(q: BankQuestion): string[] {
   ];
 }
 
-/** A question's 第 N 題 as the editor lists its group: a boss phase easiest first (byDifficulty), a pool in bank order. */
+/** A question's 第 N 題: its bank position in its group, the order the editor lists it and a game deals a boss phase. */
 export function listNumber(bank: Bank, loc: Location, id: string): number {
-  const qs = questionsAt(bank, loc);
-  return (loc.kind === "boss" ? byDifficulty(qs, bossDifficulty) : qs).findIndex((q) => q.id === id) + 1;
+  return questionsAt(bank, loc).findIndex((q) => q.id === id) + 1;
 }
 
 export interface SearchHit {

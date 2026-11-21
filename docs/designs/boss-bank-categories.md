@@ -1,7 +1,7 @@
 # Boss bank by category and difficulty (bank editor)
 
 Status: shipped with this PR. Reviewed with /autoplan (CEO, design, eng); the owner picked the chip style, the row tag
-and the difficulty sort.
+and the difficulty sort (later dropped: boss phases list and deal in bank order, see Order).
 
 ## Problem
 
@@ -10,10 +10,10 @@ checking one category meant paging through all of them.
 
 ## What the editor does
 
-- **Order.** A boss phase lists its questions easiest first (unset counts as `DEFAULT_BOSS_DIFFICULTY`, 3), ties in
-  bank order: the game's base deal order. One pure `byDifficulty` in `lib/game-state.ts` serves both `createGame`'s
-  boss order and the editor. 第 N 題 (rows, search hits, toasts) is the position in this order (`listNumber` in
-  `lib/bank-editor-list.ts`).
+- **Order.** A boss phase lists its questions in bank order, the order a game deals them. (Shipped first easiest
+  first; the owner switched the game to pure bank order on 2026-11-20, so the editor followed. Difficulty only orders a
+  phase under 首領題隨機順序, via `byDifficulty` in `lib/game-state.ts`.) 第 N 題 (rows, search hits, toasts) is the
+  bank position (`listNumber` in `lib/bank-editor-list.ts`).
 - **Chips.** A 「難度」 row on every boss phase and a 「類別」 row on a buzzer phase whose questions have categories.
   Small `px-btn` toggles (white, picked `--turn` with ✓, `aria-pressed`) in a labelled `role="group"`. Categories in
   first-seen order, 未分類 last. Each count follows the other row's pick; the picked chip counts the shown list, the
@@ -23,8 +23,7 @@ checking one category meant paging through all of them.
 - **Fixed list.** A pick takes the matching ids in their order then and opens page 1. Edits under the filter neither
   hide nor move a row; an added or copied question joins the list. ↑ / ↓ are off under a filter, with one line saying
   why.
-- **↑ / ↓** swap a question with its neighbour of the same difficulty (`shiftWithinDifficulty`); every other question
-  keeps its bank place.
+- **↑ / ↓** move a question one bank place, across difficulties (the plain `shiftQuestion`).
 - **Resets.** A search, save-error or undo jump to a hidden question resets the phase to 全部 with 「已回到「全部」，才看
   得到那一題」. An emptied filter loosens category first, then difficulty. Filters live in the page per phase index and
   reset on a new load or a phase count change; they survive tab switches.

@@ -1139,7 +1139,7 @@ export default function HostPage() {
                     />
                     首領題隨機順序（同難度內）
                   </label>
-                  <div className="text-[13px]">仍由簡單到難；關閉時照題庫順序出題</div>
+                  <div className="text-[13px]">開啟：同難度內打亂，由簡單到難；關閉：完全照題庫順序出題，不看難度</div>
                   <label className="flex min-h-[44px] items-center gap-3 text-[18px]">
                     題庫：
                     <select
