@@ -159,6 +159,38 @@ test("image multipleChoice: the sneak banner keeps off the image and the option 
   for (const b of boxes) expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
 });
 
+// Value: protects=on a plain multipleChoice (no image) the sneak banner also stands in the question panel, off the four
+// option tiles and the answer clock; fails_when=the banner goes back to the stage's middle (CHIP_TOP) over tiles A and B
+// (QA 2026-11-21: option B 「LISA」 read 「SA」); no_claim=the perfect sneak's colour (same element, other background).
+test("plain multipleChoice: the sneak banner keeps off the option tiles and the answer clock", async ({ browser, request }) => {
+  const loaded = await request.get(`${WORKER}/api/bank`, { headers: HEADERS });
+  const { bank, version } = await loaded.json();
+  bank.pools["1"] = [{ kind: "multipleChoice", id: "r0-plain-mc-sneak", content: { kind: "text", value: "哪一位不是 BLACKPINK 的成員？" }, options: ["JENNIE", "LISA", "JISOO", "IU"], correctIndex: 3 }];
+  expect((await request.put(`${WORKER}/api/bank`, { headers: HEADERS, data: { bank, version } })).ok()).toBe(true);
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("盜賊隊")}`);
+  await team.getByRole("button", { name: /盜賊/ }).click();
+  await startGame(host);
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await team.getByRole("button", { name: /偷襲：先擲偷襲骰/ }).click(); // E2E_DIE: 10 arms it
+
+  const sneak = screen.getByTestId("screen-sneak");
+  await expect(sneak).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, the sneak die's 2 s beat
+  const clock = screen.getByTestId("answer-clock");
+  await expect(clock).toBeVisible();
+  const boxes = [(await clock.boundingBox())!];
+  for (let i = 0; i < 4; i++) boxes.push((await screen.getByTestId(`wall-option-${i}`).boundingBox())!);
+  const a = (await sneak.boundingBox())!;
+  for (const b of boxes) expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
+});
+
 test("image-content question: a broken image URL hides itself on every surface, but judging still works", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   // A save refuses a key that was never uploaded (it may already be deleted from R2), so upload one: e2e images point at

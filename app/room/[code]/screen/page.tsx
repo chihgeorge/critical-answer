@@ -458,8 +458,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // An image in the panel (not on the tile wall) gets the video's layout too: its chips and hints stand beside it, not over it.
   const imageAsk = !reveal && !card && question?.content.kind === "image" && !wall && !sortWall;
   const besideMedia = asking || imageAsk;
-  // An image over the monster between option or sort tiles: the middle is the image's, so the sneak banner moves into the panel.
-  const tileImage = !reveal && !card && question?.content.kind === "image" && !!(wall || sortWall);
+  // Option or sort tiles (not a video's, whose chips stand under it): the stage's middle is theirs, and an image's too,
+  // so the sneak banner moves into the panel instead of covering tiles A and B (QA 2026-11-21).
+  const tileQuestion = !reveal && !card && !asking && !!(wall || sortWall);
   // An uploaded video/audio explanation plays in the same slot (uploaded-media.md D4).
   const fileExplanation = reveal?.explanation?.kind === "file" ? reveal.explanation : null;
   // A YouTube explanation too, so the host's ▶ ⏸ ⟲ drive it and it plays past the bank's end (clipEndForStage).
@@ -881,7 +882,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         )}
         {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[0.8em] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
         {/* In the panel's flow, under the question: the fit shrinks the question instead of the panel growing onto the image and tiles. */}
-        {sneakChip && tileImage && (
+        {sneakChip && tileQuestion && (
           <div data-testid="screen-sneak" className="px-chip mx-auto mt-2 block w-fit" style={{ fontSize: 18, lineHeight: 1.2, padding: "2px 12px", color: "var(--k)", border: "3px solid var(--k)", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787" }}>
             {sneakText}
           </div>
@@ -907,7 +908,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
       {/* With option or sort tiles on the wall the panel has no room for an image: it would grow over the tiles.
           It stands over the monster instead, between the two tile columns (before the chips, which stay on top). */}
-      {!served && tileImage && question?.content.kind === "image" && (
+      {!served && tileQuestion && question?.content.kind === "image" && (
         <Panel className="absolute" style={{ left: "50%", top: 236, transform: "translateX(-50%)", padding: 4, zIndex: 6 }}>
           <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={126} className="block" />
         </Panel>
@@ -919,7 +920,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
-      {sneakChip && !besideMedia && !tileImage && (
+      {sneakChip && !besideMedia && !tileQuestion && (
         <div data-testid="screen-sneak" className="px-chip absolute" style={{ ...(playerUp ? { right: 22, bottom: 160 } : { left: "50%", top: CHIP_TOP, transform: "translateX(-50%)" }), zIndex: 6, fontSize: 22, padding: "6px 14px", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           {sneakText}
         </div>
