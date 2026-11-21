@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.116.6.3] - 2026-11-22
+
+### Fixed
+- **Big screen: the sneak attack banner is no longer cut off by the video on a video question with answer tiles.** On a YouTube or uploaded video multiple-choice or sort question, the banner now stands left of the video's top, above the first tile, instead of half under the video.
+
 ## [0.116.6.2] - 2026-11-22
 
 ### Fixed
