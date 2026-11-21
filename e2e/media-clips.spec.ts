@@ -230,6 +230,9 @@ test("Instagram explanation: the reveal embeds it on the big screen, ▶ asks fo
   // Playing, it covers the whole stage (as tall as the letterboxed 16:9 stage), over the narration box.
   const box = screen.getByTestId("screen-instagram-box");
   await expect(box).toHaveAttribute("data-big", "true");
+  // The small monster stays under the big clip, not on its corner.
+  const m = (await screen.getByTestId("screen-monster").boundingBox())!;
+  expect(await screen.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-testid=screen-instagram-box]"), [m.x + m.width / 2, m.y + m.height / 2])).toBe(true);
   const vp = screen.viewportSize()!;
   expect(Math.abs((await box.boundingBox())!.height - Math.min(vp.height, (vp.width * 9) / 16))).toBeLessThan(2);
 

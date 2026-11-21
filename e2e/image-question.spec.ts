@@ -98,6 +98,33 @@ test("image-content question: renders on /play, /screen, and the host's own prev
   await expect(host.getByText("輪到")).toBeVisible();
 });
 
+// Value: protects=on an image question the big screen's sneak banner stands beside the image, not over it, and the
+// answer clock is clear of it; fails_when=the banner goes back over the panel's middle (CHIP_TOP) or the round clock
+// sits on its end; no_claim=pixel overlap with the image itself (its R2 URL does not load here).
+test("image question: the sneak banner stands beside the image and the answer clock is clear of it", async ({ browser, request }) => {
+  await seedSingleImageQuestion(request);
+  const host = await (await browser.newContext()).newPage();
+  await host.goto("/");
+  await host.getByRole("button", { name: /主持遊戲/ }).click();
+  await host.waitForURL(/\/room\/[A-Z]{4}\/host#k=/);
+  const code = host.url().match(/\/room\/([A-Z]{4})\//)![1];
+  const screen = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
+  await screen.goto(await screenUrl(host));
+  const team = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await team.goto(`/room/${code}/play?name=${encodeURIComponent("盜賊隊")}`);
+  await team.getByRole("button", { name: /盜賊/ }).click();
+  await startGame(host);
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await team.getByRole("button", { name: /偷襲：先擲偷襲骰/ }).click(); // E2E_DIE: 10 arms it
+
+  await expect(screen.getByTestId("screen-image-beside").getByTestId("screen-sneak")).toBeVisible();
+  const clock = screen.getByTestId("answer-clock");
+  await expect(clock).toBeVisible();
+  const a = (await screen.getByTestId("screen-sneak").boundingBox())!;
+  const b = (await clock.boundingBox())!;
+  expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
+});
+
 test("image-content question: a broken image URL hides itself on every surface, but judging still works", async ({ browser, request }) => {
   const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
   // A save refuses a key that was never uploaded (it may already be deleted from R2), so upload one: e2e images point at
