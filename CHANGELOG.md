@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.116.0.0] - 2026-11-21
+
+### Added
+- Bank editor: a saved uploaded image, video or audio file now previews under its slot when the question is open (image thumbnail, native video/audio player that reads only the length until played). A file that can't be read shows a red error line instead of a broken element. The Worker's `/api/bank/image` answers `GET ?key=<uuid>` with a redirect to the file's public R2 address.
+
 ## [0.115.1.0] - 2026-11-21
 
 ### Changed
