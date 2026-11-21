@@ -921,7 +921,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {/* Under the panel the player has the middle: the sneak banner takes the gap left of its top, above tile A
           (in the panel it grew past the panel's fit and the player covered its lower half, QA 2026-11-21). */}
       {sneakChip && tileVideo && (
-        <div data-testid="screen-sneak" className="px-chip absolute text-center" style={{ left: 22, top: TILE_VIDEO_TOP, width: 270, zIndex: 6, fontSize: 15, lineHeight: 1.2, letterSpacing: 0, whiteSpace: "normal", padding: "2px 6px", color: "var(--k)", border: "3px solid var(--k)", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787" }}>
+        <div data-testid="screen-sneak" className="px-chip absolute text-center" style={{ left: 22, top: TILE_VIDEO_TOP, width: 270, zIndex: 6, fontSize: 15, lineHeight: 1.2, letterSpacing: 0, whiteSpace: "normal", borderRadius: 12, padding: "2px 6px", color: "var(--k)", border: "3px solid var(--k)", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787" }}>
           {sneakText}
         </div>
       )}
