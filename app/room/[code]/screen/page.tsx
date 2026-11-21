@@ -18,7 +18,6 @@ import { lookOf } from "@/lib/team-look";
 import { chargeFailText, describeTurn, explanationBig, floorLabel, hostShrinks, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
-import { MAX_LINE } from "@/lib/narration/runner";
 import { chineseVoices, pickVoice, shouldSpeakNarration, speechTimeoutMs, type SpokenNarration } from "@/lib/narration/tts";
 import { readStored, writeStored } from "@/lib/stored";
 import { VoicePicker } from "@/components/voice-picker";
@@ -202,6 +201,10 @@ const TILE_VIDEO_TOP = 190;
 const PLATE_OVER_BOX = 20; // 12 px over the box, plus the two panels' 4 px margins
 // The stepped-down plate is a size smaller (18 px, no vertical padding), so its top stays clear of the player's frame (art QA 2026-11-17).
 const PLAYER_BOTTOM = 396;
+/** The fixed 「👆 開聲音」 button's width in stage px at 1920×1080 (2x), plus a gap: the small monster stands left of it. */
+const SOUND_BUTTON_ROOM = 64;
+/** Beside the small monster the narration has ~120 px less: a longer line than this is set smaller to keep two rows. */
+const BESIDE_LINE = 40;
 const CHIP_TOP = 262;
 /** With the persuasion pill under it, a question fits above this: the pill then ends above the monster's face. */
 const CHECK_CARD_LIMIT = 226;
@@ -321,7 +324,7 @@ const CHIP_TONE = { warn: { background: "var(--warn)" }, ok: { background: "var(
 /** ② The parry's beats (lib/boss-fx.ts PARRY_MS). */
 type ParryBeat = "charge" | "parry" | "counter";
 
-function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, gift, act, charge, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, bossFinal, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; gift?: string; act: boolean; charge?: StateMessage["chargeBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; bossFinal?: true; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null }) {
+function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, stageMonster, gift, act, charge, wrongSlots, eventId, narration, phaseCard, bossPhaseInfo, bossFinal, media, shownVideo, locked, needsTap, onVideoPlaying, onClipEnded, onClipError, onClipDuration, clipError, answerLeft, onClockSecond, clockPaused, say, onRead, onEaten, onChef, cuisine, parry, rage, tapTime, voiceLine, pickHold, typedTo, jump, soundButton }: { view: SpectatorView; question: PublicQuestion | null; reveal: AnswerReveal | null; pendingLock: LockedOption | null; pendingRoll: PendingRoll | null; stageBeat?: StateMessage["stageBeat"]; stageMonster?: StateMessage["stageMonster"]; gift?: string; act: boolean; charge?: StateMessage["chargeBeat"]; wrongSlots?: boolean[]; eventId: number; narration: NarrationState; phaseCard?: StateMessage["phaseCard"]; bossPhaseInfo?: StateMessage["bossPhaseInfo"]; bossFinal?: true; media?: MediaCommand; shownVideo: ShownVideo | null; locked: boolean; needsTap: boolean; onVideoPlaying: (playing: boolean) => void; onClipEnded: (questionId: string) => void; onClipError: (questionId: string) => void; onClipDuration: (questionId: string, seconds: number) => void; clipError?: true; answerLeft?: number | null; onClockSecond: (s: number) => void; clockPaused: boolean; say: (lines: string[]) => void; onRead: (eventId: number, count: number) => void; onEaten: () => void; onChef: (bonus?: number) => void; cuisine?: true; parry: ParryBeat | null; rage: boolean; tapTime: { current: (() => number | null) | null }; voiceLine?: number; pickHold: boolean; typedTo: number; jump: { eventId: number; line: number } | null; soundButton: boolean }) {
   const turnInfo = describeTurn(view, question, phaseCard?.monster, stageMonster);
   const { team: turn, teamIndex: turnIdx, inBoss, bossHits: hits } = turnInfo;
   // A dish reveal keeps the defeated monster and its room on stage until 下一題 (cooking I6): the next question is
@@ -487,6 +490,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
   const playerUp = inPanelPlayer || (tileVideo && !!video) || !!instagram;
+  // Option A (owner, 2026-11-21): a player covers the monster's spot, so while one is up the monster steps down to the
+  // dialogue box's right end at half size, in whole-number pixels (6→3, 5→2, 4→2), clear of the 開聲音 button while it shows.
+  const smallScale = Math.max(2, Math.floor(monster.scale / 2));
+  const smallW = SPRITE_SIZE[monster.kind][0] * smallScale;
+  const smallRight = 26 + (soundButton ? SOUND_BUTTON_ROOM : 0);
+  // From the box's right edge (x 942) to 8 px left of the small monster: the narration's and the nameplate's right inset.
+  const besideRoom = smallRight + smallW - 10;
+  const smallAt = `calc(100% - ${smallRight + smallW / 2}px)`; // the small monster's centre
   // Which reveal's explanation started playing big. Only the host shrinks it (owner, 2026-11-20): its own end leaves it
   // big on the last frame; the host's ⏸ / ⏹ (a press that is not ▶), a die's roll or 下一題 (another reveal) clear it.
   const [playingFor, setPlayingFor] = useState<string | null>(null);
@@ -625,7 +636,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {/* Over 20 HP (multi-field.md E5) hearts no longer fit 1280 px (25 px each): one continuous bar with the count. */}
       {bossScene && view.bossMaxHp > MAX_HEARTS && (
         <span data-testid="boss-hp-bar" className="ml-[14px] flex items-center gap-2">
-          <span className="relative inline-block h-[16px] w-[300px]" style={{ background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
+          <span className="relative inline-block h-[16px]" style={{ width: playerUp ? 200 : 300, background: "#3a2b55", boxShadow: "0 0 0 3px var(--k)" }}>
             <span className="absolute inset-y-0 left-0" style={{ width: `${(100 * (card ? view.bossMaxHp : view.bossHp)) / view.bossMaxHp}%`, background: "var(--boss)" }} />
           </span>
           <span className="px-num text-[14px]">{card ? view.bossMaxHp : view.bossHp}/{view.bossMaxHp}</span>
@@ -637,10 +648,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             card ? (
               // The new bar fills one heart at a time (D7).
               <span key={`card-${eventId}-${i}`} className="px-heart-in" style={{ animationDelay: `${i * 0.15}s` }}>
-                <Sprite kind="heart" variant={1} scale={2} />
+                <Sprite kind="heart" variant={1} scale={playerUp ? 1 : 2} />
               </span>
             ) : (
-              <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={2} />
+              <Sprite key={i} kind="heart" variant={i < view.bossHp ? 1 : 0} scale={playerUp ? 1 : 2} />
             ),
           )}
         </span>
@@ -869,30 +880,30 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
       {sneakChip && !asking && (
-        <div data-testid="screen-sneak" className="px-chip absolute" style={{ left: "50%", top: CHIP_TOP, transform: "translateX(-50%)", zIndex: 6, fontSize: 22, padding: "6px 14px", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
+        <div data-testid="screen-sneak" className="px-chip absolute" style={{ ...(playerUp ? { right: 22, bottom: 160 } : { left: "50%", top: CHIP_TOP, transform: "translateX(-50%)" }), zIndex: 6, fontSize: 22, padding: "6px 14px", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           {sneakText}
         </div>
       )}
-      <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />
+      {!playerUp && <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />}
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
-      <div key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={{ left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
+      <div data-testid="screen-monster" key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={playerUp ? { right: smallRight, bottom: monster.float ? 18 : 16, zIndex: 8 } : { left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
             (a class coming back would replay its animation, px-hit's shake after a miss). */}
         <div className={raging ? "px-rage" : undefined}>
           <div className={parry === "charge" ? "px-parry-charge" : parry === "counter" ? "px-parry-counter" : undefined}>
             <div key={card ? `card-${eventId}` : act ? stageBeat : undefined} className={`${act && stageBeat === "thrown-out" ? "px-stomp" : act && stageBeat === "check-twenty" ? "px-happy" : card ? "px-phase-blink" : hits > 0 && (stage ? bossScene : inBoss) ? "px-hit" : monster.float ? "px-float" : "px-idle"}${raging ? " px-rage-outline" : ""}`}>
-              <Sprite kind={monster.kind} scale={monster.scale} hue={monster.hue} accessory={monster.accessory} />
+              <Sprite kind={monster.kind} scale={playerUp ? smallScale : monster.scale} hue={monster.hue} accessory={monster.accessory} />
             </div>
           </div>
         </div>
         {/* A natural 1 (owner, 2026-11-20): the monster stomps in a rage, then simply fades away (px-poof, no smoke). Its 💢
             rides the sprite's top right corner, beside its face: higher up it covered the card and its pill (QA c2 5a). */}
-        {act && stageBeat === "thrown-out" && <span data-testid="screen-monster-angry" aria-hidden className="px-anger pointer-events-none absolute" style={{ right: -48, top: 32, fontSize: 56, lineHeight: 1 }}>💢</span>}
+        {act && stageBeat === "thrown-out" && <span data-testid="screen-monster-angry" aria-hidden className="px-anger pointer-events-none absolute" style={playerUp ? { left: -36, top: -4, fontSize: 32, lineHeight: 1 } : { right: -48, top: 32, fontSize: 56, lineHeight: 1 }}>💢</span>}
       </div>
       )}
       {/* A natural 20: the monster hops for joy (💗), then its gift flies to the team on turn, up by its ribbon. */}
       {act && stageBeat === "check-twenty" && (
-        <div data-testid="screen-monster-happy" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 150, width: 0, zIndex: 6, fontSize: 40, lineHeight: 1 }}>
+        <div data-testid="screen-monster-happy" aria-hidden className="pointer-events-none absolute" style={{ ...(playerUp ? { left: smallAt, bottom: 16, transform: "scale(0.5)", transformOrigin: "0 100%" } : { left: "50%", bottom: 150 }), width: 0, zIndex: 6, fontSize: 40, lineHeight: 1 }}>
           <span className="px-heart-rise absolute" style={{ left: -110, bottom: 140 }}>💗</span>
           <span className="px-heart-rise absolute" style={{ left: 70, bottom: 170, animationDelay: "-0.5s" }}>💗</span>
           <span className="px-heart-rise absolute" style={{ left: -20, bottom: 210, animationDelay: "-1s" }}>💗</span>
@@ -905,7 +916,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
       {/* ② The parry (0.6–0.9 s): a shield in front of the boss, the attack's sword bounced off with a spark. */}
       {parry === "parry" && (
-        <div data-testid="boss-parry" aria-hidden className="pointer-events-none absolute" style={{ left: "50%", bottom: 190, transform: "translateX(-50%)", zIndex: 5, fontSize: 64, lineHeight: 1 }}>
+        <div data-testid="boss-parry" aria-hidden className="pointer-events-none absolute" style={{ ...(playerUp ? { left: smallAt, bottom: 30, transform: "translateX(-50%) scale(0.5)", zIndex: 8 } : { left: "50%", bottom: 190, transform: "translateX(-50%)", zIndex: 5 }), fontSize: 64, lineHeight: 1 }}>
           <span>🛡️</span>
           <span className="absolute" style={{ left: 70, top: -40, fontSize: 48 }}>⚔️</span>
           <span className="absolute text-[var(--warn)]" style={{ left: 52, top: -8, fontSize: 32 }}>✦</span>
@@ -914,8 +925,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={wall || sortWall ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
-          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall ? "wall" : "big"} onSecond={onClockSecond} paused={clockPaused} />
+        <div className="absolute" style={wall || sortWall || playerUp ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
+          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall || playerUp ? "wall" : "big"} onSecond={onClockSecond} paused={clockPaused} />
         </div>
       )}
       {/* Centred under the monster; a wide boss plate (16-20 hearts, the phase card) starts right of the 地城主 tag (frame
@@ -924,11 +935,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {(cook === null || cook === 0) && !playerUp && nameplate({ left: "50%", bottom: 112, transform: "translateX(min(max(-50%, -256px), calc(468px - 100%)))", zIndex: 5 })}
 
       {/* While a player is up the nameplate rides the dialogue box's top edge, like its 地城主 tag: a longer narration line
-          lifts it with the box instead of the box covering it. Beside a panel player it sits at the box's right end, clear of
-          the player (they end by x 676); with tiles on the wall the countdown pill holds that corner, so it stays centred under
-          the player, a wide boss bar starting right of the tag (x 215). Up to MAX_LINE characters the box keeps two rows (2 px
-          over its one-row height): a longer line (two 20-character team names) would take three and lift the nameplate about
-          40 px over the player, so beside a player it is set smaller, two rows again. */}
+          lifts it with the box instead of the box covering it. It sits left of the small monster at the box's right end (left of
+          the countdown pill too), a wide boss bar ending in … before it reaches the tag (x 224). The narration keeps out of the
+          monster's way: up to BESIDE_LINE characters the box keeps two rows; a longer line would take three and lift the box
+          over the player, so beside a player it is set smaller, two rows again. */}
       <div className="absolute" style={{ left: 18, right: 18, bottom: 12, zIndex: 7 }}>
       {/* After a die's or a lock's caption the narration comes back where it was read to, not from its first line (`read`). */}
       <DialogueBox
@@ -936,10 +946,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         accent={bossScene ? "var(--boss)" : undefined}
         loading={!reveal && !served && !paused && !held && isPending(eventId, narration)}
         lines={sayLines}
-        style={playerUp && sayLines.some((l) => l.length > MAX_LINE) ? { fontSize: 22 } : undefined}
+        style={playerUp ? { paddingRight: besideRoom, ["--more-right" as string]: `${besideRoom - 6}px`, ...(sayLines.some((l) => l.length > BESIDE_LINE) ? { fontSize: 22 } : {}) } : undefined}
         {...(narrating && narration ? { id: narration.eventId, onRead: (count: number) => onRead(narration.eventId, count), voiceLine, read: servedId === narration.eventId ? Math.max(1, typedTo) : typedTo, jump: jump?.eventId === narration.eventId ? jump.line : undefined } : {})}
       />
-      {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, ...(tileVideo ? { left: "50%", transform: "translateX(min(max(-50%, -240px), calc(454px - 100%)))" } : { right: 8 }) })}
+      {(cook === null || cook === 0) && playerUp && nameplate({ bottom: `calc(100% - ${PLATE_OVER_BOX}px)`, fontSize: 18, paddingBlock: 0, right: besideRoom, maxWidth: 924 - besideRoom - 206 })}
       </div>
       {pendingRoll?.kind === "kill" && pendingRoll.values ? (
         <KillRollOverlay key={`kill-${pendingRoll.teamId}-${eventId}`} teamName={nameOf(pendingRoll.teamId)} values={pendingRoll.values} />
@@ -2260,7 +2270,7 @@ export default function ScreenPage() {
           <ForkScreen view={game.view} beat={game.forkBeat} left={game.forkLeft} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
         ) : game?.phase === "playing" && !game.intro && !game.initiative && game.eventReveal ? (
           <EventRoomScreen view={game.view} reveal={game.eventReveal} eventId={game.eventId} narration={narration} onRead={(id, count) => markRead(id, { typed: count })} voiceLine={voiceLine} />
-        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} gift={game.checkTwenty?.gift} act={!!game.beatAct} charge={game.chargeBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} bossFinal={game.bossFinal} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} />}
+        ) : game?.phase === "playing" && !game.intro && !game.initiative && <Playing view={game.view} question={game.question} reveal={game.reveal} pendingLock={game.pendingLock ?? null} pendingRoll={game.stageBeat === "kill-defeated" ? null : game.pendingRoll ?? null} stageBeat={game.stageBeat} stageMonster={game.stageMonster} gift={game.checkTwenty?.gift} act={!!game.beatAct} charge={game.chargeBeat} wrongSlots={game.wrongSlots} eventId={game.eventId} narration={narration} phaseCard={game.phaseCard} bossPhaseInfo={game.bossPhaseInfo} bossFinal={game.bossFinal} media={game.media} shownVideo={shownVideo} locked={locked} needsTap={!tapped} onVideoPlaying={onVideoPlaying} onClipEnded={onClipEnded} onClipError={onClipError} onClipDuration={onClipDuration} clipError={game.clipError} answerLeft={game.answerClock?.left} onClockSecond={onClockSecond} clockPaused={disconnected} say={speak} onRead={(id, count) => markRead(id, { typed: count })} onEaten={() => bgm.current?.playCue(EAT_DONE)} onChef={onChef} cuisine={game.cuisine} parry={parry} rage={rageNow(game)} tapTime={tapTime} pickHold={!!game.pickHold} typedTo={typedTo} jump={narrationJump} voiceLine={voiceLine} soundButton={showBgmToggle && !audioRunning} />}
         {game?.phase === "playing" && game.question?.timing && game.view.buzz?.open && !game.reveal && !locked && game.media?.questionId === game.question.id && (
           <TapClockReporter questionId={game.question.id} seq={game.media.seq} timeRef={tapTime} ping={clock.ping} offset={clock.offset} sendRef={sendRef} />
         )}

@@ -238,7 +238,7 @@ body {
   box-shadow: 0 0 0 3px var(--k);
 }
 .px-say .por { position: absolute; left: 12px; top: 8px; background: var(--lav2); box-shadow: 0 0 0 4px var(--k), inset 0 4px 0 #e8defa; }
-.px-say .more { position: absolute; right: 16px; bottom: 6px; font-size: 18px; color: var(--orange); animation: px-blink 0.8s steps(1) infinite; }
+.px-say .more { position: absolute; right: var(--more-right, 16px); bottom: 6px; font-size: 18px; color: var(--orange); animation: px-blink 0.8s steps(1) infinite; }
 
 /* ---------- Motion ---------- */
 @keyframes px-blink { 50% { opacity: 0; } }
