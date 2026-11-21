@@ -55,6 +55,8 @@ describe("bank editor boss filter", () => {
     expect(categoryChips(edited, f, editedCats).find((c) => c.picked)?.count).toBe(3);
     const added = [...qs, q("n")];
     expect(ids(shownList(added, withAdded(f, "n"), cats))).toEqual(["a", "c", "e", "n"]);
+    // A reorder (↑/↓) shows at once: the fixed rows follow live bank order.
+    expect(ids(shownList([qs[4], ...qs.slice(0, 4)], f, cats))).toEqual(["e", "a", "c"]);
   });
 
   it("drops deleted or undone ids, and falls back category first, then difficulty", () => {

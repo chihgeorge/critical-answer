@@ -1349,8 +1349,8 @@ test("on a phone, a save error on a long question scrolls its blank answer box a
 });
 
 // docs/designs/boss-bank-categories.md: a buzzer phase narrowed by category and difficulty.
-// Value: protects=the chip rows, the fixed shown list, ↑/↓ off under a filter, and a search jump resetting the filter;
-// fails_when=a chip shows the wrong rows or count, a filtered row can still move, or a hidden search hit stays hidden;
+// Value: protects=the chip rows, the fixed shown list, ↑/↓ swapping shown rows under a filter, and a search jump resetting the filter;
+// fails_when=a chip shows the wrong rows or count, a filtered ↑ swaps with a hidden row, or a hidden search hit stays hidden;
 // why_new=lib/bank-editor-categories.test.ts covers the rules, nothing drove the page; seam=none; no_claim=a 70-song bank
 test("boss bank filter: category and difficulty chips narrow a buzzer phase; a search jump resets them", async ({ page, request }) => {
   const WORKER = "http://localhost:1996";
@@ -1378,6 +1378,14 @@ test("boss bank filter: category and difficulty chips narrow a buzzer phase; a s
     await categories.getByRole("button", { name: /^動漫 · 3$/ }).click();
     await expect(categories.getByRole("button", { name: /動漫 · 3/ })).toHaveAttribute("aria-pressed", "true");
     await expect(rows(phase)).toHaveCount(3);
+    // ↑ under a filter swaps f-a2 with f-a1, the previous 動漫 song, past the hidden 電影 one: it becomes 第 1 題.
+    const a2 = page.getByTestId("question-f-a2");
+    await a2.getByRole("button", { name: /的更多動作$/ }).click();
+    await a2.getByRole("button", { name: "↑ 上移" }).click();
+    await expect(rows(phase).first()).toHaveAttribute("data-testid", "question-f-a2");
+    await expect(rows(phase)).toHaveCount(3);
+    await expect(a2.getByText("第 1 題", { exact: true })).toBeVisible();
+    await expect(page.getByTestId("question-f-a1").getByText("第 3 題", { exact: true })).toBeVisible();
     await phase.getByTestId("bank-filter-difficulty").getByRole("button", { name: /^難度 1 · 1$/ }).click();
     await expect(rows(phase)).toHaveCount(1);
     const only = page.getByTestId("question-f-a2");
