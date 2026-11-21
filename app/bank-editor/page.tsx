@@ -1397,7 +1397,7 @@ function MediaPicker({
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
   const abort = useRef<AbortController | null>(null);
   /** The file just uploaded, played from this browser to check it (not from R2). */
-  const [local, setLocal] = useState<{ url: string; name: string; size: number; kind: UploadKind } | null>(null);
+  const [local, setLocal] = useState<{ key: string; url: string; name: string; size: number; kind: UploadKind } | null>(null);
   const [note, setNote] = useState("");
   useEffect(() => () => {
     if (local) URL.revokeObjectURL(local.url);
@@ -1437,7 +1437,7 @@ function MediaPicker({
       const kind = kindOfType(contentType);
       // The server's sniffing decides the kind: a video picked under 聲音 lands under 影片.
       if (kind !== tab) setNote(`這是${UPLOAD[kind].name}檔，已放到「${UPLOAD[kind].name}」`);
-      setLocal(kind === "image" ? null : { url: URL.createObjectURL(file), name: file.name, size: file.size, kind });
+      setLocal(kind === "image" ? null : { key, url: URL.createObjectURL(file), name: file.name, size: file.size, kind });
       onChange({ kind, value: key });
     } catch (err) {
       setError(err instanceof Error ? err.message : "上傳失敗");
@@ -1549,8 +1549,8 @@ function MediaPicker({
         {current.kind !== "image" && !uploading && !current.value && (
           <span className="text-[12px] text-black/60">影片用 MP4（H.264／AAC），聲音用 M4A 或 MP3，每個檔案 25 MB 以內。</span>
         )}
-        {current.value && !uploading && (local && local.kind === current.kind ? (
-          <FilePreview {...local} />
+        {current.value && !uploading && (local?.key === current.value ? (
+          <FilePreview url={local.url} name={local.name} size={local.size} kind={local.kind} />
         ) : (
           // A saved upload: only an open question renders this, so a closed list fetches nothing (key: a new file starts over).
           <FilePreview key={current.value} url={`${bankImageApiBase()}?key=${encodeURIComponent(current.value)}`} kind={current.kind as UploadKind} />
@@ -1695,11 +1695,12 @@ function FilePreview({ url, name, size, kind }: { url: string; name?: string; si
     // An HEVC or other codec this browser can't decode: no picture, though the container passed the server.
     if (el instanceof HTMLVideoElement && el.videoWidth === 0) setBroken("codec");
   };
-  const missing = () => setBroken("missing");
+  // A local file that fails is one this browser cannot decode; a saved one that fails is most likely gone.
+  const missing = () => setBroken(name === undefined ? "missing" : "codec");
   if (broken === "missing") {
     return (
       <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
-        讀不到這個{UPLOAD[kind].name}檔：可能已經刪掉、還沒存，或網路不通，請重新上傳
+        讀不到這個{UPLOAD[kind].name}檔：可能已經被清掉，或網路不通；重新整理還是讀不到就重新上傳
       </span>
     );
   }

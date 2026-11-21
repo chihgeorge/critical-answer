@@ -139,7 +139,8 @@ async function readCapped(body: ReadableStream<Uint8Array>, max: number, declare
 function mediaRedirect(key: string | null, base: string | undefined, cors: HeadersInit): Response {
   if (!key || !UUID_RE.test(key)) return new Response("Bad key", { status: 400, headers: cors });
   if (!base || base.includes("REPLACE-ME")) return new Response("伺服器沒設 R2_PUBLIC_BASE_URL", { status: 503, headers: cors });
-  return new Response(null, { status: 302, headers: { ...cors, Location: `${base}/${key}` } });
+  // A key's bytes never change; an hour (not forever) so a moved bucket's new base takes over the same day.
+  return new Response(null, { status: 302, headers: { ...cors, Location: `${base}/${key}`, "Cache-Control": "private, max-age=3600" } });
 }
 
 /** Owner-only image/video/audio upload for the question bank. POST a raw body (any of the allowed
