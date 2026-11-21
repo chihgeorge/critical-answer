@@ -448,8 +448,8 @@ body {
 .px-opt.wall > i { max-width: 38%; font-size: 20px; }
 /* A video question's 280px tile: 30% keeps a nine-character option on its two lines. */
 .px-opt.wall.narrow > i { max-width: 30%; }
-/* The TV tile is a fixed 62px high: long option text stops at two lines. */
-.px-opt.wall > span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* The TV tile is a fixed height: the screen page shrinks the text (TILE_SIZES) until all of it fits inside. */
+.px-opt.wall > span { max-height: 100%; overflow: hidden; }
 .px-opt.sel { background: var(--danger); color: #fff; box-shadow: inset 0 -6px 0 var(--wrong); }
 .px-opt.lock { background: var(--turn); box-shadow: inset 0 -5px 0 var(--turn2); outline: 4px solid var(--turn2); outline-offset: 2px; }
 .px-opt.ok { background: var(--ok); color: var(--k); box-shadow: inset 0 -5px 0 var(--ok2); outline: 4px solid #fff; outline-offset: 2px; }

@@ -31,7 +31,7 @@ import { dimVisible, playHostEffect, type HostFxLook } from "@/lib/host-fx";
 import { CLASS_FX_MS, CLASS_FX_TEXT, classFxFor, playClassFx, type ClassFx, type ClassFxLook } from "@/lib/class-fx";
 import { AnswerClock } from "@/components/answer-clock";
 import { memoryLine } from "@/lib/memory-copy";
-import { fitQuestionSize } from "@/lib/question-fit";
+import { fitQuestionSize, TILE_SIZES } from "@/lib/question-fit";
 import { ANSWER_WARN_SECONDS } from "@/lib/answer-clock";
 import { antiCheatBanner, bossHpBanner, IN_LOBBY, nextTransition, UNSEEN, type CheatSeen, type Transition } from "@/lib/transitions";
 import { TransitionOverlay } from "@/components/transition-overlay";
@@ -214,12 +214,35 @@ const TILE_H = 66;
 const tileSpot = (i: number, narrow?: boolean) =>
   narrow ? { left: i % 2 ? 658 : 22, top: TILE_SPOTS[i].top, width: 280 } : { ...TILE_SPOTS[i], width: 316 };
 
+/** Every wall tile's text at one size, so the tiles look even: the largest of TILE_SIZES at which each tile shows
+ * its whole text (globals.css caps the text at the tile's height). Written straight to the DOM like the question's size. */
+function useFitTiles() {
+  useLayoutEffect(() => {
+    const spans = [...document.querySelectorAll<HTMLElement>(".px-opt.wall > span")];
+    if (!spans.length) return;
+    const fit = () =>
+      fitQuestionSize((px) => {
+        for (const s of spans) s.style.fontSize = `${px}px`;
+        // Cubic 11's glyphs poke 1–2 px past a line-height-1 box; a cut-off line overflows by a whole line.
+        return Math.max(...spans.map((s) => s.scrollHeight - s.clientHeight)) - px / 4;
+      }, 0, TILE_SIZES);
+    fit();
+    if (document.fonts?.status === "loaded") return;
+    let live = true;
+    void document.fonts?.ready.then(() => live && fit());
+    return () => {
+      live = false;
+    };
+  });
+}
+
 /**
  * The option tiles on the wall (docs/designs/phone-answering.md D1, D8, D9): plain while the team
  * thinks, 🔒 during the beat, the wrong pick red while the team decides, the answer green on a
  * correct reveal. Eliminated options are the grey ✕ 答錯 tile; a mage's removal (`magic`) is grey with no label (D13=A).
  */
 function WallOptions({ options, gone, magic, lock, wrong, correct, teamName, narrow }: { options: string[]; gone: number[]; magic: number[]; lock: LockedOption | null; wrong: WrongAnswer | null; correct: number | null; teamName: string; narrow?: boolean }) {
+  useFitTiles();
   return (
     <>
       {options.slice(0, TILE_SPOTS.length).map((opt, i) => {
@@ -289,6 +312,7 @@ function sortTiles(question: PublicQuestion | null, reveal: AnswerReveal | null,
 
 /** Numbered 1–4 like the phone's rows; after a lock, tiles follow the submitted order. */
 function SortWall({ tiles, narrow }: { tiles: SortTile[]; narrow?: boolean }) {
+  useFitTiles();
   return (
     <>
       {tiles.slice(0, TILE_SPOTS.length).map((t, i) => (

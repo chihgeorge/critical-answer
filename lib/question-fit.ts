@@ -9,3 +9,6 @@ export function fitQuestionSize(bottomAt: (size: number) => number, limit: numbe
   for (const size of sizes) if (bottomAt(size) <= limit) return size;
   return sizes[sizes.length - 1];
 }
+
+/** The TV wall's option-tile sizes, largest first: 24 px fits two lines in a 66 px tile, 12 px four. */
+export const TILE_SIZES = [24, 22, 20, 18, 16, 14, 12];
