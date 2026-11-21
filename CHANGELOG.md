@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.115.0.0] - 2026-11-21
+
+### Added
+- Big screen: an explanation video (an uploaded video or an Instagram explanation) covers the whole stage while it plays at the reveal. It plays to the end of the file and stays big on its last frame: only the host shrinks it back (⏸, Instagram's ⏹, a die roll, the next question). YouTube and audio explanations and a timing question's reveal keep their usual size.
+
 ## [0.114.0.0] - 2026-11-21
 
 ### Added
