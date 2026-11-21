@@ -197,6 +197,28 @@ test("uploaded video: a file that fails tells the host, ▶ loads it again, and 
   await expect(host.getByTestId("host-reveal-clip-error")).toContainText("大螢幕：這支影片放不出來，按 ▶ 再試一次");
 });
 
+// Value: protects=on an uploaded-video sort question (the player stands between the tile columns) the sneak banner keeps
+// off the player and the four tiles; fails_when=the banner goes back into the question panel, where the panel grows past
+// its fit and the player covers the banner's lower half (QA 2026-11-21); seam=the bucket answers 404, so the player shows
+// its error box in the same frame; no_claim=a YouTube clip (same tileVideo branch) and the perfect sneak's colour.
+test("uploaded-video sort question: the sneak banner keeps off the player and the tiles", async ({ browser, request }) => {
+  await seedRoom0(request, [
+    { kind: "sort", id: "file-sort-sneak", content: { kind: "video", value: FILE_KEY }, prompt: "這四首歌依發行年份由舊到新排序", items: ["甲", "乙", "丙", "丁"] },
+  ]);
+  const { host, screen, team } = await room(browser);
+  await team.getByRole("button", { name: /盜賊/ }).click();
+  await startGame(host);
+  await expect(team.getByText("輪到我們了！")).toBeVisible();
+  await team.getByRole("button", { name: /偷襲：先擲偷襲骰/ }).click(); // E2E_DIE: 10 arms it
+
+  const sneak = screen.getByTestId("screen-sneak");
+  await expect(sneak).toBeVisible({ timeout: 5000 }); // pregate-literal: timeout=5000 own wait, the sneak die's 2 s beat
+  const boxes = [(await screen.getByTestId("file-player").boundingBox())!];
+  for (let i = 0; i < 4; i++) boxes.push((await screen.getByTestId(`wall-sort-${i}`).boundingBox())!);
+  const a = (await sneak.boundingBox())!;
+  for (const b of boxes) expect(a.x + a.width <= b.x || b.x + b.width <= a.x || a.y + a.height <= b.y || b.y + b.height <= a.y).toBe(true);
+});
+
 // Value: protects=an Instagram explanation: the reveal embeds the post on the big screen only, ▶ asks someone at the
 // screen to click it, the click is noticed, and ⏸ reloads the embed; fails_when=the iframe is missing or points
 // elsewhere, the click hint never shows or never clears, or the phone embeds it; why_new=no e2e used instagram;

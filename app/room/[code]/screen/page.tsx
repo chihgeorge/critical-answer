@@ -485,11 +485,14 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // Its result replaces the DC once the die's beat is over (the record shows then).
   // A natural 1 throws the team out before any question shows: the 1 stands in the same pill as every check result.
   const dcChip = stageBeat === "thrown-out" ? NATURAL_ONE_CHIP : stageBeat === "check-twenty" || persuadedRoll ? NATURAL_TWENTY_CHIP : dcTarget ? checkChip(dcTarget, pendingRoll?.kind === "check" ? undefined : check) : undefined;
+  // A video question with option or sort tiles: the panel has no room for the player (it would grow over the tiles),
+  // so it stands over the monster between the two tile columns, smaller.
+  const tileVideo = asking && !!(wall || sortWall);
   // On a YouTube question the chips, hints and typed answer stand beside the video, not over it (D14).
   const beside = (
     <>
       {buzzBox}
-      {sneakChip && (
+      {sneakChip && !tileVideo && (
         <div data-testid="screen-sneak" className="px-chip" style={{ ...CHIP, background: turn?.sneakCrit ? "var(--warn)" : "#ff8787" }}>
           {sneakText}
         </div>
@@ -508,9 +511,6 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
     </>
   );
-  // A video question with option or sort tiles: the panel has no room for the player (it would grow over the tiles),
-  // so it stands over the monster between the two tile columns, smaller.
-  const tileVideo = asking && !!(wall || sortWall);
   // The panel grows with its text: where something stands below it (the tiles, the video between them, the chips over
   // the monster, a player in the panel), the question shrinks instead of covering it. Infinity: the panel holds its own
   // media and may grow (an Instagram clip, a timing reveal). Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
@@ -916,6 +916,13 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {tileVideo && video && (
         <div key={video.id} className="absolute" style={{ left: "50%", top: TILE_VIDEO_TOP, transform: "translateX(-50%)", zIndex: 6 }}>
           {player(video, 356, 200)}
+        </div>
+      )}
+      {/* Under the panel the player has the middle: the sneak banner takes the gap left of its top, above tile A
+          (in the panel it grew past the panel's fit and the player covered its lower half, QA 2026-11-21). */}
+      {sneakChip && tileVideo && (
+        <div data-testid="screen-sneak" className="px-chip absolute text-center" style={{ left: 22, top: TILE_VIDEO_TOP, width: 270, zIndex: 6, fontSize: 15, lineHeight: 1.2, letterSpacing: 0, whiteSpace: "normal", padding: "2px 6px", color: "var(--k)", border: "3px solid var(--k)", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787" }}>
+          {sneakText}
         </div>
       )}
 
