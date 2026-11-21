@@ -78,7 +78,8 @@ type MoveTarget = { loc: Location; name: string; count: number; current: boolean
 type ListActions = {
   isOpen: (id: string) => boolean;
   onToggle: (id: string) => void;
-  onShift: (id: string, delta: -1 | 1) => void;
+  /** visible: a filtered list's ids, so the swap skips the rows the filter hides. */
+  onShift: (id: string, delta: -1 | 1, visible?: readonly string[]) => void;
   onCopy: (id: string) => void;
   onMove: (id: string, to: Location) => void;
   targets: (q: BankQuestion) => MoveTarget[];
@@ -537,8 +538,8 @@ export default function BankEditorPage() {
   };
 
   /** 上移／下移: the row's page follows it (a jump), so it stays in view across a page edge. */
-  const shift = (loc: Location, id: string, delta: -1 | 1) => {
-    setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta) : prev));
+  const shift = (loc: Location, id: string, delta: -1 | 1, visible?: readonly string[]) => {
+    setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta, visible) : prev));
     setJump((j) => ({ id, tab: tabOf(loc), seq: (j?.seq ?? 0) + 1 })); // not goTo: a closed row stays closed
   };
 
@@ -580,7 +581,7 @@ export default function BankEditorPage() {
   const listActions = (loc: Location): ListActions => ({
     isOpen,
     onToggle: toggleOpen,
-    onShift: (id, delta) => shift(loc, id, delta),
+    onShift: (id, delta, visible) => shift(loc, id, delta, visible),
     onCopy: (id) => copy(loc, id),
     onMove: (id, to) => moveTo(loc, id, to),
     targets: (q) => moveTargets(loc, q),
@@ -1195,7 +1196,6 @@ function RoomEditor({
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
-  const shiftNoteId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const boss = filter !== undefined;
   // No category pick outside a buzzer phase; a list emptied by deletes falls back (category first, then difficulty).
@@ -1212,6 +1212,8 @@ function RoomEditor({
   const filtered = isFiltered(f);
   const filterLine = loosened ? "篩選裡沒有題目了，已放寬篩選" : filterNote;
   const list = boss ? shownList(questions, f, categoryOf) : questions;
+  // Under a filter ↑/↓ swap with the previous or next shown row (the buzz deals a category's first unplayed song).
+  const rowActions: ListActions = filtered ? { ...actions, onShift: (id, delta) => actions.onShift(id, delta, list.map((q) => q.id)) } : actions;
   const diffChips = boss ? difficultyChips(questions, f, categoryOf) : [];
   const catChips = usesCategories ? categoryChips(questions, f, categoryOf) : [];
   const jumpPage = (j: Jump | null) => {
@@ -1287,11 +1289,6 @@ function RoomEditor({
             {filterLine}
           </div>
         )}
-        {filtered && (
-          <div id={shiftNoteId} className="text-[13px]">
-            篩選時不能調順序，回到「全部」再調
-          </div>
-        )}
         {boss && (
           <div aria-live="polite" className="sr-only">
             {filtered ? `${pickedLabel}，共 ${list.length} 題` : filterLine ? `已回到全部，共 ${list.length} 題` : ""}
@@ -1326,11 +1323,10 @@ function RoomEditor({
             onUploadImage={onUploadImage}
             problem={problems.get(q.id)}
             open={actions.isOpen(q.id)}
-            last={filtered || start + i === questions.length - 1}
-            upOff={filtered || undefined}
-            shiftNoteId={filtered ? shiftNoteId : undefined}
+            last={start + i === list.length - 1}
+            upOff={start + i === 0}
             tag={boss ? `${usesCategories ? `${categoryOf[q.id] || "未分類"}・` : ""}難度 ${bossDifficulty(q)}` : undefined}
-            actions={actions}
+            actions={rowActions}
             category={categories}
             difficultyHintId={difficulty ? difficultyHintId : undefined}
             answerHintId={categories ? undefined : hintId}
@@ -1872,7 +1868,6 @@ function QuestionRow({
   open,
   last,
   upOff,
-  shiftNoteId,
   tag,
   actions,
 }: {
@@ -1880,12 +1875,10 @@ function QuestionRow({
   number: number;
   /** Shows the whole editor; closed, the row is its one-line summary. */
   open: boolean;
-  /** 下移 is off (default: the group's last question). */
+  /** 下移 is off: the shown list's last row. */
   last: boolean;
-  /** 上移 is off (default: the first question). */
-  upOff?: boolean;
-  /** The line that says why 上移／下移 are off (a filter is on). */
-  shiftNoteId?: string;
+  /** 上移 is off: the shown list's first row. */
+  upOff: boolean;
   /** A boss question's 「類別・難度」 on its summary row. */
   tag?: string;
   actions: ListActions;
@@ -1909,7 +1902,7 @@ function QuestionRow({
       className="flex flex-col gap-1 border-t border-black/10 pt-2 outline-none first:border-t-0 first:pt-0"
       style={problem ? { boxShadow: "0 0 0 4px var(--danger)", padding: 8 } : undefined}
     >
-      <QuestionHeader number={number} question={q} problem={!!problem} open={open} last={last} upOff={upOff ?? number === 1} shiftNoteId={shiftNoteId} tag={tag} actions={actions} onDelete={onDelete} />
+      <QuestionHeader number={number} question={q} problem={!!problem} open={open} last={last} upOff={upOff} tag={tag} actions={actions} onDelete={onDelete} />
       {open && (
       <>
       {problem && (
@@ -2244,7 +2237,7 @@ function QuestionRow({
 
 /** A question's summary row (editor-ux #2): tap to open or close its editor. Its ⋯ menu (#3) moves, copies or
  * deletes it; 移到… lists every pool and phase, the ones a save would refuse disabled with the reason. */
-function QuestionHeader({ number, question: q, problem, open, last, upOff, shiftNoteId, tag, actions, onDelete }: { number: number; question: BankQuestion; problem: boolean; open: boolean; last: boolean; upOff: boolean; shiftNoteId?: string; tag?: string; actions: ListActions; onDelete: () => void }) {
+function QuestionHeader({ number, question: q, problem, open, last, upOff, tag, actions, onDelete }: { number: number; question: BankQuestion; problem: boolean; open: boolean; last: boolean; upOff: boolean; tag?: string; actions: ListActions; onDelete: () => void }) {
   const [menu, setMenu] = useState<"closed" | "actions" | "move">("closed");
   const s = questionSummary(q);
   const act = (f: () => void) => () => {
@@ -2295,8 +2288,8 @@ function QuestionHeader({ number, question: q, problem, open, last, upOff, shift
       </div>
       {menu === "actions" && (
         <div role="group" aria-label={`第 ${number} 題的動作`} className="flex flex-wrap gap-2">
-          <PixelButton className={item} disabled={upOff} aria-describedby={shiftNoteId} onClick={act(() => actions.onShift(q.id, -1))}>↑ 上移</PixelButton>
-          <PixelButton className={item} disabled={last} aria-describedby={shiftNoteId} onClick={act(() => actions.onShift(q.id, 1))}>↓ 下移</PixelButton>
+          <PixelButton className={item} disabled={upOff} onClick={act(() => actions.onShift(q.id, -1))}>↑ 上移</PixelButton>
+          <PixelButton className={item} disabled={last} onClick={act(() => actions.onShift(q.id, 1))}>↓ 下移</PixelButton>
           <PixelButton className={item} onClick={() => setMenu("move")}>⇄ 移到…</PixelButton>
           <PixelButton className={item} onClick={act(() => actions.onCopy(q.id))}>⧉ 複製</PixelButton>
           <PixelButton variant="flee" className={item} onClick={act(onDelete)}>刪除這題</PixelButton>

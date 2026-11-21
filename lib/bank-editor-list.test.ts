@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { copyQuestion, listNumber, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreQuestion, restoreToSaved, saveAsLeftover, searchBank, SEARCH_LIMIT, shiftQuestion, withQuestions, type Location } from "./bank-editor-list";
 import { bankProblems } from "./bank-editor-problems";
+import { NO_FILTER, pick, shownList } from "./bank-editor-categories";
 import { BANK } from "./question-bank-data";
 import { parseBank, type Bank, type BankQuestion } from "./question-bank";
 
@@ -103,6 +104,31 @@ describe("bank editor list: move, shift, copy, delete and undo (editor-ux #3)", 
     const easy = { ...text("boss-easy", "易"), difficulty: 1 as const };
     const boss = { ...b, boss: { ...b.boss, phases: [{ ...b.boss.phases[0], questions: [hard, easy] }, ...b.boss.phases.slice(1)] } };
     expect(questionsAt(shiftQuestion(boss, phase(0), "boss-easy", -1), phase(0)).map((q) => q.id)).toEqual(["boss-easy", "boss-hard"]);
+  });
+
+  it("under a filter, swaps with the previous or next shown question and leaves hidden ones in place", () => {
+    const b = bank();
+    // Bank order: a1(動漫,1) m1(電影,1) a2(動漫,5) m2(電影,1) a3(動漫,1) a4(動漫,1)
+    const qs = [{ ...text("a1", "1"), category: "動漫", difficulty: 1 as const }, { ...text("m1", "2"), category: "電影", difficulty: 1 as const }, { ...text("a2", "3"), category: "動漫", difficulty: 5 as const }, { ...text("m2", "4"), category: "電影", difficulty: 1 as const }, { ...text("a3", "5"), category: "動漫", difficulty: 1 as const }, { ...text("a4", "6"), category: "動漫", difficulty: 1 as const }];
+    const boss = { ...b, boss: { ...b.boss, phases: [b.boss.phases[0], { ...b.boss.phases[1], questions: qs }] } };
+    const cats = Object.fromEntries(qs.map((q) => [q.id, q.category]));
+    const order = (x: Bank) => questionsAt(x, phase(1)).map((q) => q.id);
+    // 動漫 + 難度 1: a1, a3, a4 shown; m1, a2, m2 hidden between a1 and a3.
+    const f = pick(qs, pick(qs, NO_FILTER, "category", "動漫", cats), "difficulty", 1, cats);
+    const shown = shownList(qs, f, cats).map((q) => q.id);
+    expect(shown).toEqual(["a1", "a3", "a4"]);
+    const up = shiftQuestion(boss, phase(1), "a3", -1, shown);
+    expect(order(up)).toEqual(["a3", "m1", "a2", "m2", "a1", "a4"]);
+    expect(order(shiftQuestion(boss, phase(1), "a1", 1, shown))).toEqual(order(up));
+    expect(order(shiftQuestion(boss, phase(1), "a3", 1, shown))).toEqual(["a1", "m1", "a2", "m2", "a4", "a3"]);
+    // The first and last shown rows stop, even with hidden rows past them.
+    const tail = { ...boss, boss: { ...boss.boss, phases: [boss.boss.phases[0], { ...boss.boss.phases[1], questions: [...qs, { ...text("m3", "7"), category: "電影" }] }] } };
+    expect(shiftQuestion(boss, phase(1), "a1", -1, shown)).toBe(boss);
+    expect(shiftQuestion(tail, phase(1), "a4", 1, shown)).toBe(tail);
+    // The fixed shown list follows the new bank order: same rows, none hidden or doubled, numbered by bank place.
+    const after = questionsAt(up, phase(1));
+    expect(shownList(after, f, cats).map((q) => q.id)).toEqual(["a3", "a1", "a4"]);
+    expect(listNumber(up, phase(1), "a1")).toBe(5);
   });
 
   it("copies right after with a new id that no question has, as a deep copy", () => {

@@ -111,11 +111,14 @@ export function moveQuestion(bank: Bank, from: Location, id: string, to: Locatio
   return withQuestions(without, to, [...questionsAt(without, to), placed(q, from, to)]);
 }
 
-/** The bank with question `id` one place up (-1) or down (+1) in its group; unchanged at either end. */
-export function shiftQuestion(bank: Bank, loc: Location, id: string, delta: -1 | 1): Bank {
+/** The bank with question `id` one place up (-1) or down (+1) in its group; unchanged at either end. With `visible`
+ * (a filtered list's ids), it swaps places with the previous or next visible question; hidden ones keep their places. */
+export function shiftQuestion(bank: Bank, loc: Location, id: string, delta: -1 | 1, visible?: readonly string[]): Bank {
   const list = questionsAt(bank, loc);
   const i = list.findIndex((q) => q.id === id);
-  const j = i + delta;
+  const keep = visible && new Set(visible);
+  let j = i + delta;
+  while (keep && i >= 0 && j >= 0 && j < list.length && !keep.has(list[j].id)) j += delta;
   if (i < 0 || j < 0 || j >= list.length) return bank;
   const next = [...list];
   [next[i], next[j]] = [next[j], next[i]];

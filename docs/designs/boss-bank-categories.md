@@ -20,10 +20,11 @@ checking one category meant paging through all of them.
   same number as the pager. A row whose one chip holds every question is hidden.
 - **Categories** follow the game's rule, now one function (`bankCategoryOf` in `lib/question-bank.ts`, used by the
   room): once any question has a category, every timing question is 卡點題. A note says so under the row.
-- **Fixed list.** A pick takes the matching ids in their order then and opens page 1. Edits under the filter neither
-  hide nor move a row; an added or copied question joins the list. ↑ / ↓ are off under a filter, with one line saying
-  why.
-- **↑ / ↓** move a question one bank place, across difficulties (the plain `shiftQuestion`).
+- **Fixed list.** A pick takes the matching ids and opens page 1; the list shows them in live bank order. Edits under
+  the filter neither hide nor move a row; an added or copied question joins the list.
+- **↑ / ↓** move a question one bank place, across difficulties (`shiftQuestion`). Under a filter they swap with the
+  previous or next shown question and hidden questions keep their places (the buzz deals a category's first unplayed
+  song in bank order, so the owner orders a category from its filter); off on the list's first / last row.
 - **Resets.** A search, save-error or undo jump to a hidden question resets the phase to 全部 with 「已回到「全部」，才看
   得到那一題」. An emptied filter loosens category first, then difficulty. Filters live in the page per phase index and
   reset on a new load or a phase count change; they survive tab switches.

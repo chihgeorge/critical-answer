@@ -11,7 +11,7 @@ export interface PhaseFilter {
   difficulty: Difficulty | null;
   /** null: 全部; UNCATEGORIZED: 未分類. */
   category: string | null;
-  /** The ids taken at the last chip pick, in their order then; null while both rows are 全部 (the live list). */
+  /** The ids taken at the last chip pick; null while both rows are 全部 (the live list). */
   shown: string[] | null;
   page: number;
 }
@@ -27,12 +27,13 @@ const categoryOfQ = (q: BankQuestion, categoryOf: CategoryOf): string => categor
 const matches = (q: BankQuestion, difficulty: Difficulty | null, category: string | null, categoryOf: CategoryOf) =>
   (difficulty === null || bossDifficulty(q) === difficulty) && (category === null || categoryOfQ(q, categoryOf) === category);
 
-/** The rows on screen, in order: the live bank order under 全部, else the ids fixed at the pick (minus any gone). */
+/** The rows on screen, in bank order: every question under 全部, else the ids fixed at the pick (minus any gone), so
+ * a ↑/↓ under a filter shows right away. */
 export function shownList(questions: readonly BankQuestion[], f: PhaseFilter, categoryOf: CategoryOf): BankQuestion[] {
   if (!isFiltered(f)) return [...questions];
   if (!f.shown) return questions.filter((q) => matches(q, f.difficulty, f.category, categoryOf));
-  const byId = new Map(questions.map((q) => [q.id, q]));
-  return f.shown.flatMap((id) => byId.get(id) ?? []);
+  const shown = new Set(f.shown);
+  return questions.filter((q) => shown.has(q.id));
 }
 
 /** Picking a chip (or 全部) takes the matching ids again and opens page 1. */
