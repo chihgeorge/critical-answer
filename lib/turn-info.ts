@@ -2,7 +2,7 @@
 // SpectatorView, so /screen and the /play mini broadcast never disagree.
 
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
-import type { PublicQuestion, StateMessage } from "./protocol";
+import type { AnswerReveal, PublicQuestion, StateMessage } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
 import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
@@ -180,4 +180,13 @@ export function turnLive(s: HoldFields & Pick<StateMessage, "phase" | "view" | "
  * so a (re)connect into its own turn stays silent. */
 export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
   return live && wasLive === false;
+}
+
+/** The reveal's explanation video covers the big screen's stage while its player really plays (`playingFor`: the
+ * question whose player last said so; the host's `media.state` stays "playing" after a clip ends by itself), and goes
+ * back when it pauses or ends or the reveal moves on. Only an uploaded video and an Instagram clip: YouTube picks its
+ * quality for the small box and would look blurry. `held`: a timing reveal, a die's banner or an audio-only file. */
+export function explanationBig(reveal: Pick<AnswerReveal, "questionId" | "explanation"> | null, playingFor: string | null, held: boolean): boolean {
+  const kind = reveal?.explanation?.kind;
+  return !held && !!reveal && playingFor === reveal.questionId && (kind === "file" || kind === "instagram");
 }

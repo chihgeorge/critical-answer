@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { chargeFailText, describeTurn, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, hostNoQuestionText, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
+import { chargeFailText, describeTurn, explanationBig, FALLBACK_MONSTER, ownReveal, floorLabel, hostAnswerShown, hostNoQuestionText, monsterLook, nextUp, pausedOffline, PHASE_HUE_STEP, revealStage, turnLive, turnOpened } from "./turn-info";
 import type { SpectatorView } from "./game-state";
 import type { PublicQuestion } from "./protocol";
 
@@ -269,5 +269,23 @@ describe("hostNoQuestionText", () => {
   });
   it("a live media question with no prompt is not 「準備中」", () => {
     expect(hostNoQuestionText({ question: { id: "img-01" }, stageBeat: "check-success" })).toBe("（這題沒有文字，看大螢幕）");
+  });
+});
+
+describe("explanationBig", () => {
+  const file = { questionId: "q1", explanation: { kind: "file" } } as const;
+  // Value: protects=the explanation covers the stage only while its own player plays; fails_when=a YouTube explanation,
+  // a stale playing flag from another question, or a held reveal (timing, die, audio only) enlarges it
+  it("enlarges an uploaded or Instagram explanation while it plays", () => {
+    expect(explanationBig(file as never, "q1", false)).toBe(true);
+    expect(explanationBig({ questionId: "q1", explanation: { kind: "instagram" } } as never, "q1", false)).toBe(true);
+  });
+  it("stays small otherwise", () => {
+    expect(explanationBig(file as never, null, false)).toBe(false);
+    expect(explanationBig(file as never, "q0", false)).toBe(false);
+    expect(explanationBig(file as never, "q1", true)).toBe(false);
+    expect(explanationBig(null, "q1", false)).toBe(false);
+    expect(explanationBig({ questionId: "q1", explanation: { kind: "youtube", value: "x" } } as never, "q1", false)).toBe(false);
+    expect(explanationBig({ questionId: "q1" }, "q1", false)).toBe(false);
   });
 });

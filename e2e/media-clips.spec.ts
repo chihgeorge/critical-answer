@@ -227,8 +227,14 @@ test("Instagram explanation: the reveal embeds it on the big screen, ▶ asks fo
   await player.locator("iframe").focus();
   await expect(player).toHaveAttribute("data-clicked", "true");
   await expect(screen.getByTestId("instagram-click-hint")).toHaveCount(0);
+  // Playing, it covers the whole stage (as tall as the letterboxed 16:9 stage), over the narration box.
+  const box = screen.getByTestId("screen-instagram-box");
+  await expect(box).toHaveAttribute("data-big", "true");
+  const vp = screen.viewportSize()!;
+  expect(Math.abs((await box.boundingBox())!.height - Math.min(vp.height, (vp.width * 9) / 16))).toBeLessThan(2);
 
   await host.getByRole("button", { name: "暫停" }).click();
   await expect(player).not.toHaveAttribute("data-clicked", "true");
+  await expect(box).not.toHaveAttribute("data-big");
   await expect(host.getByText("大螢幕（IG 詳解）：已停止")).toBeVisible();
 });
