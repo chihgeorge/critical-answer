@@ -183,6 +183,9 @@ test("a video question shows its picture, a video the API cannot load says so, a
   await expect(team.getByText("輪到我們了！")).toBeVisible();
   await checkLanded(team); // check first, question after: the question and its media show once the check is rolled
   await expect(screen.getByTestId("youtube-player")).toBeVisible();
+  // With a player up the monster stands, half size, at the dialogue box's right end: below the question panel, not behind it.
+  const panelBottom = await screen.getByTestId("youtube-player").evaluate((el) => el.closest(".px-stone")!.getBoundingClientRect().bottom);
+  expect((await screen.getByTestId("screen-monster").boundingBox())!.y).toBeGreaterThan(panelBottom);
   await expect(screen.getByTestId("music-card")).toHaveCount(0);
   await expect(team.getByTestId("play-media-hint")).toHaveText("▶ 看大螢幕");
   await expect(host.getByText("▶ 影片題（看大螢幕）")).toBeVisible();
