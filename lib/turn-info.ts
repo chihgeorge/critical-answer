@@ -185,8 +185,9 @@ export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
 /** The reveal's explanation video covers the big screen's stage while its player really plays (`playingFor`: the
  * question whose player last said so; the host's `media.state` stays "playing" after a clip ends by itself), and goes
  * back when it pauses or ends or the reveal moves on. Only an uploaded video and an Instagram clip: YouTube picks its
- * quality for the small box and would look blurry. `held`: a timing reveal, a die's banner or an audio-only file. */
+ * quality for the small box and would look blurry. An audio-only file keeps its music card small. `held`: a timing
+ * reveal or a die's banner. */
 export function explanationBig(reveal: Pick<AnswerReveal, "questionId" | "explanation"> | null, playingFor: string | null, held: boolean): boolean {
-  const kind = reveal?.explanation?.kind;
-  return !held && !!reveal && playingFor === reveal.questionId && (kind === "file" || kind === "instagram");
+  const e = reveal?.explanation;
+  return !held && !!reveal && playingFor === reveal.questionId && ((e?.kind === "file" && !e.audioOnly) || e?.kind === "instagram");
 }

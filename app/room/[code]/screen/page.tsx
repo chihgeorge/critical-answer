@@ -493,8 +493,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
     onVideoPlaying(playing);
     setPlayingFor(playing ? (reveal?.questionId ?? null) : null);
   };
-  const audioOnly = video?.content?.kind === "file" && !!video.content.audioOnly;
-  const big = explanationBig(reveal, playingFor, !!tapReveal || !!pendingRoll || audioOnly);
+  const big = explanationBig(reveal, playingFor, !!tapReveal || !!pendingRoll);
   // Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial music
   // answer has its own 「對 k/n」 line above, so it gets no 「答對」. Beside a player (under it there is no room) at 20 px.
   const scored = reveal && (reveal.caught || (reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right)));

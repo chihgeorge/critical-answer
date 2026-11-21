@@ -287,5 +287,6 @@ describe("explanationBig", () => {
     expect(explanationBig(null, "q1", false)).toBe(false);
     expect(explanationBig({ questionId: "q1", explanation: { kind: "youtube", value: "x" } } as never, "q1", false)).toBe(false);
     expect(explanationBig({ questionId: "q1" }, "q1", false)).toBe(false);
+    expect(explanationBig({ questionId: "q1", explanation: { kind: "file", audioOnly: true } }, "q1", false)).toBe(false);
   });
 });
