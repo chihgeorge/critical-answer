@@ -59,13 +59,13 @@ describe("bank editor: where a question is", () => {
     expect(locateQuestion(b, "p2-11")).toMatchObject({ tab: 2, index: 11, where: "難度 2 第 12 題" });
     expect(locateQuestion(b, "boss-3")).toMatchObject({ tab: "boss", index: 1, where: "首領第 2 階段第 2 題" });
     expect(locateQuestion(b, "nope")).toBeNull();
-    // A boss phase is numbered easiest first, as the editor lists it; index stays the bank position.
+    // A boss phase is numbered in bank order (its play order), whatever the difficulty.
     const sorted = bank(twelve(), [{ name: "", rule: "", maxHp: 3, questions: [{ ...text("x", "甲"), difficulty: 5 }, { ...text("y", "乙"), difficulty: 1 }] }]);
-    expect(locateQuestion(sorted, "x")).toMatchObject({ index: 0, where: "首領第 1 階段第 2 題" });
-    expect(locateQuestion(sorted, "y")).toMatchObject({ index: 1, where: "首領第 1 階段第 1 題" });
+    expect(locateQuestion(sorted, "x")).toMatchObject({ index: 0, where: "首領第 1 階段第 1 題" });
+    expect(locateQuestion(sorted, "y")).toMatchObject({ index: 1, where: "首領第 1 階段第 2 題" });
     // The save check names a blank boss question by that same number.
     const blank = bank(twelve(), [{ name: "", rule: "", maxHp: 3, questions: [{ ...text("x", "甲", ""), difficulty: 5 }, { ...text("y", "乙"), difficulty: 1 }] }]);
-    expect(bankProblems(blank).find((p) => p.questionId === "x")?.message).toContain("首領第 1 階段第 2 題");
+    expect(bankProblems(blank).find((p) => p.questionId === "x")?.message).toContain("首領第 1 階段第 1 題");
   });
 });
 

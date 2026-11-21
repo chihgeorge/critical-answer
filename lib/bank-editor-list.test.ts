@@ -44,13 +44,13 @@ describe("bank editor list: search the whole bank", () => {
     expect(searchBank(b, "測果").map((h) => h.questionId)).toEqual(["p2-mc"]);
     expect(searchBank(b, "測歌手")[0]).toMatchObject({ tab: "boss", questionId: "boss-song", where: "首領第 2 階段 第 1 題" });
     expect(searchBank(b, "測這首").map((h) => h.questionId)).toEqual(["boss-song"]);
-    // A boss phase is numbered easiest first: a harder question earlier in the bank comes later in the list.
+    // A boss phase is numbered in bank order, the play order: difficulty does not move a question.
     const hard = { ...text("boss-hard", "測難題"), difficulty: 5 as const };
     const easy = { ...text("boss-easy", "測易題"), difficulty: 1 as const };
     const sorted = { ...b, boss: { ...b.boss, phases: [{ ...b.boss.phases[0], questions: [hard, easy] }, b.boss.phases[1]] } };
-    expect(listNumber(sorted, phase(0), "boss-easy")).toBe(1);
-    expect(listNumber(sorted, phase(0), "boss-hard")).toBe(2);
-    expect(searchBank(sorted, "測難題")[0].where).toBe("首領第 1 階段 第 2 題");
+    expect(listNumber(sorted, phase(0), "boss-hard")).toBe(1);
+    expect(listNumber(sorted, phase(0), "boss-easy")).toBe(2);
+    expect(searchBank(sorted, "測難題")[0].where).toBe("首領第 1 階段 第 1 題");
     expect(listNumber(b, pool(2), "p2-mc")).toBe(2);
     expect(searchBank({ ...b, pools: { ...b.pools, 2: [text("x", "Pokemon 問題")] } }, "POKEMON")).toHaveLength(1);
     expect(searchBank(b, "   ")).toEqual([]);

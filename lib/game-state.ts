@@ -146,7 +146,7 @@ export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 3;
 /** What hitting the boss pays per question difficulty 1–5 (issue #371). */
 export const BOSS_HIT_REWARDS = [5, 10, 15, 20, 25] as const;
 
-/** Easiest first, ties kept in the given order (a stable sort): the boss order newGame deals and the bank editor shows. */
+/** Easiest first, ties kept in the given order (a stable sort): the boss order createGame deals with 首領題隨機順序 on. */
 export const byDifficulty = <T>(items: readonly T[], difficultyOf: (item: T) => number): T[] =>
   [...items].sort((a, b) => difficultyOf(a) - difficultyOf(b));
 
@@ -408,7 +408,7 @@ export interface BuzzState {
 export interface GameConfig {
   /** Score that lets the first team into the boss room: one of BOSS_THRESHOLDS, picked in the lobby (default 15). */
   bossThreshold: number;
-  /** 首領題隨機順序 (lobby): each boss phase's questions shuffled within one difficulty. Absent keeps the bank order. */
+  /** 首領題隨機順序 (lobby): each boss phase shuffled within one difficulty, easiest first. Absent keeps the bank order, ignoring difficulty. */
   bossShuffle?: true;
   /** 出題順序：照題庫順序 (lobby, the default): room questions dealt in bank order within their difficulty. Absent deals
    * at random: the old behaviour, so a save from before the setting keeps drawing the way its game started. */
@@ -808,7 +808,7 @@ export function createGame(
   /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left; in a boss
    * phase, last within their difficulty (the owner chose difficulty over freshness). */
   played: string[] = [],
-  /** Boss questions not at the default difficulty (bossDifficulties in lib/question-bank.ts): each phase deals easiest first. */
+  /** Boss questions not at the default difficulty (bossDifficulties in lib/question-bank.ts): the hit reward; under 首領題隨機順序 also easiest first. */
   bossDifficulties: Record<string, Difficulty> = {},
 ): GameState {
   if (teamSeeds.length === 0) {
@@ -822,7 +822,8 @@ export function createGame(
   // seed, which would make a boss phase whose questions were all played last game count as used up at once.
   let used: string[][] = pools.map((ids) => ids.filter((id) => played.includes(id)));
   const freshFirst = (ids: string[]) => [...ids.filter((id) => !played.includes(id)), ...ids.filter((id) => played.includes(id))];
-  // Easiest first; within one difficulty, an answer the last game showed goes last (a stable sort keeps freshFirst's order).
+  // Off: bank order, ignoring difficulty (owner, 2026-11-20). On: shuffled, then easiest first; an answer the last game
+  // showed goes last (within its difficulty when on: a stable sort keeps freshFirst's order).
   const difficulty = (id: string) => (Object.hasOwn(bossDifficulties, id) ? bossDifficulties[id] : DEFAULT_BOSS_DIFFICULTY);
   // Shuffled before the stable sort, so 首領題隨機順序 moves questions only within their difficulty. Off draws no rng.
   const shuffled = (ids: string[]) => {
@@ -833,7 +834,7 @@ export function createGame(
     }
     return a;
   };
-  const bossOrder = (ids: string[]) => byDifficulty(freshFirst(config.bossShuffle ? shuffled(ids) : ids), difficulty);
+  const bossOrder = (ids: string[]) => (config.bossShuffle ? byDifficulty(freshFirst(shuffled(ids)), difficulty) : freshFirst(ids));
   bossQuestionIds = bossOrder(bossQuestionIds);
   laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];

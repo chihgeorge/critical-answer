@@ -4,13 +4,10 @@ import type { BankQuestion } from "./question-bank";
 import {
   NO_FILTER,
   UNCATEGORIZED,
-  canShift,
   categoryChips,
   difficultyChips,
   fallback,
   pick,
-  playOrder,
-  shiftWithinDifficulty,
   shownList,
   withAdded,
 } from "./bank-editor-categories";
@@ -25,9 +22,8 @@ const ids = (list: BankQuestion[]) => list.map((x) => x.id);
 const summary = (chips: { label: string; count: number; picked: boolean }[]) => chips.map((c) => `${c.picked ? "*" : ""}${c.label}:${c.count}`);
 
 describe("bank editor boss filter", () => {
-  it("lists a phase easiest first, ties in bank order, unset difficulty as 3", () => {
-    expect(ids(playOrder(qs))).toEqual(["b", "c", "a", "d", "e"]);
-    expect(ids(shownList(qs, NO_FILTER, cats))).toEqual(["b", "c", "a", "d", "e"]);
+  it("lists a phase in bank order, its play order, whatever the difficulty", () => {
+    expect(ids(shownList(qs, NO_FILTER, cats))).toEqual(["a", "b", "c", "d", "e"]);
   });
 
   it("counts each row's chips under the other row's pick, categories first-seen with 未分類 last", () => {
@@ -51,14 +47,14 @@ describe("bank editor boss filter", () => {
 
   it("keeps the shown rows and their order after an edit under a filter, and adds new ones", () => {
     const f = pick(qs, NO_FILTER, "category", "動漫", cats);
-    expect(ids(shownList(qs, f, cats))).toEqual(["c", "a", "e"]);
+    expect(ids(shownList(qs, f, cats))).toEqual(["a", "c", "e"]);
     // c moves to difficulty 5 and loses its category: it stays, in the same place.
     const edited = qs.map((x) => (x.id === "c" ? { ...x, difficulty: 5 as const, category: undefined } : x));
     const editedCats = { ...cats, c: undefined };
-    expect(ids(shownList(edited, f, editedCats))).toEqual(["c", "a", "e"]);
+    expect(ids(shownList(edited, f, editedCats))).toEqual(["a", "c", "e"]);
     expect(categoryChips(edited, f, editedCats).find((c) => c.picked)?.count).toBe(3);
     const added = [...qs, q("n")];
-    expect(ids(shownList(added, withAdded(f, "n"), cats))).toEqual(["c", "a", "e", "n"]);
+    expect(ids(shownList(added, withAdded(f, "n"), cats))).toEqual(["a", "c", "e", "n"]);
   });
 
   it("drops deleted or undone ids, and falls back category first, then difficulty", () => {
@@ -84,14 +80,5 @@ describe("bank editor boss filter", () => {
     expect(summary(difficultyChips(flat, gone, {}))).toEqual(["全部:2", "難度 3:2", "*難度 5:1"]);
     const goneCat = { ...NO_FILTER, category: "動漫", shown: ["x"] };
     expect(summary(categoryChips([q("x", undefined, "電影"), q("y", undefined, "電影")], goneCat, { x: "電影", y: "電影" }))).toEqual(["全部:2", "電影:2", "*動漫:1"]);
-  });
-
-  it("↑/↓ swap only within one difficulty and leave every other question in place", () => {
-    expect(canShift(qs, "b", -1)).toBe(false); // first of difficulty 1
-    expect(canShift(qs, "c", 1)).toBe(false); // last of difficulty 1
-    expect(canShift(qs, "a", 1)).toBe(true);
-    expect(ids(shiftWithinDifficulty(qs, "a", 1))).toEqual(["d", "b", "c", "a", "e"]);
-    expect(ids(shiftWithinDifficulty(qs, "c", -1))).toEqual(["a", "c", "b", "d", "e"]);
-    expect(ids(shiftWithinDifficulty(qs, "e", 1))).toEqual(ids(qs));
   });
 });

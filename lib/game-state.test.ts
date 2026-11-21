@@ -4,7 +4,6 @@ import {
   addLateTeam,
   createGame,
   byDifficulty,
-  DEFAULT_BOSS_DIFFICULTY,
   serveFeast,
   BOSS_HIT_REWARDS,
   answerQuestion,
@@ -140,28 +139,25 @@ describe("createGame", () => {
     expect(g.revealedQuestionIds).toEqual([]);
   });
 
-  it("deals each boss phase easiest first; within one difficulty, an earlier game's shown answers go last", () => {
+  // Value: protects=boss questions deal in pure bank order with 首領題隨機順序 off (owner, 2026-11-20); fails_when=difficulty
+  // reorders a phase, or a question the last game showed is not dealt last.
+  it("deals each boss phase in bank order, ignoring difficulty; an earlier game's shown answers go last", () => {
     const teams = [{ id: "T0", name: "A" }];
     const later = [{ maxHp: 2, questionIds: ["p2-hard", "p2-easy"] }];
     const marked = { "boss-easy": 2, "boss-easy2": 2, "p2-easy": 1 } as const;
     const g = createGame(teams, ...deck(3, 1, 2), ["boss-hard", "boss-easy", "boss-easy2"], { bossThreshold: 3 }, 2, first, undefined, {}, later, undefined, ["boss-easy"], marked);
-    // Difficulty wins over freshness: the played easy question still comes before the unplayed hard one.
-    expect(g.boss.questionIds).toEqual(["boss-easy2", "boss-easy", "boss-hard"]);
-    expect(g.boss.currentQuestionId).toBe("boss-easy2");
-    expect(g.boss.phases[1].questionIds).toEqual(["p2-easy", "p2-hard"]);
+    expect(g.boss.questionIds).toEqual(["boss-hard", "boss-easy2", "boss-easy"]);
+    expect(g.boss.currentQuestionId).toBe("boss-hard");
+    expect(g.boss.phases[1].questionIds).toEqual(["p2-hard", "p2-easy"]);
     expect(g.bossDifficulties).toEqual(marked);
     expect(createGame(teams, ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first)).not.toHaveProperty("bossDifficulties");
   });
 
-  it("byDifficulty is the base boss order: stable, and what createGame deals with shuffle off and nothing played", () => {
+  it("byDifficulty is stable, easiest first: the order 首領題隨機順序 deals within", () => {
     expect(byDifficulty(["a", "b", "c", "d"], (x) => ({ a: 3, b: 1, c: 3, d: 1 })[x]!)).toEqual(["b", "d", "a", "c"]);
-    const marked = { e1: 2, e2: 2, h1: 4 } as const;
-    const boss = ["m1", "e1", "h1", "e2", "m2"];
-    const g = createGame([{ id: "T0", name: "A" }], ...deck(3, 1, 2), boss, { bossThreshold: 3 }, 2, first, undefined, {}, [], undefined, [], marked);
-    expect(byDifficulty(boss, (id) => (marked as Record<string, number>)[id] ?? DEFAULT_BOSS_DIFFICULTY)).toEqual(g.boss.questionIds);
   });
 
-  it("首領題隨機順序: off keeps the bank order; on shuffles each phase within a difficulty only", () => {
+  it("首領題隨機順序: off keeps the bank order; on shuffles each phase, then deals easiest first", () => {
     const teams = [{ id: "T0", name: "A" }];
     const boss = ["h1", "e1", "e2", "e3", "h2", "h3"];
     const later = [{ maxHp: 2, questionIds: ["p1", "p2", "p3", "p4"] }];
@@ -169,7 +165,7 @@ describe("createGame", () => {
     const played = ["e1", "h3"];
     const make = (config: GameConfig, rng: () => number) => createGame(teams, ...deck(3, 1, 2), boss, config, 2, rng, undefined, {}, later, undefined, played, marked);
     const off = make({ bossThreshold: 3 }, first);
-    expect(off.boss.questionIds).toEqual(["e2", "e3", "e1", "h1", "h2", "h3"]);
+    expect(off.boss.questionIds).toEqual(["h1", "e2", "e3", "h2", "e1", "h3"]);
     expect(off.boss.phases[1].questionIds).toEqual(["p1", "p2", "p3", "p4"]);
     // rng 0 swaps index i with 0 at every step, so the shuffle visibly moves every list.
     const on = make({ bossThreshold: 3, bossShuffle: true }, first);
@@ -567,11 +563,11 @@ describe("boss combat", () => {
     expect(kill).toMatchObject({ bossKilled: true, killBonus: 20, reward: 28 });
   });
 
-  // Value: protects=issue #371: boss questions come easiest first and a hit pays 5/10/15/20/25 by difficulty, an unrated
-  // one as the default 3 (owner, 2026-11-18); fails_when=a hit pays the flat bank hitReward, or an unrated question is not 15.
-  it("boss hits pay by the question's difficulty, easiest first: 5, then an unrated question's 15, then 25", () => {
+  // Value: protects=issue #371: a boss hit pays 5/10/15/20/25 by difficulty, an unrated one as the default 3 (owner,
+  // 2026-11-18); fails_when=a hit pays the flat bank hitReward, or an unrated question is not 15.
+  it("boss hits pay by the question's difficulty: 5, then an unrated question's 15, then 25", () => {
     expect(BOSS_HIT_REWARDS).toEqual([5, 10, 15, 20, 25]);
-    let g = createGame([{ id: "T0", name: "A" }], ...deck(1), ["boss-5", "boss-u", "boss-1"], { bossThreshold: 0 }, 5, first, 10, {}, [], undefined, [], { "boss-1": 1, "boss-5": 5 });
+    let g = createGame([{ id: "T0", name: "A" }], ...deck(1), ["boss-1", "boss-u", "boss-5"], { bossThreshold: 0 }, 5, first, 10, {}, [], undefined, [], { "boss-1": 1, "boss-5": 5 });
     const paid: number[] = [];
     for (const id of ["boss-1", "boss-u", "boss-5"]) {
       expect(g.boss.currentQuestionId).toBe(id);
