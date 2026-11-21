@@ -1092,13 +1092,17 @@ export class DungeonRoom {
     const insta = this.reveal?.explanation?.kind === "instagram" && q.explanation?.kind === "instagram";
     // An uploaded video/audio explanation replaces the question's clip in the same player (uploaded-media.md D4).
     const file = this.reveal?.explanation?.kind === "file" && (q.explanation?.kind === "video" || q.explanation?.kind === "audio");
-    if (!insta && !file && !isClip(q.content)) return;
+    // A YouTube explanation too: the host's ▶ ⏸ ⟲ drive it, as the question's own video.
+    const yt = this.reveal?.explanation?.kind === "youtube" && q.explanation?.kind === "youtube";
+    if (!insta && !file && !yt && !isClip(q.content)) return;
     const base = this.room.env?.R2_PUBLIC_BASE_URL ?? "";
     const video = insta
       ? instagramVideo(q.explanation!)
       : file
         ? fileVideo(q.explanation!, base)
-        : q.content.kind === "youtube"
+        : yt
+          ? publicMediaContent(q.explanation!, "", questionId)
+          : q.content.kind === "youtube"
           ? publicMediaContent(q.content, "", questionId)
           : fileVideo(q.content, base);
     if (video.kind !== "youtube" && video.kind !== "instagram" && video.kind !== "file") return;
@@ -2605,7 +2609,7 @@ export class DungeonRoom {
         }
         case "SCREEN_CLIP_DURATION": {
           if (!this.isScreen(sender) || msg.questionId !== this.shownVideoId()) break;
-          const d = { questionId: msg.questionId, seconds: msg.seconds, file: this.fileReveal() };
+          const d = { questionId: msg.questionId, seconds: msg.seconds, file: this.explanationReveal() };
           if (this.clipDuration?.questionId === d.questionId && this.clipDuration.seconds === d.seconds && this.clipDuration.file === d.file) break;
           this.clipDuration = d;
           this.broadcastState();
@@ -4455,10 +4459,10 @@ export class DungeonRoom {
   }
 
   /** The question whose YouTube video the big screen shows now, or null: the question in play, or during a
-   * reveal the answered question, unless an image or a video explanation takes its place (D17). */
+   * reveal the answered question's video, or its explanation's when that is a video (D17). */
   private shownVideoId(): string | null {
     if (this.game?.phase !== "playing") return null;
-    if (this.reveal) return this.reveal.video || this.reveal.explanation?.kind === "instagram" || this.reveal.explanation?.kind === "file" ? this.reveal.questionId : null;
+    if (this.reveal) return this.reveal.video || this.explanationReveal() || this.reveal.explanation?.kind === "instagram" ? this.reveal.questionId : null;
     // A door opening: the real turn may have passed on, and the next team's video must not start under it.
     if (this.phaseCard || this.opening() || this.forkBeat || this.fortuneHides()) return null;
     // Not before the check: the video is part of the question.
@@ -4523,16 +4527,16 @@ export class DungeonRoom {
     return this.media ? { media: this.media } : {};
   }
 
-  /** A file explanation is on show: the screen plays it, not the question's clip. */
-  private fileReveal(): boolean {
-    return this.reveal?.explanation?.kind === "file";
+  /** A file or YouTube explanation is on show: the screen plays it, not the question's clip. */
+  private explanationReveal(): boolean {
+    return this.reveal?.explanation?.kind === "file" || this.reveal?.explanation?.kind === "youtube";
   }
 
   /** SCREEN_VIDEO's `range`: the host's timeline for question `id`'s video on screen, the clip's bounds until the reveal
    * (handleHostMedia clamps a seek to them) and the reported length after it. */
   private mediaRange(id: string, clip: BankQuestion["content"]): { min: number; max: number } {
     const d = this.clipDuration;
-    const seconds = d?.questionId === id && d.file === this.fileReveal() ? d.seconds : null;
+    const seconds = d?.questionId === id && d.file === this.explanationReveal() ? d.seconds : null;
     return seekRange(!this.reveal && clip.kind === "youtube" ? clip : null, seconds);
   }
 

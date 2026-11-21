@@ -430,7 +430,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   const asking = !reveal && !card && question?.content.kind === "youtube";
   // An uploaded video/audio explanation plays in the same slot (uploaded-media.md D4).
   const fileExplanation = reveal?.explanation?.kind === "file" ? reveal.explanation : null;
-  const videoQuestion = reveal?.video || fileExplanation ? reveal!.questionId : asking ? question!.id : null;
+  // A YouTube explanation too, so the host's ▶ ⏸ ⟲ drive it and it plays past the bank's end (clipEndForStage).
+  const youtubeExplanation = reveal?.explanation?.kind === "youtube";
+  const videoQuestion = reveal?.video || fileExplanation || youtubeExplanation ? reveal!.questionId : asking ? question!.id : null;
   // `content` is null while the room has not sent this video's id: for a moment after connecting, or for good when
   // the page was opened without the screen key (`locked`).
   const video: { id: string; content: YoutubeContent | FileVideo | null } | null =
@@ -480,9 +482,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // the monster, a player in the panel), the question shrinks instead of covering it. Infinity: the panel holds its own
   // media and may grow (an Instagram clip, a timing reveal). Limits leave the panel's 4 px shadow and the next box's own margin or shadow clear.
   const panelRef = useRef<HTMLDivElement>(null);
-  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file explanation, which takes the
-  // video's place, shows on the big screen; the phones still show a text, image or YouTube one. An Instagram clip keeps its own layout too.
-  const mediaExplanation = !tapReveal && reveal?.explanation && reveal.explanation.kind !== "text" && reveal.explanation.kind !== "instagram" && reveal.explanation.kind !== "file" ? reveal.explanation : null;
+  // A timing reveal fills the panel to the nameplate (timing-tap-timeline.md): only a file or YouTube explanation, which takes
+  // the video's place, shows on the big screen; the phones still show a text, image or YouTube one. An Instagram clip keeps its own layout too.
+  const mediaExplanation = !tapReveal && reveal?.explanation?.kind === "image" ? reveal.explanation : null;
   const inPanelPlayer = !tapReveal && ((!!video && !tileVideo) || !!mediaExplanation);
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
@@ -587,7 +589,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         onDuration={(s) => onClipDuration(v.id, s)}
         // The host plays the song from their own device (boss-music-buzzer.md M4).
         errorNote={!reveal && clipError && view.buzz?.open ? "🎤 主持人現場放歌" : undefined}
-        title={reveal ? "正解影片" : "題目影片"}
+        title={youtubeExplanation ? "詳解影片" : reveal ? "正解影片" : "題目影片"}
         // Not while answering: a music question's captions would show the lyrics or the title.
         zhCaptions={!!reveal}
       />
@@ -749,7 +751,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
             {/* With the video up, its text explanation stands beside it instead. */}
             {!video && !tapReveal && reveal.explanation?.kind === "text" && <div className="text-[20px]">{reveal.explanation.value}</div>}
             {mediaExplanation && (
-              // A video explanation is at least 356×200 (YouTube's minimum, D11). The dish waits for 上菜 (cooking R4).
+              // An image explanation, in a 356×200 box. The dish waits for 上菜 (cooking R4).
               // key tied to questionId: a 404'd explanation image must not stay hidden on later reveals.
               <div className={`flex items-start gap-4 text-left${scored && !(video && !tileVideo) ? "" : " justify-center"}`}>
                 {/* A fixed box: the iframe is width 100%, and a row sized to its content would leave it under 356. */}
