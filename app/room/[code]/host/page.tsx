@@ -778,9 +778,9 @@ export default function HostPage() {
       </Panel>
       {/* The answered question's video is up again on the big screen (D17). */}
       {/* …or an Instagram explanation, which only someone at the screen can start (instagram-explanations.md). */}
-      {/* …or an uploaded video/audio explanation, in the question video's place (uploaded-media.md D4). */}
+      {/* …or an uploaded video/audio or YouTube explanation, in the question video's place (uploaded-media.md D4). */}
       {game.reveal?.timing && <TimingCalibration rows={game.reveal.timing.rows} measured={game.reveal.timing.latencyMs ?? 0} latency={game.tapLatency ?? 0} disabled={!ready} send={send} />}
-      {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file") && (
+      {(game.reveal?.video || game.reveal?.explanation?.kind === "instagram" || game.reveal?.explanation?.kind === "file" || game.reveal?.explanation?.kind === "youtube") && (
         <Panel tone="lav" className="px-3 pb-2 pt-1">
           <MediaControls questionId={game.reveal.questionId} media={game.media} range={videoRange?.questionId === game.reveal.questionId ? videoRange : undefined} disabled={!ready} send={send} instagram={game.reveal.explanation?.kind === "instagram"} />
           {game.clipError && (

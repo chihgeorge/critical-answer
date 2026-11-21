@@ -251,19 +251,21 @@ test("answer reveal: a correct answer shows the answer and its text explanation 
   await expect(host.getByTestId("host-mc-status")).toBeVisible();
 });
 
-test("answer reveal: a YouTube explanation renders as an embed on /play and /screen, only after a correct answer", async ({ browser, request }) => {
+test("answer reveal: a YouTube explanation plays in the big screen's player and as an embed on /play, only after a correct answer", async ({ browser, request }) => {
   const { host, screen, team } = await startWithExplanation(browser, request, { kind: "youtube", value: "dQw4w9WgXcQ" });
 
   // A wrong answer (retry) never reveals it (D5).
   await hostCheckSettled(host); // the fill-in's check rolls itself first
   await host.getByRole("button", { name: "答錯・下輪再答" }).click();
-  await expect(screen.getByTitle("詳解影片")).toHaveCount(0);
+  await expect(screen.getByTestId("youtube-player")).toHaveCount(0);
   await expect(team.locator('iframe[src*="dQw4w9WgXcQ"]')).toHaveCount(0);
 
   await host.getByRole("button", { name: "答對！" }).click();
   // Revealed explanations open with Chinese captions (youtube-questions.md): the embed carries the caption vars.
   const embedSrc = /youtube-nocookie\.com\/embed\/dQw4w9WgXcQ\?rel=0&iv_load_policy=3&enablejsapi=1&cc_load_policy=1&cc_lang_pref=zh-TW&hl=zh-TW$/;
-  await expect(screen.getByTitle("詳解影片")).toHaveAttribute("src", embedSrc);
+  // The big screen plays it in the host-driven player (▶ ⏸ ⟲ reach it), not a bare embed.
+  // (A text question: the only player on the screen is the explanation's.)
+  await expect(screen.getByTestId("youtube-player")).toBeVisible();
   // The phone's embed is found by its video, not its title: once the YouTube API loads it may retitle the iframe.
   await expect(team.locator('iframe[src*="dQw4w9WgXcQ"]')).toHaveAttribute("src", embedSrc);
 });

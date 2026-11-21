@@ -184,12 +184,11 @@ export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
 
 /** The reveal's explanation video covers the big screen's stage once its player really plays (`playingFor`: the
  * question whose explanation started, cleared only by a host action: ⏸ / ⏹, a die's roll, or 下一題 moving the reveal
- * on). Its own end keeps it big on the last frame. Only an uploaded video and an Instagram clip: YouTube picks its
- * quality for the small box and would look blurry. An audio-only file keeps its music card small. `held`: a timing
- * reveal or a die's banner. */
+ * on). Its own end keeps it big on the last frame. An uploaded video, a YouTube video (most of the event bank's, owner
+ * 2026-11-21) and an Instagram clip. An audio-only file keeps its music card small. `held`: a timing reveal or a die's banner. */
 export function explanationBig(reveal: Pick<AnswerReveal, "questionId" | "explanation"> | null, playingFor: string | null, held: boolean): boolean {
   const e = reveal?.explanation;
-  return !held && !!reveal && playingFor === reveal.questionId && ((e?.kind === "file" && !e.audioOnly) || e?.kind === "instagram");
+  return !held && !!reveal && playingFor === reveal.questionId && ((e?.kind === "file" && !e.audioOnly) || e?.kind === "instagram" || e?.kind === "youtube");
 }
 
 type MediaSeen = Pick<MediaCommand, "press" | "state"> | undefined;

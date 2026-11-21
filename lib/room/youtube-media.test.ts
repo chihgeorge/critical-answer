@@ -166,16 +166,20 @@ describe("HOST_MEDIA", () => {
     expect(g.state().media).toMatchObject({ questionId: id, state: "paused" });
   });
 
-  it("refuses the reveal's video when a video explanation takes its place", () => {
+  // Value: protects=the host's ▶ ⏸ ⟲ drive a YouTube explanation on the big screen (event bug 2026-11-21: it was a bare
+  // iframe nobody could start, under the music); fails_when=the room drops HOST_MEDIA for a YouTube explanation
+  it("▶ ⏸ ⟲ drive a YouTube explanation that takes the video's place", () => {
     const g = game([
       video("v1", { explanation: { kind: "youtube", value: VIDEO } }),
       video("v2", { explanation: { kind: "youtube", value: VIDEO } }),
     ]);
     g.correct();
-    const before = g.state();
-    expect(before.reveal.video).toBeUndefined();
-    g.media("play", before.reveal.questionId);
-    expect(g.state()).toEqual(before);
+    const id = g.state().reveal.questionId;
+    expect(g.state().reveal.video).toBeUndefined();
+    g.media("play", id);
+    expect(g.state().media).toMatchObject({ questionId: id, state: "playing" });
+    g.media("pause", id);
+    expect(g.state().media).toMatchObject({ questionId: id, state: "paused" });
   });
 
   it("drops the command once the question changes, so a question that comes round again starts paused", () => {
@@ -351,15 +355,15 @@ describe("the screen key", () => {
     for (const conn of [t.host, keyed]) expect(videoOf(conn)).toBeUndefined();
   });
 
-  it("sends no SCREEN_VIDEO for a reveal whose video explanation takes the video's place", () => {
-    const g = game([video("v1", { explanation: { kind: "youtube", value: VIDEO } }), video("v2", { explanation: { kind: "youtube", value: VIDEO } })]);
+  it("sends the YouTube explanation's video, not the question's, for a reveal whose explanation takes its place", () => {
+    const explanation = { kind: "youtube", value: "explainVid1", start: 3, end: 9 };
+    const g = game([video("v1", { explanation }), video("v2", { explanation })]);
     const keyed = screen(g.room, "keyed", keyOf(g.host));
-    g.correct(false); // the question's video stays up during the dish die's beat
-    keyed.send.mockClear();
-    g.host.send.mockClear();
-    settleDish(g.room);
-    expect(g.state().reveal.video).toBeUndefined();
-    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toBeUndefined();
+    g.correct();
+    const reveal = g.state().reveal;
+    expect(reveal.video).toBeUndefined();
+    // The screen keeps `start` and drops `end` at the reveal (clipEndForStage): it plays to the video's end.
+    for (const conn of [g.host, keyed]) expect(videoOf(conn)).toMatchObject({ questionId: reveal.questionId, video: { kind: "youtube", videoId: "explainVid1", start: 3, end: 9 } });
   });
 
   // Value: protects=an Instagram explanation's shortcode reaches only the host and a keyed screen, and ▶ ⏸ ⟲ work on it (instagram-explanations.md); fails_when=the shortcode rides on STATE, or SCREEN_VIDEO sends the question's video instead; seam=none; no_claim=the embed itself
