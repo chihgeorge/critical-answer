@@ -9,7 +9,7 @@
 // (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
@@ -32,6 +32,7 @@ import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
 import { forgetStored, readStored, writeStored } from "@/lib/stored";
 import { BANK_GONE, bankProblems, serverProblem, type BankProblem, type EditorTab } from "@/lib/bank-editor-problems";
+import { activePreview, claimPreview, releasePreview, subscribePreview } from "@/lib/bank-editor-preview";
 import { draftKey, draftToOffer, encodeDraft, type BankDraft } from "@/lib/bank-editor-draft";
 
 const OWNER_KEY_STORAGE = "bank-editor-owner-key";
@@ -1576,10 +1577,24 @@ function MediaPicker({
   );
 }
 
+/** Whether this preview is the one playing (lib/bank-editor-preview.ts): ▶ 試聽 on another question, the clip ending,
+ * or this row going away unmounts its player. Returns the preview's id too, to claim and release it. */
+function useOnlyPreview(): [string, boolean] {
+  const id = useId();
+  const mine = useSyncExternalStore(subscribePreview, () => activePreview() === id, () => false);
+  useEffect(() => () => releasePreview(id), [id]);
+  return [id, mine];
+}
+
 /** A timing question's target and label (timing-tap.md 畫面), with a YouTube clip's preview to set the target by ear. */
 function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { kind: "timing" }>; onUpdate: (updater: (q: BankQuestion) => BankQuestion) => void; onDelete: () => void }) {
   const [text, setText] = useState(String(q.target));
   const [preview, setPreview] = useState<{ seq: number; start: number } | null>(null);
+  const [previewId, playing] = useOnlyPreview();
+  const play = (start: number) => {
+    claimPreview(previewId);
+    setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start }));
+  };
   const time = useRef<(() => number | null) | null>(null);
   const setTarget = (target: number) => {
     const t = Math.max(0, Math.round(target * 100) / 100);
@@ -1641,16 +1656,16 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
       </label>
       {youtube && (
         <div className="flex flex-wrap items-center gap-2">
-          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: c.start ?? 0 }))}>
+          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => play(c.start ?? 0)}>
             ▶ 試聽片段
           </button>
-          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: Math.max(c.start ?? 0, Math.floor(q.target - 3)) }))}>
+          <button type="button" className="px-btn !px-2 !py-1 text-[13px]" onClick={() => play(Math.max(c.start ?? 0, Math.floor(q.target - 3)))}>
             從目標前 3 秒試聽
           </button>
           <button
             type="button"
             className="px-btn !px-2 !py-1 text-[13px]"
-            disabled={!preview}
+            disabled={!preview || !playing}
             onPointerDown={() => {
               const t = time.current?.();
               if (t !== null && t !== undefined) setTarget(t);
@@ -1667,7 +1682,7 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
         </div>
       )}
       {youtube && <small className="text-[13px] text-black/60">跟著按會帶到自己的反應時間，通常晚 0.1–0.2 秒：按完用 −0.05 微調，再從目標前 3 秒試聽核對。</small>}
-      {preview && youtube && <YoutubePlayer videoId={c.value} start={preview.start} end={c.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title="卡點題試聽" timeRef={time} />}
+      {preview && playing && youtube && <YoutubePlayer videoId={c.value} start={preview.start} end={c.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title="卡點題試聽" timeRef={time} onEnded={() => releasePreview(previewId)} />}
       {err && (
         <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
           {err}
@@ -1787,6 +1802,7 @@ function ClipFields({ label, value, onChange, audioOnly }: { label: string; valu
   const [endText, setEndText] = useState(value.end === undefined ? "" : formatClipTime(value.end));
   // The clip as it was when ▶ 試聽片段 was pressed: typing a time must not reload and replay the preview per key.
   const [preview, setPreview] = useState<{ seq: number; start?: number; end?: number } | null>(null);
+  const [previewId, playing] = useOnlyPreview();
 
   // From the stored values (NaN = unreadable), so a fix to one field can't hide the other's error.
   const bad = Number.isNaN(value.start) ? "start" : Number.isNaN(value.end) ? "end" : null;
@@ -1825,16 +1841,19 @@ function ClipFields({ label, value, onChange, audioOnly }: { label: string; valu
           結束
           <input className="px-input" style={{ width: 90 }} aria-label={`${label}的結束時間`} placeholder="（播到完）" value={endText} onChange={(e) => setTime("end", e.target.value)} />
         </label>
-        <button type="button" className="px-btn !px-2 !py-1 text-[13px]" disabled={!value.value || bad !== null} onClick={() => setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: value.start, end: value.end }))}>
+        <button type="button" className="px-btn !px-2 !py-1 text-[13px]" disabled={!value.value || bad !== null} onClick={() => {
+            claimPreview(previewId);
+            setPreview((p) => ({ seq: (p?.seq ?? 0) + 1, start: value.start, end: value.end }));
+          }}>
           ▶ 試聽片段
         </button>
       </div>
       <div className="text-[12px] text-black/60">
         {bad ? `${bad === "start" ? "開始" : "結束"}時間看不懂：請打 1:05 或 65` : value.end !== undefined ? `片段 ${value.end - (value.start ?? 0)} 秒` : "可以打 1:05 或 65；結束留空就播到完"}
       </div>
-      {preview && value.value && (
+      {preview && playing && value.value && (
         // The picture shows here even for a music question, to check where the clip starts and stops.
-        <YoutubePlayer videoId={value.value} start={preview.start} end={preview.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title={`${label}試聽`} />
+        <YoutubePlayer videoId={value.value} start={preview.start} end={preview.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title={`${label}試聽`} onEnded={() => releasePreview(previewId)} />
       )}
     </div>
   );
