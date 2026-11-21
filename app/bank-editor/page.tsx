@@ -1577,8 +1577,8 @@ function MediaPicker({
   );
 }
 
-/** Whether this preview is the one playing (lib/bank-editor-preview.ts): ▶ 試聽 on another question, the clip ending,
- * or this row going away unmounts its player. Returns the preview's id too, to claim and release it. */
+/** Whether this preview is the one playing (lib/bank-editor-preview.ts): ▶ 試聽 on another question, or this row
+ * going away, unmounts its player. It stays after the clip ends, to scrub back or replay. Returns the id to claim. */
 function useOnlyPreview(): [string, boolean] {
   const id = useId();
   const mine = useSyncExternalStore(subscribePreview, () => activePreview() === id, () => false);
@@ -1682,7 +1682,7 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
         </div>
       )}
       {youtube && <small className="text-[13px] text-black/60">跟著按會帶到自己的反應時間，通常晚 0.1–0.2 秒：按完用 −0.05 微調，再從目標前 3 秒試聽核對。</small>}
-      {preview && playing && youtube && <YoutubePlayer videoId={c.value} start={preview.start} end={c.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title="卡點題試聽" timeRef={time} onEnded={() => releasePreview(previewId)} />}
+      {preview && playing && youtube && <YoutubePlayer videoId={c.value} start={preview.start} end={c.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title="卡點題試聽" timeRef={time} />}
       {err && (
         <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
           {err}
@@ -1853,7 +1853,7 @@ function ClipFields({ label, value, onChange, audioOnly }: { label: string; valu
       </div>
       {preview && playing && value.value && (
         // The picture shows here even for a music question, to check where the clip starts and stops.
-        <YoutubePlayer videoId={value.value} start={preview.start} end={preview.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title={`${label}試聽`} onEnded={() => releasePreview(previewId)} />
+        <YoutubePlayer videoId={value.value} start={preview.start} end={preview.end} command={{ state: "playing", seq: preview.seq }} width={320} height={180} controls title={`${label}試聽`} />
       )}
     </div>
   );

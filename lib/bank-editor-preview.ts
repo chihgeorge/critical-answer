@@ -16,7 +16,7 @@ export function claimPreview(id: string): void {
   notify();
 }
 
-/** This preview is done (its clip ended, or its row unmounted); a no-op when another one has taken over. */
+/** This preview's row unmounted; a no-op when another one has taken over. */
 export function releasePreview(id: string): void {
   if (active !== id) return;
   active = null;
