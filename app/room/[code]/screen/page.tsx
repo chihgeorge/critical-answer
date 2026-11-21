@@ -455,6 +455,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // A YouTube question, or the reveal showing the answered question's video where it stopped (D17). One slot, one
   // key, so the player is not rebuilt between the question and its reveal.
   const asking = !reveal && !card && question?.content.kind === "youtube";
+  // An image in the panel (not on the tile wall) gets the video's layout too: its chips and hints stand beside it, not over it.
+  const imageAsk = !reveal && !card && question?.content.kind === "image" && !wall && !sortWall;
+  const besideMedia = asking || imageAsk;
   // An uploaded video/audio explanation plays in the same slot (uploaded-media.md D4).
   const fileExplanation = reveal?.explanation?.kind === "file" ? reveal.explanation : null;
   // A YouTube explanation too, so the host's ▶ ⏸ ⟲ drive it and it plays past the bank's end (clipEndForStage).
@@ -860,7 +863,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           </div>
         )}
         {tapReveal && <TimingTimeline timing={tapReveal} view={view} clipStartMs={clipStartS * 1000} timeRef={tapClip ? revealTime : undefined} />}
-        {!reveal && question && question.content.kind === "image" && !wall && !sortWall && (
+        {imageAsk && question?.content.kind === "image" && (
           // Inline content inside the Panel, not a second independently-positioned absolute
           // element — the Panel's height already grows with wrapped question text, so a
           // media block positioned at a fixed pixel offset would overlap 2+ line questions
@@ -869,22 +872,25 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           // See the matching comment in app/room/[code]/play/page.tsx — a key tied to the
           // question forces a fresh DOM node, or a broken image would stay hidden forever
           // once React reuses this node for the next media question (adversarial review).
-          <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="mx-auto mt-3 block" />
+          <div className="mt-3 flex items-start justify-center gap-4 text-left">
+            <QuestionMedia key={question.id} content={question.content} maxWidth={260} maxHeight={160} className="block" />
+            <div data-testid="screen-image-beside" className="flex min-w-0 flex-col items-start gap-2 empty:hidden">{beside}</div>
+          </div>
         )}
         {!reveal && !card && wrongOrder && <div data-testid="screen-wrong-order" className="mt-2 text-[0.8em] [overflow-wrap:anywhere]">✕ {nameOf(wrong?.teamId)}答：{wrongOrder}</div>}
-        {!asking && buzzBox && <div className="mt-3">{buzzBox}</div>}
-        {!asking && !reveal && !card && question && !question.options && (
+        {!besideMedia && buzzBox && <div className="mt-3">{buzzBox}</div>}
+        {!besideMedia && !reveal && !card && question && !question.options && (
           <MageHint hint={view.mageHints?.[question.id]} kind={view.mageHintKinds?.[question.id]} sort={!!question.items} testId="screen-mage-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />
         )}
-        {!asking && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
+        {!besideMedia && check?.hint !== undefined && <MageHint hint={check.hint} testId="screen-check-hint" className="mx-auto mt-3 block w-fit px-3 py-1 text-[24px]" />}
         {/* #104: the team's typed answer to a text question, for the room to see. */}
-        {!asking && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
+        {!besideMedia && !reveal && !card && question && !question.options && !question.items && turn?.typedAnswer && (
           <div data-testid="screen-typed-answer" className="mt-3 text-[24px] [overflow-wrap:anywhere]">
             ⚔️ {turn.name}：{turn.typedAnswer}
           </div>
         )}
         {/* The persuasion pill hangs just under the card, past its stone frame: over neither the question nor the monster's face (owner, 2026-11-20). */}
-        {dcChip && !asking && (
+        {dcChip && !besideMedia && (
           <div data-testid="screen-check-dc" className="px-chip absolute" style={{ left: "50%", top: `calc(100% + ${STONE_REACH - 3}px)`, transform: "translateX(-50%)", fontSize: 16, lineHeight: 1.2, whiteSpace: "nowrap", padding: "1px 12px", color: "var(--k)", border: "3px solid var(--k)", ...CHIP_TONE[dcChip.tone] }}>
             {dcChip.text}
           </div>
@@ -905,14 +911,15 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       )}
 
       {/* D17=A: a thief's armed Sneak Attack hangs over the monster until its answer is judged. */}
-      {sneakChip && !asking && (
+      {sneakChip && !besideMedia && (
         <div data-testid="screen-sneak" className="px-chip absolute" style={{ ...(playerUp ? { right: 22, bottom: 160 } : { left: "50%", top: CHIP_TOP, transform: "translateX(-50%)" }), zIndex: 6, fontSize: 22, padding: "6px 14px", background: turn?.sneakCrit ? "var(--warn)" : "#ff8787", color: "var(--k)", border: "4px solid var(--k)" }}>
           {sneakText}
         </div>
       )}
       {!playerUp && <div className="absolute" style={{ left: "50%", bottom: 136, width: bossScene ? 210 : 170, height: 18, transform: "translateX(-50%)", background: "#0b0718b3", zIndex: 3, clipPath: "polygon(8% 0,92% 0,100% 50%,92% 100%,8% 100%,0 50%)" }} />}
+      {/* A big explanation (panel at zIndex 8) covers the small monster: at 8 too it would sit on the clip, being later in the DOM. */}
       {cook === 1 || cook === 2 ? <CookFrame step={cook} bottom={140} /> : !dishUp(cook) && (
-      <div data-testid="screen-monster" key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={playerUp ? { right: smallRight, bottom: monster.float ? 18 : 16, zIndex: 8 } : { left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
+      <div data-testid="screen-monster" key={`${monster.kind}-${hits}`} className={act && stageBeat === "thrown-out" ? "px-poof absolute" : "absolute"} style={playerUp ? { right: smallRight, bottom: monster.float ? 18 : 16, zIndex: big ? 4 : 8 } : { left: "50%", bottom: monster.float ? 150 : 146, transform: "translateX(-50%)", zIndex: 4 }}>
         {/* ④ Rage jitters the whole boss; ② the parry's charge and counter wrap the sprite, whose own class never changes
             (a class coming back would replay its animation, px-hit's shake after a miss). */}
         <div className={raging ? "px-rage" : undefined}>
@@ -951,8 +958,8 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {/* 每題作答倒數 (answer-countdown.md D5): the round clock right of the monster; with tiles on the wall, a pill under B/D,
           above the dialogue box (z 7) so a three-row narration line never hides it. */}
       {typeof answerLeft === "number" && !reveal && !card && (
-        <div className="absolute" style={wall || sortWall || playerUp ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
-          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall || playerUp ? "wall" : "big"} onSecond={onClockSecond} paused={clockPaused} />
+        <div className="absolute" style={wall || sortWall || playerUp || imageAsk ? { right: 22, bottom: 112, zIndex: 8 } : { left: "calc(50% + 170px)", bottom: 150, zIndex: 8 }}>
+          <AnswerClock key={`${eventId}:${answerLeft}`} ms={answerLeft} variant={wall || sortWall || playerUp || imageAsk ? "wall" : "big"} onSecond={onClockSecond} paused={clockPaused} />
         </div>
       )}
       {/* Centred under the monster; a wide boss plate (16-20 hearts, the phase card) starts right of the 地城主 tag (frame
