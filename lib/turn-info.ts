@@ -2,7 +2,7 @@
 // SpectatorView, so /screen and the /play mini broadcast never disagree.
 
 import { DEFAULT_GAME_CONFIG, type SpectatorView } from "./game-state";
-import type { PublicQuestion, StateMessage } from "./protocol";
+import type { AnswerReveal, MediaCommand, PublicQuestion, StateMessage } from "./protocol";
 import type { SceneTheme } from "./pixel-art";
 import type { Accessory } from "./monster-catalog";
 import type { MonsterSprite, SpriteKind } from "./sprite-kind";
@@ -180,4 +180,23 @@ export function turnLive(s: HoldFields & Pick<StateMessage, "phase" | "view" | "
  * so a (re)connect into its own turn stays silent. */
 export function turnOpened(wasLive: boolean | null, live: boolean): boolean {
   return live && wasLive === false;
+}
+
+/** The reveal's explanation video covers the big screen's stage once its player really plays (`playingFor`: the
+ * question whose explanation started, cleared only by a host action: ⏸ / ⏹, a die's roll, or 下一題 moving the reveal
+ * on). Its own end keeps it big on the last frame. Only an uploaded video and an Instagram clip: YouTube picks its
+ * quality for the small box and would look blurry. An audio-only file keeps its music card small. `held`: a timing
+ * reveal or a die's banner. */
+export function explanationBig(reveal: Pick<AnswerReveal, "questionId" | "explanation"> | null, playingFor: string | null, held: boolean): boolean {
+  const e = reveal?.explanation;
+  return !held && !!reveal && playingFor === reveal.questionId && ((e?.kind === "file" && !e.audioOnly) || e?.kind === "instagram");
+}
+
+type MediaSeen = Pick<MediaCommand, "press" | "state"> | undefined;
+
+/** The host acted, so a big explanation goes back (explanationBig): a new press or state that leaves the clip not
+ * playing (⏸, Instagram's ⏹, 🍲 上菜 pausing it), or a die starting to roll. ▶, ⟲, a seek while playing and the clip's
+ * own end (the host's state stays "playing") keep it big. */
+export function hostShrinks(seen: MediaSeen, media: MediaSeen, rolling: boolean): boolean {
+  return rolling || ((media?.press !== seen?.press || media?.state !== seen?.state) && media?.state !== "playing");
 }

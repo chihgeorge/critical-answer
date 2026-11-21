@@ -15,7 +15,7 @@ import { CATCH_PAY, checkKey, SNEAK_CRIT_MULTIPLIER, SNEAK_REWARD_MULTIPLIER, ty
 
 import { FORK_ARCH, SCENE_TORCHES, sceneFloor, SPRITE_SIZE, TEAM_LOOKS, type SceneLights } from "@/lib/pixel-art";
 import { lookOf } from "@/lib/team-look";
-import { chargeFailText, describeTurn, floorLabel, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
+import { chargeFailText, describeTurn, explanationBig, floorLabel, hostShrinks, monsterLook, PAUSED_OFFLINE, pausedOffline, PHASE_HUE_STEP, revealStage, roomTheme } from "@/lib/turn-info";
 import { ordinal } from "@/lib/ordinal";
 import { firstChange, handoffAdded, isPending, keepLatest, narrationCanSpeak, readCount, revealLines, voiceLineOf, voiceNarration, type NarrationState, type VoiceAt } from "@/lib/narration/client";
 import { MAX_LINE } from "@/lib/narration/runner";
@@ -75,6 +75,11 @@ const noSubscribe = () => () => {};
 const look = (t: { look?: number } | undefined, i: number) => TEAM_LOOKS[lookOf(t, i) % TEAM_LOOKS.length];
 /** The 384×216 player drawn at 0.75 without rebuilding it: the margins give back the space the transform frees. */
 const SHRUNK_PLAYER = { transform: "scale(0.75)", transformOrigin: "0 0", marginRight: -96, marginBottom: -54 } as const;
+// A playing explanation covers the stage (explanationBig) by CSS alone, as SHRUNK_PLAYER: a new size or DOM parent would
+// reload it. `fixed` inside the stage's transform is placed on the 960×540 stage, and 384×216 × 2.5 fills it. A hard cut,
+// never animated (DESIGN.md), so there is no zoom for prefers-reduced-motion to turn off.
+const BIG_PLAYER = { position: "fixed", left: 0, top: 0, transform: "scale(2.5)", transformOrigin: "0 0", zIndex: 1 } as const;
+const BIG_INSTAGRAM = { position: "fixed", inset: 0, zIndex: 1, display: "flex", alignItems: "center", justifyContent: "center", background: "var(--k)" } as const;
 
 function Torches({ at }: { at: Exclude<SceneLights, false> }) {
   const { xs, top, scale } = SCENE_TORCHES[at];
@@ -482,6 +487,17 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
   // An Instagram explanation (instagram-explanations.md): its shortcode comes in SCREEN_VIDEO, like a question video's id.
   const instagram = !tapReveal && reveal?.explanation?.kind === "instagram" ? { content: !locked && shownVideo?.questionId === reveal.questionId && shownVideo.video.kind === "instagram" ? shownVideo.video : null } : null;
   const playerUp = inPanelPlayer || (tileVideo && !!video) || !!instagram;
+  // Which reveal's explanation started playing big. Only the host shrinks it (owner, 2026-11-20): its own end leaves it
+  // big on the last frame; the host's ⏸ / ⏹ (a press that is not ▶), a die's roll or 下一題 (another reveal) clear it.
+  const [playingFor, setPlayingFor] = useState<string | null>(null);
+  const [seen, setSeen] = useState(media);
+  if (playingFor !== null && (!reveal || hostShrinks(seen, media, !!pendingRoll))) setPlayingFor(null);
+  if (media?.press !== seen?.press || media?.state !== seen?.state) setSeen(media);
+  const onPlaying = (playing: boolean) => {
+    onVideoPlaying(playing);
+    if (playing) setPlayingFor(reveal?.questionId ?? null);
+  };
+  const big = explanationBig(reveal, playingFor, !!tapReveal || !!pendingRoll);
   // Who scored, the one line the room reads off the reveal (no scoreboard: the meters say the rest). A partial music
   // answer has its own 「對 k/n」 line above, so it gets no 「答對」. Beside a player (under it there is no room) at 20 px.
   const scored = reveal && (reveal.caught || (reveal.scored && scorer && !tapReveal && !reveal.fields?.marks.some((f) => !f.right)));
@@ -541,7 +557,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         cover={!!v.content.audioOnly}
         cardTitle={fileExplanation ? "詳解音樂" : reveal ? "正解音樂" : timing ? question?.prompt || "聽歌猜題" : "聽歌猜題"}
         needsTap={needsTap}
-        onPlayingChange={onVideoPlaying}
+        onPlayingChange={onPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
         timeRef={clipTime(v.id)}
         replay={replay}
@@ -563,7 +579,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
         cardTitle={timing ? question?.prompt || undefined : undefined}
         thumbnailUrl={timing && !reveal ? youtubeThumbnailUrl(v.content.videoId) : undefined}
         needsTap={needsTap}
-        onPlayingChange={onVideoPlaying}
+        onPlayingChange={onPlaying}
         onEnded={reveal ? undefined : () => onClipEnded(v.id)}
         timeRef={clipTime(v.id)}
         replay={replay}
@@ -661,8 +677,9 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
       {/* 上菜 puts the panel away (cooking R4): the stage is the monster's, then the dish's. */}
       {/* The dish stands where the monster stood; its card takes the panel's place. */}
       {dishUp(cook) && dish && <DishOnStage dish={dish} cardTop={96} bottom={146} step={cook} eater={lookOf(eater, eaterIdx)} eaterClass={eater?.classId} />}
+      {/* z 8 over the ribbon, map and narration box (6, 7) while its explanation covers the stage. */}
       {!served && (
-      <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: 5 }}>
+      <Panel ref={panelRef} className="px-stone absolute text-center [overflow-wrap:anywhere]" style={{ left: 110, right: 110, top: 96, padding: "32px 24px 12px", fontSize: 30, lineHeight: 1.3, zIndex: big ? 8 : 5 }}>
         <div className="absolute flex items-start justify-between text-[14px]" style={{ left: 16, right: 16, top: 6 }}>
           <span className="flex gap-2">
             {chipLabel && <LabelChip>{chipLabel}</LabelChip>}
@@ -747,7 +764,10 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
               (instagram.content ? (
                 // Portrait, so it gets a tall box of its own rather than the 356×200 a YouTube explanation has: from the
                 // panel's content top (y 132) to PLAYER_BOTTOM, its 4 px border included (132 + 4 = 136).
-                <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={260} maxHeight={PLAYER_BOTTOM - 136} onPlayingChange={onVideoPlaying} />
+                // Covering the stage only rescales it (the embed is 326 wide, ~640 tall): as tall as the stage, its 4 px border inside.
+                <div data-testid="screen-instagram-box" data-big={big || undefined} style={big ? BIG_INSTAGRAM : undefined}>
+                  <InstagramPlayer key={reveal.questionId} shortcode={instagram.content.shortcode} end={instagram.content.end} command={media?.questionId === reveal.questionId ? media : null} maxWidth={big ? 960 : 260} maxHeight={big ? 540 - 8 : PLAYER_BOTTOM - 136} onPlayingChange={onPlaying} />
+                </div>
               ) : (
                 <div data-testid={locked ? "video-locked" : undefined} className="flex items-center justify-center bg-[var(--lav)] p-4 text-center text-[20px] text-[var(--k)]" style={{ width: 260, height: 160, boxShadow: "0 0 0 4px var(--k)" }}>
                   {locked && "🔒 請用主持人頁上的大螢幕網址開啟，才會播放影片"}
@@ -776,7 +796,7 @@ function Playing({ view, question, reveal, pendingLock, pendingRoll, stageBeat, 
           <div key={video.id} className={`mt-1 flex items-start gap-4 text-left${lone ? " justify-center" : ""}`}>
             {/* One size for the question and its reveal: width/height rebuild the player (D17). A timing reveal shows it
                 at 0.75 by a transform instead, to leave room for the timeline (timing-tap-timeline.md). */}
-            <div className="shrink-0" style={tapReveal ? SHRUNK_PLAYER : undefined}>
+            <div data-testid="screen-video-box" data-big={big || undefined} className="shrink-0" style={tapReveal ? SHRUNK_PLAYER : big ? BIG_PLAYER : undefined}>
               {player(video, 384, 216)}
             </div>
             {!lone && (
