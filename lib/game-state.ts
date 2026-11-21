@@ -806,7 +806,7 @@ export function createGame(
   laterBossPhases: BossPhaseState[] = [],
   bossDish?: string,
   /** Answers an earlier game in this room showed (回到大廳, back-to-lobby): dealt last, once nothing else is left; in a boss
-   * phase, last within their difficulty (the owner chose difficulty over freshness). */
+   * phase, last in the phase, or last within their difficulty under 首領題隨機順序. */
   played: string[] = [],
   /** Boss questions not at the default difficulty (bossDifficulties in lib/question-bank.ts): the hit reward; under 首領題隨機順序 also easiest first. */
   bossDifficulties: Record<string, Difficulty> = {},

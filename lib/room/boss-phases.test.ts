@@ -267,10 +267,11 @@ describe("boss phases in the room", () => {
 // no_claim=the editor (bank-editor-question.test.ts) and the parse (question-bank.test.ts)
 describe("boss question difficulty in the room", () => {
   it("a started game deals the boss phase in bank order and rolls each question against its own DC", () => {
-    const { room, state } = bossGame(phasedBank((id) => (id === "p1-a" ? { ...text(id), difficulty: 2 } : text(id))));
-    expect(room.game!.bossDifficulties).toEqual({ "p1-a": 2 });
+    // p1-a is harder than p1-b (unset, 3): easiest first would deal p1-b.
+    const { room, state } = bossGame(phasedBank((id) => (id === "p1-a" ? { ...text(id), difficulty: 4 } : text(id))));
+    expect(room.game!.bossDifficulties).toEqual({ "p1-a": 4 });
     expect(room.game!.boss.currentQuestionId).toBe("p1-a");
-    expect(state().view.teams[0].checkTarget.dc).toBe(CHECK_DC[1]);
+    expect(state().view.teams[0].checkTarget.dc).toBe(CHECK_DC[3]);
   });
 });
 

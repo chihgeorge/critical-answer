@@ -1299,12 +1299,13 @@ function RoomEditor({
         {/* A buzzer phase has no persuasion check, so there the difficulty only sets the hit reward. */}
         {difficulty && (
           <div id={difficultyHintId} className="text-[13px]">
-            難度 1 最易、5 最難（沒改就是 {DEFAULT_BOSS_DIFFICULTY}）：決定打中首領的獎勵；同一階段照這裡的順序出題（開了首領題隨機順序才會打亂，並由易到難）
-            {categories ? "。" : (
+            難度 1 最易、5 最難（沒改就是 {DEFAULT_BOSS_DIFFICULTY}）：決定打中首領的獎勵
+            {!categories && (
               <>
-                ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>。
+                ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>
               </>
             )}
+            ；同一階段照這裡的順序出題（開了首領題隨機順序才會打亂，並由易到難）。
           </div>
         )}
         {/* Mirrors firstMeaningfulChar (lib/game-state.ts), shown by the mage and a passed check; a buzzer phase has neither. */}
@@ -1338,7 +1339,7 @@ function RoomEditor({
         <PixelButton
           onClick={() => {
             onAdd();
-            if (!boss) setPage(pageOf(questions.length)); // the new question's page; a boss list's (maybe filtered) comes as a jump
+            if (!boss) setPage(pageOf(questions.length)); // the new question's page; a boss list's page (filtered or not) comes as a jump
           }}
         >
           + 新增題目
