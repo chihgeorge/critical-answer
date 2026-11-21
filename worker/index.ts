@@ -298,6 +298,7 @@ export default {
           return { key };
         },
         bankUnreadable: async () => !!(await env.bank.getByName(BANK_DO_NAME).getVersionedBank()).unreadable,
+        publicBaseUrl: env.R2_PUBLIC_BASE_URL,
       });
     }
     // Before the /api/bank/* prefix below, like /api/bank/image.
