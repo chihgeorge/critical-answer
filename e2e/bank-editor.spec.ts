@@ -1318,3 +1318,52 @@ test("on a phone, a save error on a long question scrolls its blank answer box a
     return box.y + box.height <= bar.y;
   }).toBe(true);
 });
+
+// docs/designs/boss-bank-categories.md: a buzzer phase narrowed by category and difficulty.
+// Value: protects=the chip rows, the fixed shown list, ↑/↓ off under a filter, and a search jump resetting the filter;
+// fails_when=a chip shows the wrong rows or count, a filtered row can still move, or a hidden search hit stays hidden;
+// why_new=lib/bank-editor-categories.test.ts covers the rules, nothing drove the page; seam=none; no_claim=a 70-song bank
+test("boss bank filter: category and difficulty chips narrow a buzzer phase; a search jump resets them", async ({ page, request }) => {
+  const WORKER = "http://localhost:1996";
+  const headers = { Authorization: `Bearer ${E2E_OWNER_KEY}` };
+  const { bank: original, version } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+  const song = (id: string, category: string, difficulty?: number) => ({ kind: "text", id, content: { kind: "text", value: `題目 ${id}` }, answer: `答案 ${id}`, category, ...(difficulty ? { difficulty } : {}) });
+  const bank = structuredClone(original);
+  bank.boss.phases = [
+    bank.boss.phases[0],
+    { name: "篩選關", rule: "聽前奏搶答", maxHp: 9, buzzer: true, questions: [song("f-a1", "動漫", 4), song("f-m1", "電影"), song("f-a2", "動漫", 1), song("f-m2", "電影", 1), song("f-a3", "動漫")] },
+  ];
+  expect((await request.put(`${WORKER}/api/bank`, { headers, data: { bank, version } })).ok()).toBe(true);
+  try {
+    await page.goto("/bank-editor");
+    await page.getByLabel("站長金鑰").fill(E2E_OWNER_KEY);
+    await page.getByRole("button", { name: "載入題庫" }).click();
+    await page.getByTestId("bank-tab-boss").click();
+    const phase = page.getByTestId("bank-room-boss-2");
+    // Play order: difficulty 1 first (bank order within it), unset counts as 3.
+    await expect(rows(phase)).toHaveCount(5);
+    await expect(rows(phase).first()).toHaveAttribute("data-testid", "question-f-a2");
+    await expect(rows(phase).last()).toHaveAttribute("data-testid", "question-f-a1");
+
+    const categories = phase.getByTestId("bank-filter-category");
+    await categories.getByRole("button", { name: /^動漫 · 3$/ }).click();
+    await expect(categories.getByRole("button", { name: /動漫 · 3/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(rows(phase)).toHaveCount(3);
+    await phase.getByTestId("bank-filter-difficulty").getByRole("button", { name: /^難度 1 · 1$/ }).click();
+    await expect(rows(phase)).toHaveCount(1);
+    const only = page.getByTestId("question-f-a2");
+    await only.getByRole("button", { name: /的更多動作$/ }).click();
+    await expect(only.getByRole("button", { name: "↑ 上移" })).toBeDisabled();
+    await expect(only.getByRole("button", { name: "↓ 下移" })).toBeDisabled();
+
+    // A search hit on a question the filter hides: both rows go back to 全部, and a line says why.
+    await page.getByLabel("搜尋題目或答案").fill("答案 f-m1");
+    await page.getByTestId("bank-search-results").getByRole("button", { name: /首領第 2 階段/ }).click();
+    await expect(phase.getByTestId("bank-filter-note")).toContainText("已回到「全部」");
+    await expect(page.getByTestId("question-f-m1")).toBeVisible();
+    await expect(rows(phase)).toHaveCount(5);
+  } finally {
+    const { version: now } = await (await request.get(`${WORKER}/api/bank`, { headers })).json();
+    await request.put(`${WORKER}/api/bank`, { headers, data: { bank: original, version: now } });
+  }
+});

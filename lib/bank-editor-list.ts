@@ -1,8 +1,8 @@
 // The bank editor's question list (app/bank-editor/page.tsx, editor-ux #2 and #3): each question's one-line summary,
 // the whole-bank search, and moving, copying and deleting a question with undo. Pure, so it has unit tests.
 // Client-safe: types and helpers only, never the parsed bank (CLAUDE.md, check:bundle).
-import { DIFFICULTIES, type Bank, type BankQuestion } from "./question-bank";
-import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "./game-state";
+import { DIFFICULTIES, bossDifficulty, type Bank, type BankQuestion } from "./question-bank";
+import { DEFAULT_BOSS_DIFFICULTY, byDifficulty, type Difficulty } from "./game-state";
 import { placementError, questionName, type EditorTab } from "./bank-editor-problems";
 import { formatSongTime } from "./tap-clock";
 
@@ -56,6 +56,12 @@ function searchText(q: BankQuestion): string[] {
   ];
 }
 
+/** A question's 第 N 題 as the editor lists its group: a boss phase easiest first (byDifficulty), a pool in bank order. */
+export function listNumber(bank: Bank, loc: Location, id: string): number {
+  const qs = questionsAt(bank, loc);
+  return (loc.kind === "boss" ? byDifficulty(qs, bossDifficulty) : qs).findIndex((q) => q.id === id) + 1;
+}
+
 export interface SearchHit {
   tab: EditorTab;
   questionId: string;
@@ -72,9 +78,9 @@ export function searchBank(bank: Bank, query: string): SearchHit[] {
   if (!needle) return [];
   const hits: SearchHit[] = [];
   for (const loc of allGroups(bank)) {
-    for (const [i, q] of questionsAt(bank, loc).entries()) {
+    for (const q of questionsAt(bank, loc)) {
       if (hits.length > SEARCH_LIMIT) return hits;
-      if (searchText(q).some((t) => t.toLowerCase().includes(needle))) hits.push({ tab: tabOf(loc), questionId: q.id, where: `${groupName(loc)} 第 ${i + 1} 題`, name: questionName(q) });
+      if (searchText(q).some((t) => t.toLowerCase().includes(needle))) hits.push({ tab: tabOf(loc), questionId: q.id, where: `${groupName(loc)} 第 ${listNumber(bank, loc, q.id)} 題`, name: questionName(q) });
     }
   }
   return hits;
