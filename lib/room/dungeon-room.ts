@@ -4225,7 +4225,8 @@ export class DungeonRoom {
         this.reveal = first;
         // A warrior's hit says its die here, before the dish die (the judgment after it then leaves the die out).
         const said = roll ? `戰士擲出 ${roll.value} 點，命中！${roll.value === 20 ? "獎勵加倍！" : "拿八成獎勵。"}` : `${prev.teams.find((t) => t.id === teamId)?.name ?? "這隊"}答對了！`;
-        this.writeScripted([`${said}接下來擲料理骰，看看這道菜煮得怎樣。`]);
+        // Nothing about the dish die yet (owner, 2026-11-21): the narrator talks about cooking once the host rolls it.
+        this.writeScripted([said]);
         this.broadcastState();
         this.sendNarration();
         return;

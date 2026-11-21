@@ -137,6 +137,9 @@ function joinTeams(room: DungeonRoom, hostConn: ReturnType<typeof makeConn>, cou
   return { ids, conns };
 }
 
+/** The scripted line under a correct answer's reveal, before its dish die: who got it, and nothing about cooking. */
+const isRevealLine = (lines?: string[]) => lines?.length === 1 && /(答對了！|命中！(獎勵加倍！|拿八成獎勵。))$/.test(lines[0]);
+
 describe("HOST_CLAIM", () => {
   it("does not make the first connection a host", () => {
     const room = new DungeonRoom(makeRoom() as any);
@@ -2804,8 +2807,8 @@ describe("narration (T5-T7)", () => {
     (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
   const sentMsgs = (conn: ReturnType<typeof makeConn>) =>
     (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
-  /** The line the answer's reveal says before its dish die (「…答對了！接下來擲料理骰…」): one more NARRATION, left out here. */
-  const judged = (m: { type: string; lines?: string[] }) => m.type === "NARRATION" && !m.lines?.some((l) => l.includes("接下來擲料理骰"));
+  /** The line the answer's reveal says before its dish die (「{隊名}答對了！」 alone): one more NARRATION, left out here. */
+  const judged = (m: { type: string; lines?: string[] }) => m.type === "NARRATION" && !isRevealLine(m.lines);
 
   function narrRoom(opts: ConstructorParameters<typeof DungeonRoom>[2] = { holdMs: 30, epilogueDelayMs: 0 }) {
     const room = new DungeonRoom(makeRoom() as any, () => 0, opts);
@@ -3264,7 +3267,7 @@ describe("LLM narration and director (T8-T10)", () => {
     landKill(room);
   }
   // Not the scripted line under a correct answer's reveal, before its dish die: these tests count the judgments' own.
-  const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION" && !m.lines.some((l: string) => l.includes("接下來擲料理骰")));
+  const narrations = (room: DungeonRoom) => all(room).filter((m) => m.type === "NARRATION" && !isRevealLine(m.lines));
   const transcript = (room: DungeonRoom, hostConn: ReturnType<typeof makeConn>) => {
     send(room, hostConn, { type: "HOST_GET_TRANSCRIPT" });
     return sentMsgs(hostConn).findLast((m) => m.type === "TRANSCRIPT").entries;
@@ -4265,8 +4268,8 @@ describe("class abilities: lobby pick and the warrior's roll (class-abilities.md
     expect(said()).toMatch(/^戰士擲出 5 點，沒打中。/);
     roll(17);
     await vi.advanceTimersByTimeAsync(2000); // the roll's beat; the answer's reveal comes first
-    // QA 2026-11-19: the hit is said before the dish die, not after its 「接下來擲料理骰」 line.
-    expect(said()).toBe("戰士擲出 17 點，命中！拿八成獎勵。接下來擲料理骰，看看這道菜煮得怎樣。");
+    // QA 2026-11-19: the hit is said before the dish die. Nothing about cooking yet (owner, 2026-11-21).
+    expect(said()).toBe("戰士擲出 17 點，命中！拿八成獎勵。");
     rollDish(room);
     await vi.advanceTimersByTimeAsync(2000); // its hit's dish die
     expect(said()).not.toMatch(/戰士擲出/);
