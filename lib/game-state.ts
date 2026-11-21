@@ -146,6 +146,10 @@ export const DEFAULT_BOSS_DIFFICULTY: Difficulty = 3;
 /** What hitting the boss pays per question difficulty 1–5 (issue #371). */
 export const BOSS_HIT_REWARDS = [5, 10, 15, 20, 25] as const;
 
+/** Easiest first, ties kept in the given order (a stable sort): the boss order newGame deals and the bank editor shows. */
+export const byDifficulty = <T>(items: readonly T[], difficultyOf: (item: T) => number): T[] =>
+  [...items].sort((a, b) => difficultyOf(a) - difficultyOf(b));
+
 /** A boss question's difficulty: the bank's (bossDifficulties), or DEFAULT_BOSS_DIFFICULTY. */
 export function bossQuestionDifficulty(game: GameState, questionId: string | null | undefined): Difficulty {
   // Own keys only (an id like "constructor" must not read Object.prototype); a damaged value falls back to the default.
@@ -829,7 +833,7 @@ export function createGame(
     }
     return a;
   };
-  const bossOrder = (ids: string[]) => freshFirst(config.bossShuffle ? shuffled(ids) : ids).sort((a, b) => difficulty(a) - difficulty(b));
+  const bossOrder = (ids: string[]) => byDifficulty(freshFirst(config.bossShuffle ? shuffled(ids) : ids), difficulty);
   bossQuestionIds = bossOrder(bossQuestionIds);
   laterBossPhases = laterBossPhases.map((p) => ({ ...p, questionIds: bossOrder(p.questionIds) }));
   const revealed: string[] = [];

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, questionType, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, type MediaContent } from "./question-bank";
+import { memoryProblem, memoryView, parseBank, isClip, isMusicQuestion, questionType, hiddenVideo, roomTemplates, poolQuestionIds, shuffledOptionOrders, inShownOrder, allQuestions, DIFFICULTIES, findQuestion, publicQuestion, publicExplanation, publicMediaContent, answerText, imageKeysOf, textQuestionGaps, bossPhaseStates, bossDifficulties, bankCategoryOf, TIMING_CATEGORY, type Bank, type BankQuestion, type MediaContent } from "./question-bank";
 import { BANK } from "./question-bank-data";
 import { MONSTERS, catalogMonster, variantOf } from "./monster-catalog";
 import { MAX_TEAMS } from "./protocol";
@@ -789,5 +789,22 @@ describe("記憶題 (memory-questions.md)", () => {
     const pub = { id: "m1", content: { kind: "image" as const, url: "u" }, prompt: "幾隻貓？", difficulty: 1, boss: false, monster: { name: "史萊姆", sprite: "slime" as never, hue: 0 }, options: ["1", "2"] };
     expect(memoryView(pub, false, 4000)).toEqual({ id: "m1", content: pub.content, difficulty: 1, boss: false, monster: pub.monster, memorize: true, memoryLeft: 4000 });
     expect(memoryView(pub, true)).toEqual({ id: "m1", content: { kind: "text", value: "幾隻貓？" }, difficulty: 1, boss: false, monster: pub.monster, options: ["1", "2"] });
+  });
+});
+
+describe("bankCategoryOf", () => {
+  const base = parseBank(JSON.parse(JSON.stringify(BANK)));
+  const timing = { id: "t1", kind: "timing", category: "動漫" } as unknown as BankQuestion;
+  const song = { ...base.boss.phases[0].questions[0], id: "s1" } as BankQuestion;
+  const withBoss = (questions: BankQuestion[]): Bank => ({ ...base, boss: { ...base.boss, phases: [{ ...base.boss.phases[0], questions }] } });
+  it("keeps each question's own category, and none for timing, when no question has one", () => {
+    const map = bankCategoryOf(withBoss([{ ...timing, category: undefined }, song]));
+    expect(map.t1).toBeUndefined();
+    expect(map.s1).toBeUndefined();
+  });
+  it("in a bank with categories, a timing question is 卡點題 even over a typed category", () => {
+    const map = bankCategoryOf(withBoss([timing, { ...song, category: "電影" }]));
+    expect(map.t1).toBe(TIMING_CATEGORY);
+    expect(map.s1).toBe("電影");
   });
 });

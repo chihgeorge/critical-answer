@@ -569,6 +569,14 @@ export function allQuestions(bank: Bank): BankQuestion[] {
   return [...DIFFICULTIES.flatMap((d) => bank.pools[d]), ...bossQuestions(bank)];
 }
 
+/** Each question's category as the buzz pick sees it (boss-music-buzzer.md M5): in a bank that uses categories, every
+ * timing question is one more category, 卡點題 (#370), even over a typed one. Shared by the room and the bank editor. */
+export function bankCategoryOf(bank: Bank): Record<string, string | undefined> {
+  const qs = allQuestions(bank);
+  const any = qs.some((q) => q.category);
+  return Object.fromEntries(qs.map((q) => [q.id, any && q.kind === "timing" ? TIMING_CATEGORY : q.category]));
+}
+
 export function findQuestion(bank: Bank, id: string) {
   for (const d of DIFFICULTIES) {
     const q = bank.pools[d].find((x) => x.id === id);

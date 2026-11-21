@@ -149,7 +149,7 @@ import { INITIATIVE_MS, INITIATIVE_ORDER_MS, INITIATIVE_TIE_MS, hiddenInitiative
 import { gameLog } from "../game-log";
 import { nextAnswerClock, type AnswerClock } from "../answer-clock";
 import { catalogMonster, fnv1a, gameMonsters, monsterById, MONSTERS } from "../monster-catalog";
-import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, questionType, TIMING_CATEGORY, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
+import { DEFAULT_MEMORY_SECONDS, FIELD_SEP, memoryView, UUID_RE, allQuestions, answerText, bankCategoryOf, bossDifficulties, bossPhaseStates, findQuestion, inShownOrder, isAutoJudged, poolQuestionIds, fileVideo, hiddenVideo, instagramVideo, isClip, questionType, publicExplanation, publicMediaContent, publicQuestion, roomTemplates, shuffledOptionOrders, sortShownOrder, type Bank, type BankQuestion } from "../question-bank";
 import { SORT_ORDERS, sortSlots } from "../sort-order";
 import { acceptTapAt, CALIBRATE_BEATS, CALIBRATE_EARLY_MS, CALIBRATE_GAP_MS, CALIBRATE_LEAD_MS, CALIBRATE_SKIP, CALIBRATE_TAIL_MS, calibrateLatency, closeSongMs, MAX_TAP_LATENCY_MS, serverMsOf, songMs, TAP_CLOCK_STALE_MS, TAP_SEEK_SLACK_MS, tapResults } from "../tap-clock";
 import { BANK } from "../question-bank-data";
@@ -4636,9 +4636,7 @@ export class DungeonRoom {
   /** Each question's bank category, for the buzz winner's pick (boss-music-buzzer.md M5). In a bank that uses
    * categories, every timing question is one more category, 卡點題 (#370). */
   private categoryOf(): Record<string, string | undefined> {
-    const qs = allQuestions(this.bank);
-    const any = qs.some((q) => q.category);
-    return Object.fromEntries(qs.map((q) => [q.id, any && q.kind === "timing" ? TIMING_CATEGORY : q.category]));
+    return bankCategoryOf(this.bank);
   }
 
   /** Whether the boss question is open to buzzing without a ▶: shown, and not a video (as handleTeamBuzz decides). */

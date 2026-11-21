@@ -3,6 +3,8 @@ import { awardTitles } from "./podium";
 import {
   addLateTeam,
   createGame,
+  byDifficulty,
+  DEFAULT_BOSS_DIFFICULTY,
   serveFeast,
   BOSS_HIT_REWARDS,
   answerQuestion,
@@ -149,6 +151,14 @@ describe("createGame", () => {
     expect(g.boss.phases[1].questionIds).toEqual(["p2-easy", "p2-hard"]);
     expect(g.bossDifficulties).toEqual(marked);
     expect(createGame(teams, ...deck(3, 1, 2), ["boss-q1"], { bossThreshold: 3 }, 2, first)).not.toHaveProperty("bossDifficulties");
+  });
+
+  it("byDifficulty is the base boss order: stable, and what createGame deals with shuffle off and nothing played", () => {
+    expect(byDifficulty(["a", "b", "c", "d"], (x) => ({ a: 3, b: 1, c: 3, d: 1 })[x]!)).toEqual(["b", "d", "a", "c"]);
+    const marked = { e1: 2, e2: 2, h1: 4 } as const;
+    const boss = ["m1", "e1", "h1", "e2", "m2"];
+    const g = createGame([{ id: "T0", name: "A" }], ...deck(3, 1, 2), boss, { bossThreshold: 3 }, 2, first, undefined, {}, [], undefined, [], marked);
+    expect(byDifficulty(boss, (id) => (marked as Record<string, number>)[id] ?? DEFAULT_BOSS_DIFFICULTY)).toEqual(g.boss.questionIds);
   });
 
   it("首領題隨機順序: off keeps the bank order; on shuffles each phase within a difficulty only", () => {

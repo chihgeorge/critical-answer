@@ -9,15 +9,15 @@
 // (see docs/designs/question-media-content.md's D1: content REPLACES the old fixed prompt text,
 // it doesn't decorate it; the standalone `image` kind from image-question-type.md retired).
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { LabelChip, Panel, PixelButton, Sprite } from "@/components/pixel";
 import { UNSET_CORRECT_INDEX, blankQuestion, canBeMemory, lostOnKindChange, timingFieldError, withCategory, withContent, withField, withMemory } from "@/lib/bank-editor-question";
-import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreToSaved, sameGroup, saveAsLeftover, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
+import { SEARCH_LIMIT, allGroups, copyQuestion, groupName, moveQuestion, moveRefusal, newQuestionId, questionSummary, questionsAt, removeQuestion, restoreToSaved, sameGroup, saveAsLeftover, listNumber, searchBank, shiftQuestion, tabOf, withQuestions, type Location, type Removed } from "@/lib/bank-editor-list";
 import { formatSongTime } from "@/lib/tap-clock";
 import { BANK_LOAD_TIMEOUT_MS, IMAGE_UPLOAD_TIMEOUT_MS, MEDIA_UPLOAD_TIMEOUT_MS, editorBusy } from "@/lib/bank-editor-locks";
 import { MAX_IMAGE_BYTES, MAX_MEDIA_BYTES } from "@/lib/bank-image-api";
-import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
+import { DIFFICULTIES, MAX_MEMORY_SECONDS, MIN_MEMORY_SECONDS, MAX_BOSS_HP, MAX_CATEGORY, MAX_FIELD_LABEL, MAX_FIELDS, MAX_OPTIONS, MAX_PHASE_NAME, MAX_PHASE_RULE, MAX_TAP_LABEL, MIN_FIELDS, MIN_OPTIONS, TIMING_CATEGORY, bankCategoryOf, bossDifficulty, bossQuestions, isMusicQuestion, textQuestionGaps, type Bank, type BankQuestion, type BossPhase, type MediaContent } from "@/lib/question-bank";
 import { MONSTERS, drawsBoss, monsterById } from "@/lib/monster-catalog";
 import { DISH_SPRITE } from "@/lib/sprite-kind";
 import { DEFAULT_BANK_ENTRY, MAX_TEAMS, scoreName } from "@/lib/protocol";
@@ -26,6 +26,7 @@ import { DEFAULT_BOSS_DIFFICULTY, type Difficulty } from "@/lib/game-state";
 import { partyHttpBase } from "@/lib/party-host";
 import { extractYoutubeId, formatClipTime, parseClipTime, youtubeWatchUrl } from "@/lib/youtube";
 import { pageOf, questionPage } from "@/lib/bank-editor-pages";
+import { NO_FILTER, canShift, categoryChips, difficultyChips, fallback, isFiltered, pick, playOrder, shiftWithinDifficulty, shownList, withAdded, type Chip, type PhaseFilter } from "@/lib/bank-editor-categories";
 import { YoutubePlayer } from "@/components/youtube-player";
 import { InstagramPlayer } from "@/components/instagram-player";
 import { extractInstagramShortcode } from "@/lib/instagram";
@@ -411,13 +412,33 @@ export default function BankEditorPage() {
 
   const [tab, setTab] = useState<Tab>(1);
 
+  // Each boss phase's 難度／類別 filter (docs/designs/boss-bank-categories.md), by phase index: phases have no ids, so a
+  // new load or a phase count change starts every phase over at 全部.
+  const filterKey = `${generation}:${bank?.boss.phases.length ?? 0}`;
+  const [bossFilters, setBossFilters] = useState<{ key: string; byPhase: Record<number, { filter: PhaseFilter; note?: string }> }>({ key: "", byPhase: {} });
+  const filterAt = (phase: number) => (bossFilters.key === filterKey ? bossFilters.byPhase[phase] : undefined) ?? { filter: NO_FILTER };
+  const setFilterAt = (phase: number, filter: PhaseFilter, note?: string) =>
+    setBossFilters((s) => ({ key: filterKey, byPhase: { ...(s.key === filterKey ? s.byPhase : {}), [phase]: { filter, note } } }));
+  const categoryOf = useMemo(() => (bank ? bankCategoryOf(bank) : {}), [bank]);
+  /** A jump to a question its phase's filter hides resets that filter first, with a line saying why. A question not in
+   * the bank yet (a copy being made) is skipped unless it is coming back (復原). */
+  const revealBoss = (id: string, phase?: number, restoring = false) => {
+    const i = phase ?? bank?.boss.phases.findIndex((p) => p.questions.some((q) => q.id === id)) ?? -1;
+    if (i < 0) return;
+    const { filter } = filterAt(i);
+    const known = !!bank?.boss.phases[i]?.questions.some((q) => q.id === id);
+    if (!isFiltered(filter) || filter.shown?.includes(id) || (!known && !restoring)) return;
+    setFilterAt(i, NO_FILTER, "已回到「全部」，才看得到那一題");
+  };
+
   /** Opens the problem's tab and the page holding its question, then scrolls it into view (the effect above). */
-  const goTo = (p: BankProblem | undefined) => {
+  const goTo = (p: BankProblem | undefined, restoring = false) => {
     const t = p?.tab;
     if (t === undefined) return;
     setTab(t);
     const id = p?.questionId;
     if (id) ensureOpen(id);
+    if (t === "boss" && id) revealBoss(id, p?.phase, restoring);
     setJump((j) => ({ id, phase: p?.phase, tab: t, seq: (j?.seq ?? 0) + 1 }));
   };
 
@@ -446,6 +467,7 @@ export default function BankEditorPage() {
   // Phases have no ids: once their count changes, a 復原 could land in the wrong one, so it goes.
   const addPhase = () => {
     setJump(null);
+    setBossFilters({ key: "", byPhase: {} });
     setToast(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: [...prev.boss.phases, { name: "", rule: "", maxHp: 20, questions: [] }] } } : prev));
   };
@@ -454,6 +476,7 @@ export default function BankEditorPage() {
     // A phase can hold a whole set of prepared questions: one stray tap must not drop them all (D11).
     if (count > 0 && !window.confirm(`刪除第 ${phase + 1} 階段和它的 ${count} 題？`)) return;
     setJump(null);
+    setBossFilters({ key: "", byPhase: {} }); // phases have no ids: a filter must not land on a neighbour
     setToast(null);
     setBank((prev) => (prev ? { ...prev, boss: { ...prev.boss, phases: prev.boss.phases.filter((_, i) => i !== phase) } } : prev));
   };
@@ -470,6 +493,9 @@ export default function BankEditorPage() {
   // no attacker needed).
   const updateQuestion = (loc: Location, id: string, updater: (q: BankQuestion) => BankQuestion) => {
     setToast((t) => (t?.undo ? t : null)); // a move or copy note is stale once editing goes on; an undo stays
+    // A boss list is sorted by difficulty: under 全部 a new difficulty moves the row, and its page follows it.
+    const old = loc.kind === "boss" && bank && !isFiltered(filterAt(loc.phase).filter) ? questionsAt(bank, loc).find((q) => q.id === id) : undefined;
+    if (old && bossDifficulty(updater(old)) !== bossDifficulty(old)) setJump((j) => ({ id, tab: "boss", seq: (j?.seq ?? 0) + 1 }));
     setBank((prev) => {
       if (!prev) return prev;
       const questions = questionsAt(prev, loc).map((q) => (q.id === id ? updater(q) : q));
@@ -479,7 +505,8 @@ export default function BankEditorPage() {
 
   /** After a row leaves its group, focus goes to the row now in its place (or the one before). */
   const focusNeighbor = (loc: Location, id: string) => {
-    const list = bank ? questionsAt(bank, loc) : [];
+    // A boss phase is on screen in play order, under its filter: the neighbour is the next row shown there.
+    const list = !bank ? [] : loc.kind === "boss" ? shownList(questionsAt(bank, loc), filterAt(loc.phase).filter, categoryOf) : questionsAt(bank, loc);
     const i = list.findIndex((q) => q.id === id);
     const next = list[i + 1]?.id ?? list[i - 1]?.id;
     setFocusTo(next ? { id: next } : null);
@@ -491,7 +518,7 @@ export default function BankEditorPage() {
     if (!r) return;
     focusNeighbor(loc, id);
     setBank((prev) => (prev ? (removeQuestion(prev, loc, id)?.bank ?? prev) : prev));
-    setToast({ message: `已刪除${groupName(loc)} 第 ${r.removed.index + 1} 題`, undo: r.removed });
+    setToast({ message: `已刪除${groupName(loc)} 第 ${listNumber(bank, loc, id)} 題`, undo: r.removed });
   };
 
   const undoDelete = (r: Removed) => {
@@ -500,19 +527,21 @@ export default function BankEditorPage() {
     if (bank && !draftOffer && !readOnly && restoreToSaved(bank, r, saved) === saved) forgetStored(draftKey(bankId));
     setBank((prev) => (prev ? restoreToSaved(prev, r, saved) : prev));
     setToast(null);
-    goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id });
+    goTo({ message: "", tab: tabOf(r.loc), questionId: r.question.id, phase: r.loc.kind === "boss" ? r.loc.phase : undefined }, true);
   };
 
   const moveTo = (from: Location, id: string, to: Location) => {
     if (!bank) return;
     focusNeighbor(from, id);
     setBank((prev) => (prev ? moveQuestion(prev, from, id, to) : prev));
-    setToast({ message: `已移到${groupName(to)}（第 ${questionsAt(bank, to).length + 1} 題）` });
+    if (to.kind === "boss") addToShown(to.phase, id);
+    setToast({ message: `已移到${groupName(to)}（第 ${listNumber(moveQuestion(bank, from, id, to), to, id)} 題）` });
   };
 
   /** 上移／下移: the row's page follows it (a jump), so it stays in view across a page edge. */
   const shift = (loc: Location, id: string, delta: -1 | 1) => {
-    setBank((prev) => (prev ? shiftQuestion(prev, loc, id, delta) : prev));
+    // A boss list is in play order, so ↑/↓ swap with the neighbour of the same difficulty there.
+    setBank((prev) => (prev ? (loc.kind === "boss" ? withQuestions(prev, loc, shiftWithinDifficulty(questionsAt(prev, loc), id, delta)) : shiftQuestion(prev, loc, id, delta)) : prev));
     setJump((j) => ({ id, tab: tabOf(loc), seq: (j?.seq ?? 0) + 1 })); // not goTo: a closed row stays closed
   };
 
@@ -520,18 +549,29 @@ export default function BankEditorPage() {
     if (!bank) return;
     const newId = newQuestionId(bank, loc);
     setBank((prev) => (prev ? copyQuestion(prev, loc, id, newId) : prev));
-    setToast({ message: `已複製成第 ${questionsAt(bank, loc).findIndex((q) => q.id === id) + 2} 題` });
+    if (loc.kind === "boss") addToShown(loc.phase, newId);
+    setToast({ message: `已複製成第 ${listNumber(copyQuestion(bank, loc, id, newId), loc, newId)} 題` });
     goTo({ message: "", tab: tabOf(loc), questionId: newId });
   };
 
   const moveTargets = (from: Location, q: BankQuestion): MoveTarget[] =>
     bank ? allGroups(bank).map((loc) => ({ loc, name: groupName(loc), count: questionsAt(bank, loc).length, current: sameGroup(loc, from), refusal: moveRefusal(bank, q, loc) })) : [];
 
+  /** A question added or copied under a filter joins its shown list, so it stays in view. */
+  const addToShown = (phase: number, id: string) => {
+    const { filter, note } = filterAt(phase);
+    if (filter.shown) setFilterAt(phase, withAdded(filter, id), note);
+  };
+
   const addQuestion = (loc: Location) => {
     if (!bank) return;
     const id = newQuestionId(bank, loc);
     ensureOpen(id);
     setBank((prev) => (prev ? withQuestions(prev, loc, [...questionsAt(prev, loc), { kind: "text", id, content: TEXT_CONTENT, answer: "" }]) : prev));
+    if (loc.kind === "boss") {
+      addToShown(loc.phase, id);
+      setJump((j) => ({ id, tab: "boss", seq: (j?.seq ?? 0) + 1 })); // its sorted place, not the last page
+    }
   };
 
   const toggleOpen = (id: string) =>
@@ -827,6 +867,10 @@ export default function BankEditorPage() {
                       questions={p.questions}
                       categories={!!p.buzzer}
                       difficulty
+                      filter={filterAt(i).filter}
+                      filterNote={filterAt(i).note}
+                      onFilter={(f, keepNote, note) => setFilterAt(i, f, note ?? (keepNote ? filterAt(i).note : undefined))}
+                      categoryOf={categoryOf}
                       onUpdate={(id, updater) => updateQuestion(loc, id, updater)}
                       onDelete={(id) => deleteQuestion(loc, id)}
                       onAdd={() => addQuestion(loc)}
@@ -1118,6 +1162,10 @@ function RoomEditor({
   onUploadImage,
   categories = false,
   difficulty = false,
+  filter,
+  filterNote,
+  onFilter,
+  categoryOf = {},
   jump,
   problems,
   actions,
@@ -1130,6 +1178,14 @@ function RoomEditor({
   categories?: boolean;
   /** A 難度 menu per question: a boss question's own (a pool question's is its pool). */
   difficulty?: boolean;
+  /** A boss phase's 難度／類別 filter: given, the list is in play order with chip rows (docs/designs/boss-bank-categories.md). */
+  filter?: PhaseFilter;
+  /** Why the filter just went back to 全部, until the next chip pick. */
+  filterNote?: string;
+  /** keepNote: a page change, not a pick; note: a line to show instead. */
+  onFilter?: (f: PhaseFilter, keepNote?: boolean, note?: string) => void;
+  /** Each question's category as the buzz pick sees it (bankCategoryOf). */
+  categoryOf?: Record<string, string | undefined>;
   onUpdate: (id: string, updater: (q: BankQuestion) => BankQuestion) => void;
   onDelete: (id: string) => void;
   onAdd: () => void;
@@ -1142,12 +1198,31 @@ function RoomEditor({
 }) {
   const hintId = useId();
   const difficultyHintId = useId();
+  const shiftNoteId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const boss = filter !== undefined;
+  // No category pick outside a buzzer phase; a list emptied by deletes falls back (category first, then difficulty).
+  const wanted = filter ?? NO_FILTER;
+  const usesCategories = boss && categories && questions.some((q) => categoryOf[q.id]);
+  // With no category row on screen (buzzer off, or every category cleared) a category pick cannot stay: nothing could undo it.
+  const noCategory = !usesCategories && wanted.category !== null ? pick(questions, wanted, "category", null, categoryOf) : wanted;
+  const f = boss ? fallback(questions, noCategory, categoryOf) : NO_FILTER;
+  const loosened = boss && f !== wanted;
+  // A loosened filter is saved back (after render), so its list stays fixed from here on like any pick.
+  useEffect(() => {
+    if (loosened) onFilter?.(f, false, "篩選裡沒有題目了，已放寬篩選");
+  });
+  const filtered = isFiltered(f);
+  const filterLine = loosened ? "篩選裡沒有題目了，已放寬篩選" : filterNote;
+  const list = boss ? shownList(questions, f, categoryOf) : questions;
+  const order = boss ? playOrder(questions) : questions;
+  const diffChips = boss ? difficultyChips(questions, f, categoryOf) : [];
+  const catChips = usesCategories ? categoryChips(questions, f, categoryOf) : [];
   const jumpPage = (j: Jump | null) => {
-    const i = j?.id ? questions.findIndex((q) => q.id === j.id) : -1;
+    const i = j?.id ? list.findIndex((q) => q.id === j.id) : -1;
     return i < 0 ? null : pageOf(i);
   };
-  const [pageWanted, setPage] = useState(() => jumpPage(jump) ?? 0);
+  const [pageWanted, setPage] = useState(() => jumpPage(jump) ?? filter?.page ?? 0);
   // Adjusting state while rendering (react.dev "storing information from previous renders"): no extra render pass.
   const [seenJump, setSeenJump] = useState(jump?.seq);
   if (jump?.seq !== seenJump) {
@@ -1155,13 +1230,30 @@ function RoomEditor({
     const p = jumpPage(jump);
     if (p !== null) setPage(p);
   }
-  const { page, pages, start, end } = questionPage(questions.length, pageWanted);
+  const { page, pages, start, end } = questionPage(list.length, pageWanted);
+  const choose = (row: "difficulty" | "category", value: Chip["value"]) => {
+    onFilter?.(pick(questions, f, row, value, categoryOf));
+    setPage(0);
+  };
+  const chipRow = (label: string, row: "difficulty" | "category", chips: Chip[]) =>
+    chips.length > 0 && (
+      <div role="group" aria-label={label} className="flex flex-wrap items-center gap-1" data-testid={`bank-filter-${row}`}>
+        <span className="mr-1 text-[13px]">{label}</span>
+        {chips.map((c) => (
+          <button key={c.value === null ? "*all" : `v:${c.value}`} type="button" aria-pressed={c.picked} onClick={() => choose(row, c.value)} className={`px-btn shrink-0 whitespace-nowrap !px-2 !py-1 text-[13px] ${c.picked ? "!bg-[var(--turn)]" : "!bg-white"}`}>
+            {c.picked ? "✓ " : ""}
+            {c.label} · {c.count}
+          </button>
+        ))}
+      </div>
+    );
+  const pickedLabel = [f.difficulty !== null ? `難度 ${f.difficulty}` : "", f.category !== null ? catChips.find((c) => c.picked)?.label ?? "" : ""].filter(Boolean).join("、");
   // Two copies, above and below the list; the one below brings the group's top back into view.
   const pager = (scroll: boolean) =>
     pages > 1 && (
       <nav aria-label={scroll ? "下方分頁" : "分頁"} className="flex flex-wrap items-center gap-1 text-[14px]">
         <span className="mr-1">
-          第 {start + 1 === end ? end : `${start + 1}–${end}`} 題，共 {questions.length} 題
+          第 {start + 1 === end ? end : `${start + 1}–${end}`} 題，共 {list.length} 題
         </span>
         {[
           { to: page - 1, text: "上一頁", label: "上一頁" },
@@ -1175,6 +1267,7 @@ function RoomEditor({
             disabled={to < 0 || to >= pages}
             onClick={() => {
               setPage(to);
+              if (boss) onFilter?.({ ...f, page: to }, !loosened, loosened ? "篩選裡沒有題目了，已放寬篩選" : undefined);
               if (scroll) headingRef.current?.scrollIntoView({ block: "start" });
             }}
             className={`!m-0 !px-2 !py-1 text-[14px] ${to === page ? "" : "opacity-70"}`}
@@ -1190,10 +1283,28 @@ function RoomEditor({
       <div data-testid={testId} className="flex flex-col gap-2">
         <h2 ref={headingRef} className="text-[18px]">{title}</h2>
         <div className="text-[13px]">{note}</div>
+        {chipRow("難度", "difficulty", diffChips)}
+        {chipRow("類別", "category", catChips)}
+        {catChips.some((c) => c.value === TIMING_CATEGORY) && <div className="text-[13px]">卡點題：計時題一律算這類</div>}
+        {filterLine && (
+          <div className="text-[13px]" data-testid="bank-filter-note">
+            {filterLine}
+          </div>
+        )}
+        {filtered && (
+          <div id={shiftNoteId} className="text-[13px]">
+            篩選時不能調順序，回到「全部」再調
+          </div>
+        )}
+        {boss && (
+          <div aria-live="polite" className="sr-only">
+            {filtered ? `${pickedLabel}，共 ${list.length} 題` : filterLine ? `已回到全部，共 ${list.length} 題` : ""}
+          </div>
+        )}
         {/* A buzzer phase has no persuasion check, so there the difficulty only orders the questions. */}
         {difficulty && (
           <div id={difficultyHintId} className="text-[13px]">
-            難度 1 最易、5 最難（沒改就是 5）：同一階段由易到難出題
+            難度 1 最易、5 最難（沒改就是 {DEFAULT_BOSS_DIFFICULTY}）：同一階段由易到難出題；同難度照這裡的順序（開了首領題隨機順序，同難度內會打亂）
             {categories ? "。" : (
               <>
                 ，也決定說服檢定的 <span className="whitespace-nowrap">擲骰檢定（8～16）</span>。
@@ -1208,17 +1319,20 @@ function RoomEditor({
           </div>
         )}
         {pager(false)}
-        {questions.slice(start, end).map((q, i) => (
+        {list.slice(start, end).map((q, i) => (
           <QuestionRow
             key={q.id}
-            number={start + i + 1}
+            number={boss ? order.indexOf(q) + 1 : start + i + 1}
             question={q}
             onUpdate={(updater) => onUpdate(q.id, updater)}
             onDelete={() => onDelete(q.id)}
             onUploadImage={onUploadImage}
             problem={problems.get(q.id)}
             open={actions.isOpen(q.id)}
-            last={start + i === questions.length - 1}
+            last={boss ? filtered || !canShift(questions, q.id, 1) : start + i === questions.length - 1}
+            upOff={boss ? filtered || !canShift(questions, q.id, -1) : undefined}
+            shiftNoteId={filtered ? shiftNoteId : undefined}
+            tag={boss ? `${usesCategories ? `${categoryOf[q.id] || "未分類"}・` : ""}難度 ${bossDifficulty(q)}` : undefined}
             actions={actions}
             category={categories}
             difficultyHintId={difficulty ? difficultyHintId : undefined}
@@ -1229,7 +1343,7 @@ function RoomEditor({
         <PixelButton
           onClick={() => {
             onAdd();
-            setPage(pageOf(questions.length)); // the new question's page
+            if (!boss) setPage(pageOf(questions.length)); // the new question's page; a boss list's sorted place comes as a jump
           }}
         >
           + 新增題目
@@ -1714,14 +1828,23 @@ function QuestionRow({
   problem,
   open,
   last,
+  upOff,
+  shiftNoteId,
+  tag,
   actions,
 }: {
   /** 1-based within its group, across pages. */
   number: number;
   /** Shows the whole editor; closed, the row is its one-line summary. */
   open: boolean;
-  /** The group's last question (下移 is off). */
+  /** 下移 is off (default: the group's last question). */
   last: boolean;
+  /** 上移 is off (default: the first question). */
+  upOff?: boolean;
+  /** The line that says why 上移／下移 are off (a filter is on). */
+  shiftNoteId?: string;
+  /** A boss question's 「類別・難度」 on its summary row. */
+  tag?: string;
   actions: ListActions;
   /** Why a save is blocked on this question, if it is. */
   problem?: string;
@@ -1743,7 +1866,7 @@ function QuestionRow({
       className="flex flex-col gap-1 border-t border-black/10 pt-2 outline-none first:border-t-0 first:pt-0"
       style={problem ? { boxShadow: "0 0 0 4px var(--danger)", padding: 8 } : undefined}
     >
-      <QuestionHeader number={number} question={q} problem={!!problem} open={open} last={last} actions={actions} onDelete={onDelete} />
+      <QuestionHeader number={number} question={q} problem={!!problem} open={open} last={last} upOff={upOff ?? number === 1} shiftNoteId={shiftNoteId} tag={tag} actions={actions} onDelete={onDelete} />
       {open && (
       <>
       {problem && (
@@ -2078,7 +2201,7 @@ function QuestionRow({
 
 /** A question's summary row (editor-ux #2): tap to open or close its editor. Its ⋯ menu (#3) moves, copies or
  * deletes it; 移到… lists every pool and phase, the ones a save would refuse disabled with the reason. */
-function QuestionHeader({ number, question: q, problem, open, last, actions, onDelete }: { number: number; question: BankQuestion; problem: boolean; open: boolean; last: boolean; actions: ListActions; onDelete: () => void }) {
+function QuestionHeader({ number, question: q, problem, open, last, upOff, shiftNoteId, tag, actions, onDelete }: { number: number; question: BankQuestion; problem: boolean; open: boolean; last: boolean; upOff: boolean; shiftNoteId?: string; tag?: string; actions: ListActions; onDelete: () => void }) {
   const [menu, setMenu] = useState<"closed" | "actions" | "move">("closed");
   const s = questionSummary(q);
   const act = (f: () => void) => () => {
@@ -2108,6 +2231,12 @@ function QuestionHeader({ number, question: q, problem, open, last, actions, onD
               </span>
             )}
           </span>
+          {/* Shrinks before the question's own words do: a category may be 20 characters (MAX_CATEGORY). */}
+          {tag && (
+            <span title={tag} className="min-w-0 max-w-[40%] truncate whitespace-nowrap border-2 border-[var(--k)] px-1 text-[12px]">
+              {tag}
+            </span>
+          )}
           {problem && (
             <span className="shrink-0" style={{ color: "#b3261e" }} aria-label="有問題要修正">
               ⚠
@@ -2123,8 +2252,8 @@ function QuestionHeader({ number, question: q, problem, open, last, actions, onD
       </div>
       {menu === "actions" && (
         <div role="group" aria-label={`第 ${number} 題的動作`} className="flex flex-wrap gap-2">
-          <PixelButton className={item} disabled={number === 1} onClick={act(() => actions.onShift(q.id, -1))}>↑ 上移</PixelButton>
-          <PixelButton className={item} disabled={last} onClick={act(() => actions.onShift(q.id, 1))}>↓ 下移</PixelButton>
+          <PixelButton className={item} disabled={upOff} aria-describedby={shiftNoteId} onClick={act(() => actions.onShift(q.id, -1))}>↑ 上移</PixelButton>
+          <PixelButton className={item} disabled={last} aria-describedby={shiftNoteId} onClick={act(() => actions.onShift(q.id, 1))}>↓ 下移</PixelButton>
           <PixelButton className={item} onClick={() => setMenu("move")}>⇄ 移到…</PixelButton>
           <PixelButton className={item} onClick={act(() => actions.onCopy(q.id))}>⧉ 複製</PixelButton>
           <PixelButton variant="flee" className={item} onClick={act(onDelete)}>刪除這題</PixelButton>
