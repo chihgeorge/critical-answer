@@ -98,6 +98,11 @@ describe("bank editor list: move, shift, copy, delete and undo (editor-ux #3)", 
     expect(questionsAt(shiftQuestion(b, pool(2), "p2-mc", -1), pool(2)).map((q) => q.id)).toEqual(["p2-mc", "p2-a"]);
     expect(shiftQuestion(b, pool(2), "p2-a", -1)).toBe(b);
     expect(shiftQuestion(b, pool(2), "p2-mc", 1)).toBe(b);
+    // A boss phase moves across difficulties too: its bank order is the play order.
+    const hard = { ...text("boss-hard", "難"), difficulty: 5 as const };
+    const easy = { ...text("boss-easy", "易"), difficulty: 1 as const };
+    const boss = { ...b, boss: { ...b.boss, phases: [{ ...b.boss.phases[0], questions: [hard, easy] }, ...b.boss.phases.slice(1)] } };
+    expect(questionsAt(shiftQuestion(boss, phase(0), "boss-easy", -1), phase(0)).map((q) => q.id)).toEqual(["boss-easy", "boss-hard"]);
   });
 
   it("copies right after with a new id that no question has, as a deep copy", () => {
