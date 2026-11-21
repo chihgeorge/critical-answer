@@ -776,6 +776,17 @@ test("image authoring: switch the content's media type to image, upload a real f
   const reloadedRow = rows(page.getByTestId("bank-pool-1")).first();
   await expect(reloadedRow.getByRole("button", { name: "題目：圖片" })).toHaveAttribute("aria-pressed", "true");
   await expect(reloadedRow.getByText(/已上傳/)).toBeVisible();
+
+  // The saved upload previews through GET /api/bank/image?key= (a redirect to the public bucket, which e2e has not got:
+  // the route stands in for it), and a file the bucket no longer has shows an error line, not a broken image.
+  const preview = (url: URL) => url.pathname.endsWith("/api/bank/image") && url.searchParams.has("key");
+  await page.route(preview, (route) => route.fulfill({ contentType: "image/png", body: TINY_PNG }));
+  await reloadAndLoad(page);
+  await expect(rows(page.getByTestId("bank-pool-1")).first().getByAltText("圖片預覽")).toBeVisible();
+  await page.unroute(preview);
+  await page.route(preview, (route) => route.fulfill({ status: 404, body: "" }));
+  await reloadAndLoad(page);
+  await expect(rows(page.getByTestId("bank-pool-1")).first().getByRole("alert")).toContainText("讀不到這個圖片檔");
 });
 
 test("image authoring: a server-rejected upload (bad file type) shows an inline error and leaves the question unsaved", async ({ page, request }) => {

@@ -1549,7 +1549,12 @@ function MediaPicker({
         {current.kind !== "image" && !uploading && !current.value && (
           <span className="text-[12px] text-black/60">影片用 MP4（H.264／AAC），聲音用 M4A 或 MP3，每個檔案 25 MB 以內。</span>
         )}
-        {local && local.kind === current.kind && current.value && !uploading && <LocalPreview {...local} />}
+        {current.value && !uploading && (local && local.kind === current.kind ? (
+          <FilePreview {...local} />
+        ) : (
+          // A saved upload: only an open question renders this, so a closed list fetches nothing (key: a new file starts over).
+          <FilePreview key={current.value} url={`${bankImageApiBase()}?key=${encodeURIComponent(current.value)}`} kind={current.kind as UploadKind} />
+        ))}
         </div>
       ) : current.kind === "instagram" ? (
         <InstagramFields label={label} value={current} onChange={onChange} />
@@ -1679,31 +1684,42 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
   );
 }
 
-/** The file just uploaded, played from this browser: its name, length and size, and whether a browser can play it. */
-function LocalPreview({ url, name, size, kind }: { url: string; name: string; size: number; kind: UploadKind }) {
+/** An uploaded file's preview: the one just picked, played from this browser (with its name and size), or a saved one
+ * through the Worker's redirect to the bucket. Its length, and whether a browser can show it. */
+function FilePreview({ url, name, size, kind }: { url: string; name?: string; size?: number; kind: UploadKind }) {
   const [seconds, setSeconds] = useState<number | null>(null);
-  const [broken, setBroken] = useState(false);
+  const [broken, setBroken] = useState<"codec" | "missing" | null>(null);
   const onMeta = (e: React.SyntheticEvent<HTMLMediaElement>) => {
     const el = e.currentTarget;
     setSeconds(el.duration);
     // An HEVC or other codec this browser can't decode: no picture, though the container passed the server.
-    if (el instanceof HTMLVideoElement && el.videoWidth === 0) setBroken(true);
+    if (el instanceof HTMLVideoElement && el.videoWidth === 0) setBroken("codec");
   };
+  const missing = () => setBroken("missing");
+  if (broken === "missing") {
+    return (
+      <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
+        讀不到這個{UPLOAD[kind].name}檔：可能已經刪掉、還沒存，或網路不通，請重新上傳
+      </span>
+    );
+  }
+  const info = [name, kind === "image" ? null : seconds === null ? "…" : formatClipTime(Math.round(seconds)), size === undefined ? null : `${mb(size)} MB`].filter(Boolean);
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[12px] [overflow-wrap:anywhere]">
-        {name}・{seconds === null ? "…" : formatClipTime(Math.round(seconds))}・{mb(size)} MB
-      </span>
+      {info.length > 0 && <span className="text-[12px] [overflow-wrap:anywhere]">{info.join("・")}</span>}
       {seconds !== null && seconds > LONG_CLIP_SECONDS && <span className="text-[12px]">超過 {LONG_CLIP_SECONDS} 秒，台上可能太長</span>}
-      {broken && (
+      {broken === "codec" && (
         <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
           {kind === "video" ? "這支影片瀏覽器放不出來，請轉成 H.264／AAC 再上傳" : "這個聲音檔瀏覽器放不出來，請轉成 M4A（AAC）或 MP3 再上傳"}
         </span>
       )}
-      {kind === "video" ? (
-        <video src={url} controls playsInline className="max-w-[320px]" onLoadedMetadata={onMeta} onError={() => setBroken(true)} />
+      {kind === "image" ? (
+        // eslint-disable-next-line @next/next/no-img-element -- a remote bucket URL, not a local asset next/image can optimize
+        <img src={url} alt={`${UPLOAD[kind].name}預覽`} loading="lazy" className="max-h-[180px] max-w-[320px] self-start object-contain" onError={missing} />
+      ) : kind === "video" ? (
+        <video src={url} controls playsInline preload="metadata" className="max-w-[320px]" onLoadedMetadata={onMeta} onError={missing} />
       ) : (
-        <audio src={url} controls onLoadedMetadata={onMeta} onError={() => setBroken(true)} />
+        <audio src={url} controls preload="metadata" onLoadedMetadata={onMeta} onError={missing} />
       )}
     </div>
   );

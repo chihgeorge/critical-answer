@@ -62,8 +62,27 @@ describe("handleBankImageApi: auth and method", () => {
   });
 
   it("rejects an unsupported method (405)", async () => {
-    const res = await handleBankImageApi(req("GET", { auth: `Bearer ${KEY}` }), deps());
+    const res = await handleBankImageApi(req("DELETE", { auth: `Bearer ${KEY}` }), deps());
     expect(res.status).toBe(405);
+  });
+});
+
+describe("handleBankImageApi: GET ?key= preview redirect", () => {
+  const KEY_ID = "123e4567-e89b-42d3-a456-426614174000";
+  const get = (query: string) => new Request(`https://worker.example.com/api/bank/image${query}`);
+  it("redirects a well-formed key to the public bucket, without the owner key", async () => {
+    const res = await handleBankImageApi(get(`?key=${KEY_ID}`), deps({ publicBaseUrl: "https://pub.example.r2.dev" }));
+    expect(res.status).toBe(302);
+    expect(res.headers.get("Location")).toBe(`https://pub.example.r2.dev/${KEY_ID}`);
+  });
+  it("refuses a missing or malformed key (400): never a redirect to an arbitrary path", async () => {
+    for (const q of ["", "?key=../x", "?key=https://evil.example"]) {
+      expect((await handleBankImageApi(get(q), deps({ publicBaseUrl: "https://pub.example.r2.dev" }))).status).toBe(400);
+    }
+  });
+  it("answers 503 when the bucket's public base is unset or the placeholder", async () => {
+    expect((await handleBankImageApi(get(`?key=${KEY_ID}`), deps())).status).toBe(503);
+    expect((await handleBankImageApi(get(`?key=${KEY_ID}`), deps({ publicBaseUrl: "https://REPLACE-ME.r2.dev" }))).status).toBe(503);
   });
 });
 

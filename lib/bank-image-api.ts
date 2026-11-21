@@ -6,6 +6,7 @@
 // (docs/designs/uploaded-media.md D2).
 
 import { corsHeaders, ownerAuthResponse } from "./bank-api";
+import { UUID_RE } from "./question-bank";
 
 export interface BankImageApiDeps {
   ownerKey: string | undefined;
@@ -15,6 +16,8 @@ export interface BankImageApiDeps {
   putImage(bytes: Uint8Array, contentType: string): Promise<{ key: string }>;
   /** True while the stored bank can't be read by this version: no save can keep an upload then. */
   bankUnreadable(): Promise<boolean>;
+  /** The bucket's public read base (R2_PUBLIC_BASE_URL): a GET with `?key=` redirects there, for the editor's previews. */
+  publicBaseUrl?: string;
 }
 
 // Independent of MAX_BANK_BODY_BYTES (lib/bank-api.ts) — that governs the bank JSON PUT, this
@@ -131,6 +134,14 @@ async function readCapped(body: ReadableStream<Uint8Array>, max: number, declare
   }
 }
 
+/** GET ?key=<uuid>: a redirect to the uploaded file's public URL, so the editor (which does not know the bucket's address)
+ * can preview a saved upload. No owner key: the bucket is public-read already, and only a well-formed key is redirected. */
+function mediaRedirect(key: string | null, base: string | undefined, cors: HeadersInit): Response {
+  if (!key || !UUID_RE.test(key)) return new Response("Bad key", { status: 400, headers: cors });
+  if (!base || base.includes("REPLACE-ME")) return new Response("伺服器沒設 R2_PUBLIC_BASE_URL", { status: 503, headers: cors });
+  return new Response(null, { status: 302, headers: { ...cors, Location: `${base}/${key}` } });
+}
+
 /** Owner-only image/video/audio upload for the question bank. POST a raw body (any of the allowed
  * types); returns `{ key, contentType }` for the bank editor to store on an `image`, `video` or `audio` item. Deliberately a
  * separate exported handler (not a case inside handleBankApi) so worker/index.ts can dispatch on
@@ -138,8 +149,9 @@ async function readCapped(body: ReadableStream<Uint8Array>, max: number, declare
  * "Routing" decision. */
 export async function handleBankImageApi(request: Request, deps: BankImageApiDeps): Promise<Response> {
   const origin = request.headers.get("Origin");
-  const cors = corsHeaders(origin, deps.allowedOrigins, "POST, OPTIONS");
+  const cors = corsHeaders(origin, deps.allowedOrigins, "GET, POST, OPTIONS");
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+  if (request.method === "GET") return mediaRedirect(new URL(request.url).searchParams.get("key"), deps.publicBaseUrl, cors);
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405, headers: cors });
 
   const authError = ownerAuthResponse(request, deps.ownerKey, cors);
