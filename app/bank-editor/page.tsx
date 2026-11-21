@@ -1686,7 +1686,18 @@ function TimingFields({ q, onUpdate, onDelete }: { q: Extract<BankQuestion, { ki
 
 /** An uploaded file's preview: the one just picked, played from this browser (with its name and size), or a saved one
  * through the Worker's redirect to the bucket. Its length, and whether a browser can show it. */
-function FilePreview({ url, name, size, kind }: { url: string; name?: string; size?: number; kind: UploadKind }) {
+/** Only blob: (a file just picked) or http(s): (the Worker redirect) ever reach a media src. */
+function safeMediaUrl(u: string): string | undefined {
+  try {
+    const p = new URL(u, window.location.href);
+    return p.protocol === "blob:" || p.protocol === "https:" || p.protocol === "http:" ? p.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function FilePreview({ url: rawUrl, name, size, kind }: { url: string; name?: string; size?: number; kind: UploadKind }) {
+  const url = safeMediaUrl(rawUrl);
   const [seconds, setSeconds] = useState<number | null>(null);
   const [broken, setBroken] = useState<"codec" | "missing" | null>(null);
   const onMeta = (e: React.SyntheticEvent<HTMLMediaElement>) => {
@@ -1697,7 +1708,7 @@ function FilePreview({ url, name, size, kind }: { url: string; name?: string; si
   };
   // A local file that fails is one this browser cannot decode; a saved one that fails is most likely gone.
   const missing = () => setBroken(name === undefined ? "missing" : "codec");
-  if (broken === "missing") {
+  if (broken === "missing" || url === undefined) {
     return (
       <span role="alert" className="text-[13px]" style={{ color: "var(--danger)" }}>
         讀不到這個{UPLOAD[kind].name}檔：可能已經被清掉，或網路不通；重新整理還是讀不到就重新上傳
