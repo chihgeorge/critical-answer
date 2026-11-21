@@ -149,7 +149,7 @@ describe("占卜師 in the room", () => {
     expect(beat.question).toBeNull();
     await vi.advanceTimersByTimeAsync(FORTUNE_BEAT_MS);
     const card = state(s.room);
-    expect(card.fortune).toEqual({ teamId: T1, condition: "dishes", step: "card", effect: "potion", value: 1, matchIds: [T1, T2] });
+    expect(card.fortune).toEqual({ teamId: T1, condition: "dishes", step: "card", effect: "potion", value: 1, matchIds: [T1, T2], changes: [{ teamId: T1, potion: true }, { teamId: T2, potion: true }] });
     expect(card.view.currentTurnTeamId).toBe(T2);
     expect(narrations(s.room).at(-1).lines.join("")).toMatch(/幸運骰/);
     // The drawing team matched itself: the mocking line.

@@ -30,7 +30,7 @@
 // room code); every later claim must match. See lib/room/dungeon-room.ts.
 
 import type { Accessory } from "./monster-catalog";
-import { BOSS_HP_STEP, FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
+import { BOSS_HP_STEP, FIX_SCORE_MAX, HOST_FIXES, isBossThreshold, isClassId, isFortuneEffect, type ClassId, type HostFix, type Judgment, type EventResult, type ForkDoor, type ForkSide, type FortuneCondition, type FortuneChange, type FortuneEffect, type GamePhase, type LockedOption, type PickBlock, type SpectatorView } from "./game-state";
 import type { Beat } from "./podium";
 import type { BankSize } from "./bank-size";
 import type { InitiativeView } from "./initiative";
@@ -227,6 +227,8 @@ export interface FortuneView {
   timeout?: true;
   value?: number;
   matchIds?: string[];
+  /** Every team the effect changed, matching or not; only on "card". */
+  changes?: FortuneChange[];
 }
 
 export type Pacing = "auto" | "manual";

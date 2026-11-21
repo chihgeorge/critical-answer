@@ -1,7 +1,7 @@
 // The words of ❓ 神秘房 events (docs/designs/event-rooms.md, branch-fork.md, fortune-teller.md), shared by the big
 // screen, the phones, the host page and the narrator. Pure data, no question or answer, so client components may import it.
 
-import type { Boon, EventOutcome, EventResult, EventScene, ForkDoor, ForkSide, FortuneCondition, FortuneEffect } from "./game-state";
+import type { Boon, EventOutcome, EventResult, EventScene, ForkDoor, ForkSide, FortuneChange, FortuneCondition, FortuneEffect } from "./game-state";
 
 /** 叉路's doors are unmarked (branch-fork.md): a side until one opens, then what was behind that one only. */
 export const FORK_SIDE_LABEL: Record<ForkSide, string> = { left: "左門", right: "右門" };
@@ -70,3 +70,20 @@ export const FORTUNE_EFFECT_TEXT: Record<FortuneEffect, { icon: string; name: st
   relief: { icon: "🎁", name: "救濟", line: "給飽足感最少的隊伍", tone: "swap" },
   stun: { icon: "💫", name: "暈眩", line: "跳過下一回合，搶答時停一首", tone: "bad" },
 };
+
+/** A team's change from a fortune, in short parts for a chip: 「飽足感 +10」 (「+10」 without `score`), 「✨ 祝福」,
+ * 「🍀 幸運骰」, 「⏭️ 跳過下一回合」. */
+export function fortuneChangeParts(c: FortuneChange, score?: string): string[] {
+  return [
+    ...(c.satiety ? [score ? `${score} ${signed(c.satiety)}` : signed(c.satiety)] : []),
+    ...(c.boon ? [`${FORTUNE_EFFECT_TEXT[c.boon].icon} ${FORTUNE_EFFECT_TEXT[c.boon].name}`] : []),
+    ...(c.potion ? [`${FORTUNE_EFFECT_TEXT.potion.icon} ${FORTUNE_EFFECT_TEXT.potion.name}`] : []),
+    ...(c.stun ? ["⏭️ 跳過下一回合"] : []),
+  ];
+}
+
+/** The host page's reveal line tail: 「（A隊 飽足感 −20、B隊 飽足感 +20）」, or nothing when no team changed. */
+export function fortuneChangesLine(f: { changes?: FortuneChange[] } | undefined, teams: { id: string; name: string }[], score: string): string {
+  const parts = (f?.changes ?? []).map((c) => `${teams.find((t) => t.id === c.teamId)?.name ?? ""} ${fortuneChangeParts(c, score).join(" ")}`);
+  return parts.length ? `（${parts.join("、")}）` : "";
+}

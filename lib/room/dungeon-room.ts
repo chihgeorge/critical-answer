@@ -3261,7 +3261,7 @@ export class DungeonRoom {
     const f = (this.fortuneBeat?.before ?? this.game)?.fortune;
     if (!step || !f) return {};
     const base = { teamId: f.teamId, condition: f.condition, step };
-    if (step === "card") return { fortune: { ...base, effect: f.effect, ...(f.timeout ? { timeout: true as const } : {}), value: f.value, matchIds: f.matchIds } };
+    if (step === "card") return { fortune: { ...base, effect: f.effect, ...(f.timeout ? { timeout: true as const } : {}), value: f.value, matchIds: f.matchIds, ...(f.changes ? { changes: f.changes } : {}) } };
     if (step === "beat") return { fortune: { ...base, effect: this.fortuneBeat!.effect, ...(this.fortuneBeat!.timeout ? { timeout: true as const } : {}) } };
     // No clock in manual: the pizza waits for the team, or for the host's ▶ 下一步.
     return { fortune: base, ...(step === "choose" && this.pacing === "auto" && f.deadline !== undefined ? { fortuneLeft: Math.max(0, f.deadline - this.now()) } : {}) };
