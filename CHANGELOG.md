@@ -2,6 +2,11 @@
 
 All notable changes to Critical Answer are documented here.
 
+## [0.116.6.4] - 2026-11-23
+
+### Added
+- `docs/designs/tutorial-pages-snapshot.md`：#415 合併後 4 頁版教學文字的歷史快照，供簡化系統（#470）和重做擲骰（#469）對照。
+
 ## [0.116.6.3] - 2026-11-22
 
 ### Fixed
