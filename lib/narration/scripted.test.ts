@@ -99,7 +99,6 @@ describe("scripted lines", () => {
     }
   });
 
-
   it("fills in the team, monster and numbers and leaves no template braces", async () => {
     const p = createScriptedProvider(lcg(1));
     for (const e of samples) {
