@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { BUZZ_REOPEN_LINE, createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, BUZZ_SECOND_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, THROWN_OUT_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
+import { BUZZ_REOPEN_LINE, createScriptedProvider, scriptedEpilogue, EVENT_VARIANTS, FOODIE, VARIANTS, ATMOSPHERE_VARIANTS, NEXT_VARIANTS, BOSS_ENTER_VARIANTS, BOSS_JOIN_VARIANTS, BOSS_MISS_VARIANTS, BUZZ_OUT_VARIANTS, BUZZ_AGAIN_VARIANTS, DISH_VARIANTS, BOSS_DISH_VARIANTS, BOSS_EMPTIED_VARIANTS, BOSS_EXHAUSTED_VARIANTS, CLASS_VARIANTS, ROLL_VARIANTS, NEXT_FORK_VARIANTS, FORK_MONSTER_VARIANTS, FORK_TIMEOUT_VARIANTS, FLEE_SWITCH_VARIANTS, THROWN_OUT_VARIANTS, CAUGHT_VARIANTS, CROWD_VARIANTS } from "./scripted";
 import type { NarrationEvent } from "./events";
 import { MAX_LINE, MAX_MODEL_LINE, targetSegmentCount } from "./runner";
 import * as scripted from "./scripted";
@@ -99,17 +99,6 @@ describe("scripted lines", () => {
     }
   });
 
-  it("#369's round 2 says it is the second and last round, never a new question", () => {
-    const p = createScriptedProvider(lcg(4));
-    const second = new Set(BUZZ_SECOND_VARIANTS.map((t) => t.replace("{team}", team).replace("{monster}", monster)));
-    for (let i = 0; i < 20; i++) {
-      const line = p.line({ type: "retry", team, monster, buzzAgain: true, buzzSecond: true });
-      expect(second.has(line)).toBe(true);
-      expect(line).toMatch(/第二輪/);
-      expect(line).toMatch(/最後/);
-      expect(line.length).toBeLessThanOrEqual(40);
-    }
-  });
 
   it("fills in the team, monster and numbers and leaves no template braces", async () => {
     const p = createScriptedProvider(lcg(1));

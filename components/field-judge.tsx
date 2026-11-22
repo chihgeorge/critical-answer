@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { PixelButton } from "@/components/pixel";
 
-/** A music question with fields (docs/designs/multi-field.md F5): ✓ or ✗ on every field, then 送出判定. All ✓ is a hit;
- * anything less shuts the team out, a part-right answer kept for the end of round 2 (#369). Mount it per buzz, so a new
+/** A music question with fields (docs/designs/multi-field.md F5): ✓ or ✗ on every field, then 送出判定. Each ✓ scores
+ * one field's share (#468); all ✗ shuts the team out. Mount it per buzz, so a new
  * buzz starts unmarked. */
 export function FieldJudge({ labels, typed, disabled, onJudge }: { labels: string[]; typed?: string[]; disabled: boolean; onJudge: (fields: boolean[]) => void }) {
   const [marks, setMarks] = useState<(boolean | undefined)[]>(() => labels.map(() => undefined));
@@ -28,7 +28,7 @@ export function FieldJudge({ labels, typed, disabled, onJudge }: { labels: strin
         </div>
       ))}
       <PixelButton variant={right > 0 ? "ok" : "retry"} disabled={disabled || !done} onClick={() => onJudge(marks.map(Boolean))}>
-        {!done ? "每一欄都標完再送出" : right === labels.length ? "送出判定：全對" : right === 0 ? "送出判定：全錯（這題不能再搶）" : `送出判定：對 ${right}/${labels.length}（先記下，這題不能再搶）`}
+        {!done ? "每一欄都標完再送出" : right === labels.length ? "送出判定：全對" : right === 0 ? "送出判定：全錯（這題不能再搶）" : `送出判定：對 ${right}/${labels.length}（算 ${right} 欄的分）`}
       </PixelButton>
     </div>
   );

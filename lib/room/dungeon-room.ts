@@ -10,7 +10,6 @@ import {
   enterNextBossPhase,
   buzzIn,
   isBuzzPhase,
-  settleBuzz,
   openBuzz,
   pickableCategories,
   pickCategory,
@@ -3924,23 +3923,7 @@ export class DungeonRoom {
       return;
     }
     try {
-      // A music question with fields in a buzzer phase (#369): only all fields right is a hit. Anything less shuts the
-      // team out with its verdicts kept, unless it ends the second round: then the best part-right answer scores.
-      const marks = q?.kind === "text" && q.fields && isBuzzPhase(this.game) ? (fields ?? q.fields.map(() => correct)) : undefined;
-      if (marks && !marks.every(Boolean)) {
-        const settled = settleBuzz(this.game, teamId, marks);
-        if (settled) {
-          const before = this.game;
-          this.game = settled.game;
-          try {
-            return this.judge(settled.teamId, questionId, true, "retry", undefined, undefined, settled.marks);
-          } catch (err) {
-            this.game = before;
-            throw err;
-          }
-        }
-        return this.withUndo(teamId, questionId, () => this.judge(teamId, questionId, false, "retry", undefined, undefined, marks));
-      }
+      // A music question with fields scores each right field, in a buzzer phase too (#468): any right field is a hit.
       const judge = () => this.judge(teamId, questionId, correct, fleeChoice ?? "retry", undefined, undefined, correct ? fields : undefined);
       if (correct) judge();
       else this.withUndo(teamId, questionId, judge);
@@ -4208,7 +4191,7 @@ export class DungeonRoom {
       // A music question's fields hit once each (multi-field.md): the same marks the judgment uses, or a 2-field kill slips by.
       const fq = this.question(questionId);
       const fm = fq?.kind === "text" && fq.fields ? (fields ?? fq.fields.map(() => true)) : undefined;
-      const trial = (roll ? warriorRoll(prev, teamId, questionId, roll.value, () => 0, undefined, [1, 1, 1, 1]) : answerQuestion(prev, teamId, questionId, true, fleeChoice, () => 0, undefined, [1, 1, 1, 1], fm && { right: fm.filter(Boolean).length, total: fm.length, marks: fm })).outcome;
+      const trial = (roll ? warriorRoll(prev, teamId, questionId, roll.value, () => 0, undefined, [1, 1, 1, 1]) : answerQuestion(prev, teamId, questionId, true, fleeChoice, () => 0, undefined, [1, 1, 1, 1], fm && { right: fm.filter(Boolean).length, total: fm.length })).outcome;
       if (!(trial.type === "correct-boss-hit" && trial.bossKilled)) {
         this.pendingAnswer = { ...(fields ? { fields } : {}), ...(roll ? { warrior: roll.value } : {}) };
         // Pin the turn, as a lock does: the answer is already right.
@@ -4262,7 +4245,7 @@ export class DungeonRoom {
         ? throwOut(prev, teamId, questionId, rng)
         : roll?.kind === "warrior"
         ? warriorRoll(prev, teamId, questionId, roll.value, rng, roll.dish, dice)
-        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.kind === "dish" ? roll.value : undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length, marks });
+        : answerQuestion(prev, teamId, questionId, correct, fleeChoice, rng, roll?.kind === "dish" ? roll.value : undefined, dice, marks && { right: marks.filter(Boolean).length, total: marks.length });
     // A killing blow waits for its 4d20 on screen (kill-roll.md D1): a trial run, on an rng it must not consume, says
     // whether this judgment kills; then the room rolls the dice and judges again with them when the beat ends.
     if (!killDice) {
@@ -4295,8 +4278,6 @@ export class DungeonRoom {
     const game = !picked && !afterMonster && eventEligible(judged.game, outcome) && this.rollsEvent(teamId) ? enterFork(ledgered, teamId) : ledgered;
     // Every online team got it wrong: they all buzz on the same question again (boss-music-buzzer.md M1).
     const again = isBuzzPhase(prev) && outcome.type === "incorrect-retry" && judged.game.buzz?.out.length === 0;
-    // #369: this miss opened a music question's round 2, the last one for everyone.
-    const second = again && !!judged.game.buzz?.second && !prev.buzz?.second;
     // A wrong buzz: the music picks up where the buzz stopped it, for the teams still in (boss-buzzer.md D5). After
     // everyone missed it waits for the host's ▶ (M1).
     if (again) this.buzzPaused = false;
@@ -4332,7 +4313,7 @@ export class DungeonRoom {
     // A phase out of questions: no "try again" and no hearts count, its card comes next.
     const exhaustedEvent = game.boss.phasePending === "exhausted" && (roomEvent.type === "retry" || roomEvent.type === "boss-hit") ? { ...roomEvent, exhausted: true as const } : roomEvent;
     // A wrong buzz that leaves the question to the others (boss-buzzer.md): no "try again" line.
-    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const, ...(second ? { buzzSecond: true as const } : {}) } : { buzzOut: true as const }) } : exhaustedEvent;
+    const buzzed = isBuzzPhase(prev) && exhaustedEvent.type === "retry" && !exhaustedEvent.boss && !exhaustedEvent.exhausted ? { ...exhaustedEvent, ...(again ? { buzzAgain: true as const } : { buzzOut: true as const }) } : exhaustedEvent;
     // The narrator says the warrior's d20 (TODOS: 旁白念出戰士擲到幾點); a flee never follows a roll.
     // A hit's die was said before its dish die rolled (roll.dish set): not said twice.
     const withWarrior = roll?.kind === "warrior" && roll.dish === undefined && buzzed.type !== "flee" ? { ...buzzed, warriorRoll: roll.value } : buzzed;

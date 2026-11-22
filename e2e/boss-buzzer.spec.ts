@@ -113,8 +113,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await host.getByRole("button", { name: "下一題", exact: true }).click();
   await expect(screen.getByText("題目 buzz-c")).toBeVisible();
 
-  // A music question with fields (multi-field.md, #369): one box each, judged field by field; part right is out, and
-  // after two rounds with nobody all right the most right fields score.
+  // A music question with fields (multi-field.md, #468): one box each, judged field by field; part right scores its fields.
   await host.getByRole("button", { name: "播放", exact: true }).click();
   await b.getByRole("button", { name: "搶答！" }).click();
   await b.getByLabel("歌名").fill("晴天");
@@ -126,20 +125,7 @@ test("a buzzer phase: everyone in, the first buzz answers, a wrong one is shut o
   await expect(a.getByText("晴天")).toHaveCount(0);
   await host.getByRole("button", { name: "歌名 答對" }).click();
   await host.getByRole("button", { name: "歌手 答錯" }).click();
-  await host.getByRole("button", { name: "送出判定：對 1/2（先記下，這題不能再搶）" }).click();
-  await expect(host.getByTestId("host-buzz")).toContainText("部分答對：乙隊 1/2");
-  const allWrong = async (phone: typeof a, team: string) => {
-    await phone.getByRole("button", { name: "搶答！" }).click();
-    await expect(host.getByTestId("host-buzz")).toContainText(`${team} 搶到了`);
-    await host.getByRole("button", { name: "歌名 答錯" }).click();
-    await host.getByRole("button", { name: "歌手 答錯" }).click();
-    await host.getByRole("button", { name: "送出判定：全錯（這題不能再搶）" }).click();
-  };
-  await allWrong(a, "甲隊");
-  // Everyone out once: round 2.
-  await expect(screen.getByTestId("screen-buzz-second")).toBeVisible();
-  await allWrong(a, "甲隊");
-  await allWrong(b, "乙隊");
+  await host.getByRole("button", { name: "送出判定：對 1/2（算 1 欄的分）" }).click();
   await expect(screen.getByTestId("reveal-fields")).toContainText("歌名：晴天");
   await expect(screen.getByTestId("reveal-fields-partial")).toContainText("乙隊 對 1/2：打掉 1 格血");
 });

@@ -192,7 +192,6 @@ function describeEvent(e: NarrationEvent): string {
       if (e.exhausted) return `事件：隊伍${q(e.team)}答錯了，這一輪首領的題目都出完了。不要說可以再答，也不要說首領倒下，結果留待揭曉。`;
       if (e.prayed && !e.boss) return `事件：隊伍${q(e.team)}答錯了，牧師的祈禱骰已經宣布他們馬上再答，不換隊。這一行只寫一句場面氣氛，不要再說再答、祈禱、聖光或下一輪。`;
       if (e.prayed) return `事件：隊伍${q(e.team)}答錯了，但牧師的祈禱讓聖光降臨，他們現在馬上再答一次（首領${q(e.monster)}換了一題），不換隊。不要說下一輪再答。`;
-      if (e.buzzSecond) return `事件：搶答中，隊伍${q(e.team)}搶到了卻沒全對，所有隊伍都答過了，還沒有隊伍每一欄都對。同一首歌開始第二輪，所有隊伍可以再搶，這是最後一輪。要說第二輪、最後一次。不要說換題。`;
       if (e.buzzAgain) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，所有隊伍都答錯了這一題。同一題重新開放，所有隊伍可以再搶一次。不要說換題。`;
       if (e.buzzOut) return `事件：搶答中，隊伍${q(e.team)}搶到了卻答錯，這題他們不能再搶，音樂繼續放，其他隊伍快搶。不要說可以再答。`;
       return e.boss
