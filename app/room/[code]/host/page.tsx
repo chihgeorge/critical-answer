@@ -441,6 +441,8 @@ export default function HostPage() {
                 ? "首領正在換階段或已經倒下，等下一個階段開始再按"
                 : msg.detail === "boss_not_reached"
                 ? "還沒有隊伍進首領房"
+                : msg.detail === "too_late"
+                ? "來不及換了：已經有人作答（鎖定、送出答案、等判定），或已開放搶答"
                 : msg.detail === "no_undo"
                 ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
@@ -1650,6 +1652,12 @@ export default function HostPage() {
               <div data-testid="host-quick" className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 truncate text-[14px] text-white">{turn.team.name}：</span>
                 {potionButton(turn.team, "quick-potion")}
+                {/* 換掉目前這題: before the team answers; the boss room's question is everyone's there. */}
+                {picks && (
+                  <PixelButton data-testid="quick-swap" className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" onClick={() => setPicking(`swap:${turn.team.inBossPhase ? "boss" : turn.team.id}`)}>
+                    🔄 換掉目前這題
+                  </PixelButton>
+                )}
                 <PixelButton className="!m-0 min-h-[44px] !px-2 !py-0 text-[14px] md:!px-3" onClick={() => setDrawer("rejudge")}>
                   ⚖️ 改判已判過的題目
                 </PixelButton>
@@ -1754,7 +1762,25 @@ export default function HostPage() {
           onClose={() => setPicking(null)}
         />
       )}
-      {picking && picking !== "buzz" && picks && game && (
+      {picking?.startsWith("swap:") && picks && game?.phase === "playing" && (() => {
+        const target = picking.slice(5);
+        const who = target === "boss" ? "首領房" : teamName(target);
+        return (
+          <QuestionPicker
+            title={`換掉${who}目前這題`}
+            note="現在就換成這題，倒數和影片重新開始。換掉的那題算已公布，之後不會再出。隊伍已經鎖定、送出答案或等判定時就不能換。只有你看得到這個清單。"
+            questions={(picks.swap[target] ?? []).flatMap((id) => picks.questions.find((x) => x.id === id) ?? [])}
+            current={undefined}
+            teamName={teamName}
+            onPick={(id) => {
+              send({ type: "HOST_SWAP_QUESTION", target, questionId: id });
+              setPicking(null);
+            }}
+            onClose={() => setPicking(null)}
+          />
+        );
+      })()}
+      {picking && picking !== "buzz" && !picking.startsWith("swap:") && picks && game && (
         <QuestionPicker
           title={picking === "boss" ? "指定首領房下一題" : `替${teamName(picking)}指定下一題`}
           note={`${picking === "boss" ? "首領房下一次換題" : `${teamName(picking)}下一次換到這個難度的題目（通常是答對進下一間房）`}時就出這題。只有你看得到這個清單。`}

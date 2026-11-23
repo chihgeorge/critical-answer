@@ -20,6 +20,8 @@ import {
   skipBuzz,
   sendToBoss,
   queueQuestion,
+  swapQuestion,
+  swappableQuestionIds,
   pickBlock,
   pickableQuestionIds,
   recordOptionSelection,
@@ -1742,10 +1744,11 @@ export class DungeonRoom {
     const queued: Record<string, string> = {};
     for (const t of game.teams) if (t.queuedQuestionId) queued[t.id] = t.queuedQuestionId;
     if (game.boss.queuedQuestionId) queued.boss = game.boss.queuedQuestionId;
+    const swap = Object.fromEntries(targets.map((t) => [t, swappableQuestionIds(game, t)]));
     // Host-only, like the answers: the players never learn how many phases are left (boss-phases.md D4).
     const bossPhases = this.bank.boss.phases.map(({ name, rule, maxHp }) => ({ name, rule, maxHp }));
     const judged = (game.judgments ?? []).map((j, index) => ({ ...j, index }));
-    return { type: "HOST_PICKS", questions, options, queued, bossPhases, bossPhaseIndex: game.boss.phaseIndex, judged };
+    return { type: "HOST_PICKS", questions, options, queued, swap, bossPhases, bossPhaseIndex: game.boss.phaseIndex, judged };
   }
 
   /** The picker carries the whole bank, so the host pages get it again only when it changed (a phone's
@@ -2691,6 +2694,9 @@ export class DungeonRoom {
           break;
         case "HOST_QUEUE_QUESTION":
           this.handleQueueQuestion(sender, msg.target, msg.questionId);
+          break;
+        case "HOST_SWAP_QUESTION":
+          this.handleSwapQuestion(sender, msg.target, msg.questionId);
           break;
         case "HOST_END_GAME":
           this.handleEndGame(sender);
@@ -4175,6 +4181,31 @@ export class DungeonRoom {
     } catch (err) {
       this.sendInvalid(conn, err);
     }
+  }
+
+  /** 換掉目前這題 (swapQuestion): too late once a lock, a die, a beat or a reveal is on the question. The new question
+   * starts like a fresh deal: its count, media and memory are keyed by question id, so they start over by themselves. */
+  private handleSwapQuestion(conn: Conn, target: string, questionId: string) {
+    if (!this.requireHost(conn)) return;
+    const game = this.game;
+    if (!game || game.phase !== "playing") {
+      this.sendTo(conn, { type: "ERROR", error: "no_active_game" });
+      return;
+    }
+    const old = target === "boss" ? game.boss.currentQuestionId : game.teams.find((t) => t.id === target)?.currentQuestionId;
+    if (this.stageBeat || [this.pendingLock, this.pendingRoll, this.lostCrit, this.reveal].some((x) => x && x.questionId === old)) {
+      this.sendTo(conn, { type: "ERROR", error: "invalid_action", detail: "too_late" });
+      return;
+    }
+    const q = this.question(questionId);
+    try {
+      this.game = swapQuestion(game, target, questionId, q?.kind === "text" ? answerText(q) : null);
+    } catch (err) {
+      return this.sendInvalid(conn, err);
+    }
+    if (this.media && this.media.questionId === old) this.media = { ...this.media, state: "paused" };
+    ++this.eventSeq;
+    this.broadcastState();
   }
 
   /** Applies one answer; throws InvalidActionError (from answerQuestion) before changing anything.

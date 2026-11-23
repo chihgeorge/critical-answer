@@ -783,6 +783,58 @@ export function queueQuestion(game: GameState, target: string, questionId: strin
     : { ...game, boss: { ...game.boss, queuedQuestionId } };
 }
 
+/** The questions `target` (a team id or "boss") may swap its current question for (swapQuestion): a room team's
+ * current difficulty, or the boss phase's. Blocked ones are included; pickBlock says which. */
+export function swappableQuestionIds(game: GameState, target: string): string[] {
+  if (target === "boss") return isBuzzPhase(game) ? [] : game.boss.questionIds;
+  const team = getTeam(game, target);
+  return team.inBoss ? [] : game.pools[poolIndexFor(game.pools, team.currentDifficulty)];
+}
+
+/**
+ * 換掉目前這題: the host swaps the question `target` (a room team, or "boss" outside a buzzer phase) faces now for
+ * `questionId`, before it is answered: "too_late" once a wrong answer, a typed answer or a catch waits on it (the room
+ * refuses a lock, die or beat on it). The old question counts as published (revealed: never dealt again); the new one
+ * is dealt fresh, its per-question state clean. A persuasion check already rolled stays rolled, moved onto the new
+ * question, its hint taken from `hintAnswer` (the new answer; null: no hint). Not a turn.
+ */
+export function swapQuestion(game: GameState, target: string, questionId: string, hintAnswer: string | null): GameState {
+  assertPlaying(game);
+  const team = target === "boss" ? null : getTeam(game, target);
+  if (team?.inBoss) throw new InvalidActionError(`${target} is in the boss room`);
+  if (!team) assertNotBuzz(game);
+  const old = team ? team.currentQuestionId : game.boss.currentQuestionId;
+  const facing = team ? [team] : game.teams.filter((t) => t.inBoss);
+  if (game.pendingWrong?.questionId === old || game.antiCheat?.openCatch?.questionId === old || facing.some((t) => t.typedAnswer !== undefined)) throw new InvalidActionError("too_late");
+  if (!swappableQuestionIds(game, target).includes(questionId)) throw new InvalidActionError(`${questionId} can't be ${target}'s question now`);
+  const block = pickBlock(game, questionId);
+  if (block) throw new InvalidActionError(`${questionId} is ${block.kind}`);
+  const dropped = dropEliminated(game, old);
+  const checks = { ...dropped.checks };
+  for (const t of facing) {
+    const rolled = game.checks?.[checkKey(old, t.id)];
+    if (!rolled) continue;
+    const moved: CheckRecord = { ...rolled };
+    delete moved.hint;
+    const hint = rolled.passed && rolled.value !== 20 && hintAnswer !== null ? firstMeaningfulChar(hintAnswer) : null;
+    checks[checkKey(questionId, t.id)] = { ...moved, ...(hint !== null ? { hint } : {}) };
+  }
+  const fresh = (t: Team): Partial<Team> => ({ currentSelection: null, ...(t.itemArmedFor === old ? { itemArmedFor: questionId } : {}) });
+  const from = game.pools.findIndex((ids) => ids.includes(questionId));
+  return {
+    ...game,
+    ...dropped,
+    ...(game.checks ? { checks } : {}),
+    revealedQuestionIds: withRevealed(game.revealedQuestionIds, old),
+    ...(team
+      ? {
+          usedQuestionIds: game.usedQuestionIds.map((u, i) => (i === from && !u.includes(questionId) ? [...u, questionId] : u)),
+          teams: patchTeam(game.teams, team.id, (t) => ({ ...fresh(t), currentQuestionId: questionId, wrongOn: undefined, oracleQ: undefined })),
+        }
+      : { teams: game.teams.map((t) => (t.inBoss ? { ...t, ...fresh(t) } : t)), boss: { ...game.boss, currentQuestionId: questionId } }),
+  };
+}
+
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
 /** The lobby's 進王門檻 choices: a lower one makes a game with many teams shorter. */
 export const BOSS_THRESHOLDS = [10, 12, 15] as const;

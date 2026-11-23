@@ -383,6 +383,8 @@ export type ClientMessage =
   | { type: "TEAM_CLAIM"; code: string }
   /** Host: the next question for a team's room, or with target "boss" the boss's; null clears it (game-state queueQuestion). */
   | { type: "HOST_QUEUE_QUESTION"; target: string; questionId: string | null }
+  /** Host: swap out the question a team (or with "boss" the boss) faces now, before it is answered (game-state swapQuestion). */
+  | { type: "HOST_SWAP_QUESTION"; target: string; questionId: string }
   | {
       type: "HOST_JUDGE";
       teamId: string;
@@ -746,6 +748,8 @@ export type ServerMessage =
       options: Record<string, string[]>;
       /** Per target: the queued question id, when there is one. */
       queued: Record<string, string>;
+      /** Per target: the question ids HOST_SWAP_QUESTION may swap its current question for (swappableQuestionIds). */
+      swap: Record<string, string[]>;
       /** Every boss phase and which one is under way: only the host knows what is still to come. */
       bossPhases: { name: string; rule: string; maxHp: number }[];
       bossPhaseIndex: number;
@@ -1157,6 +1161,11 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const questionId = m.questionId === null ? null : str(m.questionId, MAX_ID);
       if (target === null || (questionId === null && m.questionId !== null)) return null;
       return { type: "HOST_QUEUE_QUESTION", target, questionId };
+    }
+    case "HOST_SWAP_QUESTION": {
+      const target = str(m.target, MAX_ID);
+      const questionId = str(m.questionId, MAX_ID);
+      return target === null || questionId === null ? null : { type: "HOST_SWAP_QUESTION", target, questionId };
     }
     case "HOST_JUDGE": {
       const teamId = str(m.teamId, MAX_ID);
