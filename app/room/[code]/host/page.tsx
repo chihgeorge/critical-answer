@@ -442,7 +442,7 @@ export default function HostPage() {
                 : msg.detail === "boss_not_reached"
                 ? "還沒有隊伍進首領房"
                 : msg.detail === "too_late"
-                ? "來不及換了：已經有人作答（鎖定、送出答案、等判定），或已開放搶答"
+                ? "來不及換了：這題已經有隊伍作答過（鎖定、送出答案、等判定、重答），或已開放搶答"
                 : msg.detail === "no_undo"
                 ? "現在不能改判答對：判完後已經有別的動作，或這隊手機斷線了"
                 : `${msg.error}${msg.detail ? `: ${msg.detail}` : ""}`,
