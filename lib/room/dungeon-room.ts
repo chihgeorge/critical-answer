@@ -4203,8 +4203,8 @@ export class DungeonRoom {
     } catch (err) {
       return this.sendInvalid(conn, err);
     }
+    // No new eventId: a judgment's narration still on its way keeps its handoff; a stale press names the old question.
     if (this.media && this.media.questionId === old) this.media = { ...this.media, state: "paused" };
-    ++this.eventSeq;
     this.broadcastState();
   }
 

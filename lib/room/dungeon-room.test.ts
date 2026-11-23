@@ -889,6 +889,14 @@ describe("HOST_SWAP_QUESTION (換掉目前這題)", () => {
     (room as any).pendingLock = { teamId: turn, questionId: old, optionIndex: 0 };
     tooLate();
     (room as any).pendingLock = null;
+    for (const k of ["pendingRoll", "reveal"]) {
+      (room as any)[k] = { teamId: turn, questionId: old, value: 10 };
+      tooLate();
+      (room as any)[k] = null;
+    }
+    (room as any).stageBeat = "check-success";
+    tooLate();
+    (room as any).stageBeat = null;
     const game = room.game!;
     (room as any).game = { ...game, teams: game.teams.map((t) => (t.id === turn ? { ...t, typedAnswer: "x" } : t)) };
     tooLate();

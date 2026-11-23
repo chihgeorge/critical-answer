@@ -1384,6 +1384,34 @@ describe("swapQuestion (換掉目前這題)", () => {
     expect(swapQuestion(g, "T0", "room0-q7", null).checks?.["room0-q7:T0"]?.hint).toBeUndefined();
   });
 
+  it("in a short bank, leaves the other team's state on a shared question alone and does not reveal it", () => {
+    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["a", "b"]), ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    let g: GameState = { ...g0, teams: g0.teams.map((t) => ({ ...t, currentQuestionId: "a" })), eliminated: { a: [1] } };
+    g = recordCheck(g, "T0", "a", 15, "萬家福");
+    g = { ...g, checks: { ...g.checks, "a:T1": { value: 9, bonus: 0, dc: 10, passed: false } } };
+    const s = swapQuestion(g, "T0", "b", null);
+    expect(s.teams.map((t) => t.currentQuestionId)).toEqual(["b", "a"]);
+    expect(s.revealedQuestionIds).not.toContain("a");
+    expect(s.eliminated.a).toEqual([1]);
+    expect(s.checks?.["a:T1"]).toMatchObject({ value: 9 });
+    expect(s.checks?.["a:T0"]).toBeUndefined();
+    expect(s.checks?.["b:T0"]).toMatchObject({ value: 15 });
+  });
+
+  it("swaps in the target's own queued pick and uses the queue up", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const s = swapQuestion(g, "T0", "room0-q7", null);
+    expect(s.teams[0]).toMatchObject({ currentQuestionId: "room0-q7", queuedQuestionId: undefined });
+    expect(() => swapQuestion(g, "T1", "room0-q7", null)).toThrow("queued");
+  });
+
+  it("offers no boss question with nobody in the boss room or a phase card pending", () => {
+    const g = makeGame({ bossThreshold: 15, bossMaxHp: 3 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(() => swapQuestion(g, "boss", "boss-q3", null)).toThrow("can't be");
+    const inBoss = sendToBoss(g, "T0");
+    expect(() => swapQuestion({ ...inBoss, boss: { ...inBoss.boss, phasePending: "cleared" } }, "boss", "boss-q3", null)).toThrow("can't be");
+  });
+
   it("swaps the boss question outside a buzzer phase", () => {
     const g = sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
     const s = swapQuestion(g, "boss", "boss-q3", null);
