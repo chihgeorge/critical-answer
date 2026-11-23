@@ -778,6 +778,67 @@ export function queueQuestion(game: GameState, target: string, questionId: strin
     : { ...game, boss: { ...game.boss, queuedQuestionId } };
 }
 
+/** The questions `target` (a team id or "boss") may swap its current question for (swapQuestion): a room team's
+ * current difficulty, or the boss phase's. Blocked ones are included; pickBlock says which. */
+export function swappableQuestionIds(game: GameState, target: string): string[] {
+  // The boss's question is in play only with a team in the room and its phase under way.
+  if (target === "boss") return isBuzzPhase(game) || game.boss.phasePending || !game.teams.some((t) => t.inBoss) ? [] : game.boss.questionIds;
+  const team = getTeam(game, target);
+  return team.inBoss ? [] : game.pools[poolIndexFor(game.pools, team.currentDifficulty)];
+}
+
+/**
+ * 換掉目前這題: the host swaps the question `target` (a room team, or "boss" outside a buzzer phase) faces now for
+ * `questionId`, before it is answered: "too_late" once a wrong answer (a 重答 too), a typed answer or a catch waits on it (the room
+ * refuses a lock, die or beat on it). The old question counts as published (revealed: never dealt again); the new one
+ * is dealt fresh, its per-question state clean. A persuasion check already rolled stays rolled, moved onto the new
+ * question, its hint taken from `hintAnswer` (the new answer; null: no hint). The target's own queued pick may be
+ * swapped in (its queue is used up). A short bank's question another room team still faces keeps its state and that
+ * team keeps it (only an answer's own reveal retires other holders), but it is revealed: never dealt again. Not a turn.
+ */
+export function swapQuestion(game: GameState, target: string, questionId: string, hintAnswer: string | null): GameState {
+  assertPlaying(game);
+  const team = target === "boss" ? null : getTeam(game, target);
+  if (team?.inBoss) throw new InvalidActionError(`${target} is in the boss room`);
+  if (!team) assertNotBuzz(game);
+  const old = team ? team.currentQuestionId : game.boss.currentQuestionId;
+  const facing = team ? [team] : game.teams.filter((t) => t.inBoss);
+  // A 重答 clears pendingWrong but leaves wrongOn: the team has answered, too late all the same.
+  if (game.pendingWrong?.questionId === old || game.antiCheat?.openCatch?.questionId === old || team?.wrongOn === old || facing.some((t) => t.typedAnswer !== undefined)) throw new InvalidActionError("too_late");
+  if (!swappableQuestionIds(game, target).includes(questionId)) throw new InvalidActionError(`${questionId} can't be ${target}'s question now`);
+  const block = pickBlock(game, questionId);
+  if (block && !(block.kind === "queued" && block.teamId === (team?.id ?? "boss"))) throw new InvalidActionError(`${questionId} is ${block.kind}`);
+  const shared = !!team && game.teams.some((t) => t.id !== team.id && !t.inBoss && t.currentQuestionId === old);
+  const dropped: Partial<ReturnType<typeof dropEliminated>> = shared ? {} : dropEliminated(game, old);
+  const checks: Record<string, CheckRecord> = { ...(shared ? game.checks : dropped.checks) };
+  if (team) delete checks[checkKey(old, team.id)];
+  for (const t of facing) {
+    const rolled = game.checks?.[checkKey(old, t.id)];
+    if (!rolled) continue;
+    const moved: CheckRecord = { ...rolled };
+    delete moved.hint;
+    const hint = rolled.passed && rolled.value !== 20 && hintAnswer !== null ? firstMeaningfulChar(hintAnswer) : null;
+    checks[checkKey(questionId, t.id)] = { ...moved, ...(hint !== null ? { hint } : {}) };
+  }
+  const fresh = (t: Team): Partial<Team> => ({ currentSelection: null, ...(t.itemArmedFor === old ? { itemArmedFor: questionId } : {}) });
+  const from = game.pools.findIndex((ids) => ids.includes(questionId));
+  return {
+    ...game,
+    ...dropped,
+    ...(game.checks ? { checks } : {}),
+    revealedQuestionIds: withRevealed(game.revealedQuestionIds, old),
+    ...(team
+      ? {
+          usedQuestionIds: game.usedQuestionIds.map((u, i) => (i === from && !u.includes(questionId) ? [...u, questionId] : u)),
+          teams: patchTeam(game.teams, team.id, (t) => ({ ...fresh(t), currentQuestionId: questionId, wrongOn: undefined, oracleQ: undefined, ...(t.queuedQuestionId === questionId ? { queuedQuestionId: undefined } : {}) })),
+        }
+      : {
+          teams: game.teams.map((t) => (t.inBoss ? { ...t, ...fresh(t) } : t)),
+          boss: { ...game.boss, currentQuestionId: questionId, ...(game.boss.queuedQuestionId === questionId ? { queuedQuestionId: undefined } : {}) },
+        }),
+  };
+}
+
 export const DEFAULT_GAME_CONFIG: GameConfig = { bossThreshold: 15 };
 /** The lobby's 進王門檻 choices: a lower one makes a game with many teams shorter. */
 export const BOSS_THRESHOLDS = [10, 12, 15] as const;
@@ -1634,10 +1695,10 @@ export function answerQuestion(
   if ((correct || fleeChoice !== "retry") && getTeam(nextGame, teamId).oracleQ !== undefined) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ oracleQ: undefined })) };
   const left = getTeam(nextGame, teamId).wrongOn;
   if (left !== undefined && left !== currentQuestionIdOf(nextGame, teamId)) nextGame = { ...nextGame, teams: patchTeam(nextGame.teams, teamId, () => ({ wrongOn: undefined })) };
-  // A revealed question retires for every team holding it (tiny custom banks), except the answering team's own
-  // question a hint revealed earlier (a mage's cast): a 重答 stays on it.
+  // A question this answer revealed retires for every team holding it (tiny custom banks). One revealed earlier
+  // (a mage's cast, a host swap) stays with whoever holds it: a 重答 stays on it, another team still answers it.
   for (const t of nextGame.teams) {
-    if (t.inBoss || (t.id === teamId && revealedAtStart.includes(t.currentQuestionId)) || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
+    if (t.inBoss || revealedAtStart.includes(t.currentQuestionId) || !nextGame.revealedQuestionIds.includes(t.currentQuestionId)) continue;
     const dealt = dealFor(nextGame, t, t.currentDifficulty, nextGame.revealedQuestionIds, rng);
     nextGame = { ...nextGame, usedQuestionIds: dealt.used, teams: patchTeam(nextGame.teams, t.id, () => ({ currentQuestionId: dealt.questionId, currentSelection: null, wrongOn: undefined, oracleQ: undefined, queuedQuestionId: dealt.queuedQuestionId })) };
   }

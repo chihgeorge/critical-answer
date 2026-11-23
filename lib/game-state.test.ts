@@ -21,6 +21,7 @@ import {
   enterEventRoom,
   openEvent,
   queueQuestion,
+  swapQuestion,
   pickBlock,
   pickableQuestionIds,
   enterNextBossPhase,
@@ -1335,6 +1336,106 @@ describe("teams sharing a question split once one comes free (TODOS 題目比隊
     g = sendToBoss(g, "T0", first);
     expect(held(g)[2]).toBe(before[2]);
     expect(new Set(held(g).slice(1)).size).toBe(2);
+  });
+});
+
+describe("swapQuestion (換掉目前這題)", () => {
+  it("deals the new question now, resets its per-question state, and the old one counts as published", () => {
+    let g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    g = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, currentSelection: 2, oracleQ: "room0-q1" } : t)), eliminated: { "room0-q1": [1] } };
+    const s = swapQuestion(g, "T0", "room0-q7", null);
+    expect(s.teams[0]).toMatchObject({ currentQuestionId: "room0-q7", currentSelection: null, wrongOn: undefined, oracleQ: undefined });
+    expect(s.revealedQuestionIds).toContain("room0-q1");
+    expect(s.usedQuestionIds[0]).toContain("room0-q7");
+    expect(s.eliminated["room0-q1"]).toBeUndefined();
+    expect(s.currentTurnIndex).toBe(g.currentTurnIndex);
+  });
+
+  it("never deals the swapped-out question again", () => {
+    const g = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["a", "b", "c", "d"]), ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const s = swapQuestion(g, "T0", "c", null);
+    expect(pickBlock(s, "a")).toEqual({ kind: "revealed" });
+    const { game: next } = answerQuestion(advanceTurn(s), "T1", "b", true, "retry", first);
+    expect(next.teams[1].currentQuestionId).toBe("d");
+    expect(() => swapQuestion(s, "T1", "a", null)).toThrow("a is revealed");
+  });
+
+  it("is too late once the team locked wrong, typed an answer or was caught on it", () => {
+    const g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(() => swapQuestion(recordWrongLock(g, "T0", "room0-q1", 0), "T0", "room0-q7", null)).toThrow("too_late");
+    const typed = { ...g, teams: g.teams.map((t) => (t.id === "T0" ? { ...t, typedAnswer: "x" } : t)) };
+    expect(() => swapQuestion(typed, "T0", "room0-q7", null)).toThrow("too_late");
+    const caught = { ...g, antiCheat: { on: true, onCount: 1, openCatch: { by: "T1", teamId: "T0", questionId: "room0-q1" } } };
+    expect(() => swapQuestion(caught, "T0", "room0-q7", null)).toThrow("too_late");
+  });
+
+  it("is too late after a wrong answer the host sent back for a 重答", () => {
+    const { game: retry } = answerQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q1", false, "retry", first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(retry.teams[0]).toMatchObject({ currentQuestionId: "room0-q1", wrongOn: "room0-q1" });
+    expect(() => swapQuestion(retry, "T0", "room0-q7", null)).toThrow("too_late");
+  });
+
+  it("refuses a question another team holds, one outside the team's difficulty, and a boss-room team", () => {
+    const g = makeGame({ bossThreshold: 15 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(() => swapQuestion(g, "T0", "room0-q2", null)).toThrow("held");
+    expect(() => swapQuestion(g, "T0", "boss-q1", null)).toThrow("can't be");
+    expect(() => swapQuestion(sendToBoss(g, "T0"), "T0", "room0-q7", null)).toThrow("boss room");
+  });
+
+  it("keeps a persuasion check already rolled, its hint taken from the new answer", () => {
+    const g = recordCheck(makeGame({ bossThreshold: 15 }), "T0", "room0-q1", 19, "萬家福"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const s = swapQuestion(g, "T0", "room0-q7", "東京鐵塔");
+    expect(s.checks?.["room0-q1:T0"]).toBeUndefined();
+    expect(s.checks?.["room0-q7:T0"]).toMatchObject({ value: 19, passed: true, hint: "東" });
+    expect(swapQuestion(g, "T0", "room0-q7", null).checks?.["room0-q7:T0"]?.hint).toBeUndefined();
+  });
+
+  it("in a short bank, leaves the other team's state on a shared question alone, and never deals it again", () => {
+    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }], makeRooms(3, 1), poolsWith(1, ["a", "b"]), ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    let g: GameState = { ...g0, teams: g0.teams.map((t) => ({ ...t, currentQuestionId: "a" })), eliminated: { a: [1] } };
+    g = recordCheck(g, "T0", "a", 15, "萬家福");
+    g = { ...g, checks: { ...g.checks, "a:T1": { value: 9, bonus: 0, dc: 10, passed: false } } };
+    const s = swapQuestion(g, "T0", "b", null);
+    expect(s.teams.map((t) => t.currentQuestionId)).toEqual(["b", "a"]);
+    expect(s.revealedQuestionIds).toContain("a");
+    expect(s.eliminated.a).toEqual([1]);
+    expect(s.checks?.["a:T1"]).toMatchObject({ value: 9 });
+    expect(s.checks?.["a:T0"]).toBeUndefined();
+    expect(s.checks?.["b:T0"]).toMatchObject({ value: 15 });
+  });
+
+  it("keeps the other team on a shared swapped-out question, and deals it to nobody after a flee", () => {
+    const g0 = createGame([{ id: "T0", name: "A" }, { id: "T1", name: "B" }, { id: "T2", name: "C" }], makeRooms(3, 1), poolsWith(1, ["a", "b", "c"]), ["b1"], { bossThreshold: 15 }, 2, first); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const g: GameState = { ...g0, teams: g0.teams.map((t, i) => ({ ...t, currentQuestionId: ["a", "a", "c"][i] })) };
+    const s = swapQuestion(g, "T0", "b", null);
+    // A flees b: a is never dealt back to it.
+    const { game: afterA } = answerQuestion(s, "T0", "b", false, "flee", first);
+    expect(afterA.teams[0].currentQuestionId).not.toBe("a");
+    // C answers its own question: B stays on the swapped-out one.
+    const { game: afterC } = answerQuestion({ ...afterA, currentTurnIndex: afterA.turnOrder.indexOf("T2") }, "T2", afterA.teams[2].currentQuestionId, false, "flee", first);
+    expect(afterC.teams[1].currentQuestionId).toBe("a");
+  });
+
+  it("swaps in the target's own queued pick and uses the queue up", () => {
+    const g = queueQuestion(makeGame({ bossThreshold: 15 }), "T0", "room0-q7"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const s = swapQuestion(g, "T0", "room0-q7", null);
+    expect(s.teams[0]).toMatchObject({ currentQuestionId: "room0-q7", queuedQuestionId: undefined });
+    expect(() => swapQuestion(g, "T1", "room0-q7", null)).toThrow("queued");
+  });
+
+  it("offers no boss question with nobody in the boss room or a phase card pending", () => {
+    const g = makeGame({ bossThreshold: 15, bossMaxHp: 3 }); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    expect(() => swapQuestion(g, "boss", "boss-q3", null)).toThrow("can't be");
+    const inBoss = sendToBoss(g, "T0");
+    expect(() => swapQuestion({ ...inBoss, boss: { ...inBoss.boss, phasePending: "cleared" } }, "boss", "boss-q3", null)).toThrow("can't be");
+  });
+
+  it("swaps the boss question outside a buzzer phase", () => {
+    const g = sendToBoss(makeGame({ bossThreshold: 15, bossMaxHp: 3 }), "T0"); // pregate-literal: CHEF_BONUS_PERCENT=15 not the chef share
+    const s = swapQuestion(g, "boss", "boss-q3", null);
+    expect(s.boss.currentQuestionId).toBe("boss-q3");
+    expect(s.revealedQuestionIds).toContain("boss-q1");
+    expect(() => swapQuestion(s, "boss", "boss-q1", null)).toThrow("revealed");
   });
 });
 

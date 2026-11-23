@@ -839,6 +839,72 @@ describe("HOST_QUEUE_QUESTION (the host picks the next question)", () => {
   });
 });
 
+describe("HOST_SWAP_QUESTION (換掉目前這題)", () => {
+  function startedGame(teamCount = 2) {
+    const { room, hostConn } = makeRoomWithHost();
+    const { ids } = joinTeams(room, hostConn, teamCount);
+    send(room, hostConn, { type: "HOST_START" });
+    return { room, hostConn, ids };
+  }
+  const sentOf = (conn: ReturnType<typeof makeConn>) => (conn.send as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+  const lastPicks = (conn: ReturnType<typeof makeConn>) => sentOf(conn).findLast((m) => m.type === "HOST_PICKS");
+  const freeSwap = (conn: ReturnType<typeof makeConn>, target: string) => {
+    const picks = lastPicks(conn);
+    return picks.swap[target].find((id: string) => !picks.questions.find((q: { id: string; block?: unknown }) => q.id === id).block);
+  };
+
+  it("rejects a non-host", () => {
+    const { room, hostConn, ids } = startedGame(1);
+    const before = room.game!.teams[0].currentQuestionId;
+    const conn = makeConn("not-host");
+    send(room, conn, { type: "HOST_SWAP_QUESTION", target: ids[0], questionId: freeSwap(hostConn, ids[0]) });
+    expect(lastSentTo(conn)).toMatchObject({ type: "ERROR", error: "not_host" });
+    expect(room.game!.teams[0].currentQuestionId).toBe(before);
+  });
+
+  it("swaps the team's question before it answers; the options reach only the host", () => {
+    const { room, hostConn, ids } = startedGame(2);
+    const turn = currentTurnTeamId(room.game!)!;
+    const old = room.game!.teams.find((t) => t.id === turn)!.currentQuestionId;
+    const pick = freeSwap(hostConn, turn);
+    send(room, hostConn, { type: "HOST_SWAP_QUESTION", target: turn, questionId: pick });
+    expect(room.game!.teams.find((t) => t.id === turn)!.currentQuestionId).toBe(pick);
+    expect(room.game!.revealedQuestionIds).toContain(old);
+    expect(lastPicks(hostConn).swap[ids[0]]).toBeDefined();
+    const broadcasts = (room.room.broadcast as ReturnType<typeof vi.fn>).mock.calls.map((c) => JSON.parse(c[0]));
+    expect(broadcasts.some((m) => m.type === "HOST_PICKS" || "swap" in m)).toBe(false);
+    expect(lastBroadcast(room)).toMatchObject({ type: "STATE" });
+  });
+
+  it("is too late once the team locked, typed an answer or waits for a judgment", () => {
+    const { room, hostConn } = startedGame(2);
+    const turn = currentTurnTeamId(room.game!)!;
+    const old = room.game!.teams.find((t) => t.id === turn)!.currentQuestionId;
+    const pick = freeSwap(hostConn, turn);
+    const tooLate = () => {
+      send(room, hostConn, { type: "HOST_SWAP_QUESTION", target: turn, questionId: pick });
+      expect(lastSentTo(hostConn)).toMatchObject({ type: "ERROR", error: "invalid_action", detail: "too_late" });
+      expect(room.game!.teams.find((t) => t.id === turn)!.currentQuestionId).toBe(old);
+    };
+    (room as any).pendingLock = { teamId: turn, questionId: old, optionIndex: 0 };
+    tooLate();
+    (room as any).pendingLock = null;
+    for (const k of ["pendingRoll", "reveal"]) {
+      (room as any)[k] = { teamId: turn, questionId: old, value: 10 };
+      tooLate();
+      (room as any)[k] = null;
+    }
+    (room as any).stageBeat = "check-success";
+    tooLate();
+    (room as any).stageBeat = null;
+    const game = room.game!;
+    (room as any).game = { ...game, teams: game.teams.map((t) => (t.id === turn ? { ...t, typedAnswer: "x" } : t)) };
+    tooLate();
+    (room as any).game = { ...game, pendingWrong: { teamId: turn, questionId: old, optionIndex: 0 } };
+    tooLate();
+  });
+});
+
 describe("answer reveal on STATE (D2/D3/D5/D7)", () => {
   function startedGame(teamCount = 2) {
     const { room, hostConn } = makeRoomWithHost();
